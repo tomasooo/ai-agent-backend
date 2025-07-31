@@ -58,19 +58,26 @@ app.get('/api/oauth/google/callback', async (req, res) => {
             throw new Error('Autorizační kód chybí.');
         }
 
+        // 1. Vyměníme kód za tokeny (včetně id_token)
         const { tokens } = await oauth2Client.getToken(code);
         const refresh_token = tokens.refresh_token;
 
-        console.log("ÚSPĚCH! Získán Refresh Token pro práci s Gmailem.");
-        console.log("Refresh Token (uložit do DB):", refresh_token);
+        // 2. Z id_tokenu získáme informace o uživateli (vytvoříme 'ticket')
+        const ticket = await loginClient.verifyIdToken({
+            idToken: tokens.id_token,
+            audience: GOOGLE_CLIENT_ID,
+        });
+        const payload = ticket.getPayload();
+        const email = payload.email; // Získáme email správným způsobem
 
-        // Zde byste bezpečně uložili `refresh_token` do databáze
+        console.log(`ÚSPĚCH! Získán Refresh Token pro ${email}.`);
+        if (refresh_token) {
+            console.log("Refresh Token (uložit do DB):", refresh_token);
+             // ZDE BYSTE BEZPEČNĚ ULOŽILI `refresh_token` DO DATABÁZE
+        }
         
-       // Získáme email z payloadu, který nám poslal Google
-const email = ticket.getPayload().email;
-
-// Přidáme email do URL, abychom ho mohli na frontendu přečíst
-res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success&new-email=${email}`);
+        // 3. Přesměrujeme uživatele zpět na dashboard
+        res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success&new-email=${email}`);
 
     } catch (error) {
         console.error("Chyba při zpracování OAuth callbacku:", error.message);
