@@ -62,6 +62,33 @@ app.post('/api/auth/google', async (req, res) => {
     }
 });
 
+// === NOVÝ ENDPOINT PRO ODPOJENÍ ÚČTU (REVOKE TOKEN) ===
+app.post('/api/oauth/google/revoke', async (req, res) => {
+    try {
+        const { email } = req.body; // Email, který chceme odpojit
+
+        // DŮLEŽITÉ: V reálné aplikaci byste udělali toto:
+        // 1. Našli byste uživatele v databázi podle jeho session.
+        // 2. Našli byste jeho uložený `refresh_token` pro daný email.
+        const refreshToken = "ZDE_BY_BYL_REFRESH_TOKEN_Z_DATABÁZE"; // Toto je jen placeholder!
+        
+        if (refreshToken && refreshToken !== "ZDE_BY_BYL_REFRESH_TOKEN_Z_DATABÁZE") {
+            // Řekneme Googlu, aby zneplatnil tento token
+            await oauth2Client.revokeToken(refreshToken);
+            console.log(`Token pro email ${email} byl úspěšně zneplatněn.`);
+        }
+
+        // 3. Smazali byste refresh_token z vaší databáze.
+        console.log(`Placeholder: Token pro ${email} by byl smazán z databáze.`);
+
+        res.status(200).json({ success: true, message: "Účet byl úspěšně odpojen." });
+
+    } catch (error) {
+        console.error("Chyba při zneplatnění tokenu:", error.message);
+        res.status(500).json({ success: false, message: "Nepodařilo se zneplatnit oprávnění." });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     console.log(`Očekávám požadavky z: ${FRONTEND_URL}`);
