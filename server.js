@@ -2,24 +2,35 @@
 const express = require('express');
 const { OAuth2Client } = require('google-auth-library');
 const bodyParser = require('body-parser');
-const cors = require('cors'); // Importujeme CORS
+const cors = require('cors');
 
 const app = express();
-const PORT = 3000; // Port, na kterém poběží náš backend
 
-// ❗ DŮLEŽITÉ: Nahraďte svým Client ID z Google Cloud Console
-const GOOGLE_CLIENT_ID = "990614891314-kugic255rq68tt1m7uqg4rdp9jdig5lb.apps.googleusercontent.com"; 
+// 1. Port se načte z proměnných prostředí Renderu (nebo použije 3000 pro lokální vývoj)
+const PORT = process.env.PORT || 3000;
+
+// 2. Client ID se bezpečně načte z proměnných prostředí
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+if (!GOOGLE_CLIENT_ID) {
+    console.error("Chyba: GOOGLE_CLIENT_ID není nastaveno v proměnných prostředí!");
+    process.exit(1);
+}
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
-// Nastavení CORS, aby server přijímal požadavky z vašeho frontendu
+// 3. Adresa frontendu se načte z proměnných prostředí
+const FRONTEND_URL = process.env.FRONTEND_URL;
+if (!FRONTEND_URL) {
+    console.error("Chyba: FRONTEND_URL není nastaveno v proměnných prostředí!");
+    process.exit(1);
+}
 const corsOptions = {
-    origin: 'http://127.0.0.1:5500', // Povolíme pouze vaši frontend adresu
-    optionsSuccessStatus: 200 
+    origin: FRONTEND_URL,
+    optionsSuccessStatus: 200
 };
-app.use(cors(corsOptions)); // Použijeme CORS
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 
-// Endpoint pro ověření Google tokenu
+// Endpoint pro ověření Google tokenu (zůstává stejný)
 app.post('/api/auth/google', async (req, res) => {
     try {
         const { token } = req.body;
@@ -27,7 +38,6 @@ app.post('/api/auth/google', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Token chybí.' });
         }
 
-        // Bezpečné ověření tokenu na straně serveru
         const ticket = await client.verifyIdToken({
             idToken: token,
             audience: GOOGLE_CLIENT_ID,
@@ -38,8 +48,7 @@ app.post('/api/auth/google', async (req, res) => {
 
         console.log(`Uživatel úspěšně ověřen: ${name} (${email})`);
 
-        // V reálné aplikaci byste zde uživatele uložili do databáze
-        // a vytvořili mu session pro přihlášení.
+        // Zde by v budoucnu přišla práce s databází
 
         res.status(200).json({
             success: true,
@@ -54,6 +63,6 @@ app.post('/api/auth/google', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`✅ Backend server běží na http://localhost:${PORT}`);
-    console.log('Očekávám požadavky z http://127.0.0.1:5500');
+    console.log(`✅ Backend server běží na portu ${PORT}`);
+    console.log(`Očekávám požadavky z: ${FRONTEND_URL}`);
 });
