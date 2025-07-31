@@ -5,64 +5,75 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 
 const app = express();
-
-// 1. Port se načte z proměnných prostředí Renderu (nebo použije 3000 pro lokální vývoj)
 const PORT = process.env.PORT || 3000;
 
-// 2. Client ID se bezpečně načte z proměnných prostředí
+// Načtení proměnných prostředí
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-if (!GOOGLE_CLIENT_ID) {
-    console.error("Chyba: GOOGLE_CLIENT_ID není nastaveno v proměnných prostředí!");
-    process.exit(1);
-}
-const client = new OAuth2Client(GOOGLE_CLIENT_ID);
-
-// 3. Adresa frontendu se načte z proměnných prostředí
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL;
-if (!FRONTEND_URL) {
-    console.error("Chyba: FRONTEND_URL není nastaveno v proměnných prostředí!");
+const REDIRECT_URI = `https://<nazev-sluzby>.onrender.com/api/oauth/google/callback`; // Doplňte název vaší služby!
+
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL) {
+    console.error("Chyba: Chybí potřebné proměnné prostředí!");
     process.exit(1);
 }
-const corsOptions = {
-    origin: FRONTEND_URL,
-    optionsSuccessStatus: 200
-};
+
+// Nastavení CORS
+const corsOptions = { origin: FRONTEND_URL, optionsSuccessStatus: 200 };
 app.use(cors(corsOptions));
 app.use(bodyParser.json());
 
-// Endpoint pro ověření Google tokenu (zůstává stejný)
+// Klient pro ověření přihlašovacího tokenu
+const loginClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+// Klient pro získání přístupových tokenů pro Gmail API
+const oauth2Client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, REDIRECT_URI);
+
+// PŮVODNÍ ENDPOINT PRO PŘIHLÁŠENÍ (zůstává)
 app.post('/api/auth/google', async (req, res) => {
     try {
         const { token } = req.body;
-        if (!token) {
-            return res.status(400).json({ success: false, message: 'Token chybí.' });
-        }
-
-        const ticket = await client.verifyIdToken({
+        const ticket = await loginClient.verifyIdToken({
             idToken: token,
             audience: GOOGLE_CLIENT_ID,
         });
-
         const payload = ticket.getPayload();
-        const { name, email, picture } = payload;
-
-        console.log(`Uživatel úspěšně ověřen: ${name} (${email})`);
-
-        // Zde by v budoucnu přišla práce s databází
-
-        res.status(200).json({
-            success: true,
-            message: "Přihlášení úspěšné.",
-            user: { name, email, picture },
-        });
-
+        console.log(`Uživatel přihlášen: ${payload.name} (${payload.email})`);
+        res.status(200).json({ success: true, user: payload });
     } catch (error) {
         console.error("Chyba při ověřování tokenu:", error);
-        res.status(401).json({ success: false, message: 'Ověření selhalo. Neplatný token.' });
+        res.status(401).json({ success: false, message: 'Ověření selhalo.' });
+    }
+});
+
+// NOVÝ ENDPOINT PRO ZPRACOVÁNÍ SOUHLASU OD GOOGLE
+app.get('/api/oauth/google/callback', async (req, res) => {
+    try {
+        const code = req.query.code;
+        if (!code) {
+            throw new Error('Autorizační kód chybí.');
+        }
+
+        // Výměna kódu za přístupové tokeny
+        const { tokens } = await oauth2Client.getToken(code);
+        const refresh_token = tokens.refresh_token;
+
+        console.log("ÚSPĚCH! Získán Refresh Token pro práci s Gmailem.");
+        
+        // DŮLEŽITÉ: ZDE BYSTE BEZPEČNĚ ULOŽILI `refresh_token` DO DATABÁZE
+        // Tento token je klíčem k emailu uživatele a musí být šifrovaný a v bezpečí!
+        // Spojili byste ho s uživatelem, který je právě přihlášen.
+        console.log("Refresh Token (uložit do DB):", refresh_token);
+
+        // Přesměrujeme uživatele zpět na dashboard se zprávou o úspěchu
+        res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success`);
+
+    } catch (error) {
+        console.error("Chyba při zpracování OAuth callbacku:", error.message);
+        res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=error`);
     }
 });
 
 app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
-    console.log(`Očekávám požadavky z: ${FRONTEND_URL}`);
 });
