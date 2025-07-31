@@ -5,6 +5,8 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const { Pool } = require('pg'); // Ovladač pro PostgreSQL
 const { google } = require('googleapis'); // PŘIDÁNO: Knihovna pro Google API
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
 
 
 const app = express();
@@ -15,14 +17,18 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL;
 const DATABASE_URL = process.env.DATABASE_URL;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 console.log("DEBUG: Načtená DATABASE_URL je:", DATABASE_URL);
 const SERVER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 const REDIRECT_URI = `${SERVER_URL}/api/oauth/google/callback`;
 
-if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL) {
-    console.error("Chyba: Chybí jedna z klíčových proměnných prostředí!");
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL || !GEMINI_API_KEY) {
+    console.error("Chyba: Chybí potřebné proměnné prostředí!");
     process.exit(1);
 }
+
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash"});
 
 // Nastavení databázového spojení
 const pool = new Pool({
@@ -207,6 +213,54 @@ app.get('/api/gmail/emails', async (req, res) => {
     } catch (error) {
         console.error("Chyba při načítání emailů:", error.message);
         res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily." });
+    }
+});
+
+
+// === NOVÝ ENDPOINT PRO ANALÝZU EMAILU POMOCÍ GEMINI ===
+app.post('/api/gmail/analyze-email', async (req, res) => {
+    try {
+        const { email, messageId } = req.body;
+        if (!email || !messageId) {
+            return res.status(400).json({ success: false, message: "Email nebo ID zprávy chybí." });
+        }
+
+        // 1. Získáme refresh_token z databáze
+        const dbClient = await pool.connect();
+        const result = await dbClient.query('SELECT refresh_token FROM users WHERE email = $1', [email]);
+        dbClient.release();
+        const refreshToken = result.rows[0]?.refresh_token;
+        if (!refreshToken) return res.status(404).json({ success: false, message: "Token nenalezen." });
+
+        // 2. Načteme plné znění emailu
+        oauth2Client.setCredentials({ refresh_token: refreshToken });
+        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+        const msgResponse = await gmail.users.messages.get({ userId: 'me', id: messageId });
+        
+        let emailBody = '';
+        if (msgResponse.data.payload.parts) {
+            const part = msgResponse.data.payload.parts.find(p => p.mimeType === 'text/plain');
+            if (part && part.body.data) {
+                emailBody = Buffer.from(part.body.data, 'base64').toString('utf-8');
+            }
+        } else if (msgResponse.data.payload.body.data) {
+            emailBody = Buffer.from(msgResponse.data.payload.body.data, 'base64').toString('utf-8');
+        }
+
+        // 3. Vytvoříme prompt pro Gemini
+        const prompt = `Jsi profesionální emailový asistent. Analyzuj následující email. V odpovědi uveď pouze JSON objekt se třemi klíči: "summary" (stručné shrnutí emailu v jedné větě), "sentiment" (pozitivní, negativní, nebo neutrální) a "suggested_reply" (návrh krátké, profesionální odpovědi v češtině).\n\nEmail:\n---\n${emailBody.substring(0, 3000)}`;
+
+        // 4. Zeptáme se Gemini
+        const geminiResult = await model.generateContent(prompt);
+        const geminiResponse = await geminiResult.response;
+        const analysisText = geminiResponse.text();
+        
+        // 5. Pošleme analyzovanou odpověď zpět na frontend
+        res.json({ success: true, analysis: JSON.parse(analysisText) });
+
+    } catch (error) {
+        console.error("Chyba při analýze emailu:", error);
+        res.status(500).json({ success: false, message: "Nepodařilo se analyzovat email." });
     }
 });
 
