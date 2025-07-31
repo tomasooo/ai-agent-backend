@@ -66,7 +66,11 @@ app.get('/api/oauth/google/callback', async (req, res) => {
 
         // Zde byste bezpečně uložili `refresh_token` do databáze
         
-        res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success`);
+       // Získáme email z payloadu, který nám poslal Google
+const email = ticket.getPayload().email;
+
+// Přidáme email do URL, abychom ho mohli na frontendu přečíst
+res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success&new-email=${email}`);
 
     } catch (error) {
         console.error("Chyba při zpracování OAuth callbacku:", error.message);
