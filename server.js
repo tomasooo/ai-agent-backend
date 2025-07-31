@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL;
-const REDIRECT_URI = `https://<nazev-sluzby>.onrender.com/api/oauth/google/callback`; // Doplňte název vaší služby!
+const REDIRECT_URI = `https://ai-email-server-stejdesign.onrender.com/api/oauth/google/callback`;
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL) {
     console.error("Chyba: Chybí potřebné proměnné prostředí!");
@@ -23,56 +23,47 @@ const corsOptions = { origin: FRONTEND_URL, optionsSuccessStatus: 200 };
 app.use(cors(corsOptions));
 app.use(bodyParser.json());
 
-// Klient pro ověření přihlašovacího tokenu
 const loginClient = new OAuth2Client(GOOGLE_CLIENT_ID);
-
-// Klient pro získání přístupových tokenů pro Gmail API
 const oauth2Client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, REDIRECT_URI);
 
-// PŮVODNÍ ENDPOINT PRO PŘIHLÁŠENÍ (zůstává)
+// ENDPOINT PRO PŘIHLÁŠENÍ
 app.post('/api/auth/google', async (req, res) => {
-    try {
-        const { token } = req.body;
-        const ticket = await loginClient.verifyIdToken({
-            idToken: token,
-            audience: GOOGLE_CLIENT_ID,
-        });
-        const payload = ticket.getPayload();
-        console.log(`Uživatel přihlášen: ${payload.name} (${payload.email})`);
-        res.status(200).json({ success: true, user: payload });
-    } catch (error) {
-        console.error("Chyba při ověřování tokenu:", error);
-        res.status(401).json({ success: false, message: 'Ověření selhalo.' });
-    }
+    // ... kód pro přihlášení zůstává beze změny ...
 });
 
-// NOVÝ ENDPOINT PRO ZPRACOVÁNÍ SOUHLASU OD GOOGLE
+// ENDPOINT PRO ZPRACOVÁNÍ SOUHLASU OD GOOGLE
 app.get('/api/oauth/google/callback', async (req, res) => {
+    // ... kód pro callback zůstává beze změny ...
+});
+
+
+// === NOVÝ ENDPOINT PRO ODPOJENÍ ÚČTU (REVOKE TOKEN) ===
+app.post('/api/oauth/google/revoke', async (req, res) => {
     try {
-        const code = req.query.code;
-        if (!code) {
-            throw new Error('Autorizační kód chybí.');
+        const { email } = req.body; // Email, který chceme odpojit
+
+        // DŮLEŽITÉ: V reálné aplikaci byste udělali toto:
+        // 1. Našli byste uživatele v databázi podle jeho session.
+        // 2. Našli byste jeho uložený `refresh_token` pro daný email.
+        const refreshToken = "ZDE_BY_BYL_REFRESH_TOKEN_Z_DATABÁZE"; // Toto je jen placeholder!
+        
+        if (refreshToken) {
+            // Řekneme Googlu, aby zneplatnil tento token
+            await oauth2Client.revokeToken(refreshToken);
+            console.log(`Token pro email ${email} byl úspěšně zneplatněn.`);
         }
 
-        // Výměna kódu za přístupové tokeny
-        const { tokens } = await oauth2Client.getToken(code);
-        const refresh_token = tokens.refresh_token;
+        // 3. Smazali byste refresh_token z vaší databáze.
+        console.log(`Placeholder: Token pro ${email} by byl smazán z databáze.`);
 
-        console.log("ÚSPĚCH! Získán Refresh Token pro práci s Gmailem.");
-        
-        // DŮLEŽITÉ: ZDE BYSTE BEZPEČNĚ ULOŽILI `refresh_token` DO DATABÁZE
-        // Tento token je klíčem k emailu uživatele a musí být šifrovaný a v bezpečí!
-        // Spojili byste ho s uživatelem, který je právě přihlášen.
-        console.log("Refresh Token (uložit do DB):", refresh_token);
-
-        // Přesměrujeme uživatele zpět na dashboard se zprávou o úspěchu
-        res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success`);
+        res.status(200).json({ success: true, message: "Účet byl úspěšně odpojen." });
 
     } catch (error) {
-        console.error("Chyba při zpracování OAuth callbacku:", error.message);
-        res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=error`);
+        console.error("Chyba při zneplatnění tokenu:", error.message);
+        res.status(500).json({ success: false, message: "Nepodařilo se zneplatnit oprávnění." });
     }
 });
+
 
 app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
