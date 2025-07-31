@@ -5,66 +5,64 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 
 const app = express();
+
+// 1. Port se načte z proměnných prostředí Renderu (nebo použije 3000 pro lokální vývoj)
 const PORT = process.env.PORT || 3000;
 
-// Načtení proměnných prostředí
+// 2. Client ID se bezpečně načte z proměnných prostředí
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const FRONTEND_URL = process.env.FRONTEND_URL;
-const REDIRECT_URI = `https://ai-email-server-stejdesign.onrender.com/api/oauth/google/callback`;
-
-if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL) {
-    console.error("Chyba: Chybí potřebné proměnné prostředí!");
+if (!GOOGLE_CLIENT_ID) {
+    console.error("Chyba: GOOGLE_CLIENT_ID není nastaveno v proměnných prostředí!");
     process.exit(1);
 }
+const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
-// Nastavení CORS
-const corsOptions = { origin: FRONTEND_URL, optionsSuccessStatus: 200 };
+// 3. Adresa frontendu se načte z proměnných prostředí
+const FRONTEND_URL = process.env.FRONTEND_URL;
+if (!FRONTEND_URL) {
+    console.error("Chyba: FRONTEND_URL není nastaveno v proměnných prostředí!");
+    process.exit(1);
+}
+const corsOptions = {
+    origin: FRONTEND_URL,
+    optionsSuccessStatus: 200
+};
 app.use(cors(corsOptions));
 app.use(bodyParser.json());
 
-const loginClient = new OAuth2Client(GOOGLE_CLIENT_ID);
-const oauth2Client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, REDIRECT_URI);
-
-// ENDPOINT PRO PŘIHLÁŠENÍ
+// Endpoint pro ověření Google tokenu (zůstává stejný)
 app.post('/api/auth/google', async (req, res) => {
-    // ... kód pro přihlášení zůstává beze změny ...
-});
-
-// ENDPOINT PRO ZPRACOVÁNÍ SOUHLASU OD GOOGLE
-app.get('/api/oauth/google/callback', async (req, res) => {
-    // ... kód pro callback zůstává beze změny ...
-});
-
-
-// === NOVÝ ENDPOINT PRO ODPOJENÍ ÚČTU (REVOKE TOKEN) ===
-app.post('/api/oauth/google/revoke', async (req, res) => {
     try {
-        const { email } = req.body; // Email, který chceme odpojit
-
-        // DŮLEŽITÉ: V reálné aplikaci byste udělali toto:
-        // 1. Našli byste uživatele v databázi podle jeho session.
-        // 2. Našli byste jeho uložený `refresh_token` pro daný email.
-        const refreshToken = "ZDE_BY_BYL_REFRESH_TOKEN_Z_DATABÁZE"; // Toto je jen placeholder!
-        
-        if (refreshToken) {
-            // Řekneme Googlu, aby zneplatnil tento token
-            await oauth2Client.revokeToken(refreshToken);
-            console.log(`Token pro email ${email} byl úspěšně zneplatněn.`);
+        const { token } = req.body;
+        if (!token) {
+            return res.status(400).json({ success: false, message: 'Token chybí.' });
         }
 
-        // 3. Smazali byste refresh_token z vaší databáze.
-        console.log(`Placeholder: Token pro ${email} by byl smazán z databáze.`);
+        const ticket = await client.verifyIdToken({
+            idToken: token,
+            audience: GOOGLE_CLIENT_ID,
+        });
 
-        res.status(200).json({ success: true, message: "Účet byl úspěšně odpojen." });
+        const payload = ticket.getPayload();
+        const { name, email, picture } = payload;
+
+        console.log(`Uživatel úspěšně ověřen: ${name} (${email})`);
+
+        // Zde by v budoucnu přišla práce s databází
+
+        res.status(200).json({
+            success: true,
+            message: "Přihlášení úspěšné.",
+            user: { name, email, picture },
+        });
 
     } catch (error) {
-        console.error("Chyba při zneplatnění tokenu:", error.message);
-        res.status(500).json({ success: false, message: "Nepodařilo se zneplatnit oprávnění." });
+        console.error("Chyba při ověřování tokenu:", error);
+        res.status(401).json({ success: false, message: 'Ověření selhalo. Neplatný token.' });
     }
 });
 
-
 app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
+    console.log(`Očekávám požadavky z: ${FRONTEND_URL}`);
 });
