@@ -89,6 +89,35 @@ app.post('/api/oauth/google/revoke', async (req, res) => {
     }
 });
 
+
+// NOVÝ ENDPOINT PRO ZPRACOVÁNÍ SOUHLASU OD GOOGLE
+app.get('/api/oauth/google/callback', async (req, res) => {
+    try {
+        const code = req.query.code;
+        if (!code) {
+            throw new Error('Autorizační kód chybí.');
+        }
+
+        // Výměna kódu za přístupové tokeny
+        const { tokens } = await oauth2Client.getToken(code);
+        const refresh_token = tokens.refresh_token;
+
+        console.log("ÚSPĚCH! Získán Refresh Token pro práci s Gmailem.");
+        
+        // DŮLEŽITÉ: ZDE BYSTE BEZPEČNĚ ULOŽILI `refresh_token` DO DATABÁZE
+        // Tento token je klíčem k emailu uživatele a musí být šifrovaný a v bezpečí!
+        // Spojili byste ho s uživatelem, který je právě přihlášen.
+        console.log("Refresh Token (uložit do DB):", refresh_token);
+
+        // Přesměrujeme uživatele zpět na dashboard se zprávou o úspěchu
+        res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success`);
+
+    } catch (error) {
+        console.error("Chyba při zpracování OAuth callbacku:", error.message);
+        res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=error`);
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     console.log(`Očekávám požadavky z: ${FRONTEND_URL}`);
