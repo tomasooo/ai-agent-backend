@@ -4,6 +4,8 @@ const { OAuth2Client } = require('google-auth-library');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const { Pool } = require('pg'); // Ovladač pro PostgreSQL
+const { google } = require('googleapis'); // PŘIDÁNO: Knihovna pro Google API
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -146,6 +148,68 @@ app.post('/api/oauth/google/revoke', async (req, res) => {
     res.status(500).json({ success: false, message: "Nepodařilo se odpojit účet." });
 }
 });
+
+// === NOVÝ ENDPOINT PRO NAČTENÍ EMAILŮ ===
+app.get('/api/gmail/emails', async (req, res) => {
+    try {
+        const { email } = req.query; // Získáme email z požadavku
+        if (!email) {
+            return res.status(400).json({ success: false, message: "Email chybí." });
+        }
+
+        // 1. Získáme refresh_token z databáze
+        const client = await pool.connect();
+        const result = await client.query('SELECT refresh_token FROM users WHERE email = $1', [email]);
+        client.release();
+        
+        const refreshToken = result.rows[0]?.refresh_token;
+        if (!refreshToken) {
+            return res.status(404).json({ success: false, message: "Pro tento email nebyl nalezen token. Propojte prosím účet." });
+        }
+
+        // 2. Nastavíme token do OAuth klienta a vytvoříme Gmail klienta
+        oauth2Client.setCredentials({ refresh_token: refreshToken });
+        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+        // 3. Získáme seznam posledních 10 zpráv (jen jejich ID)
+        const listResponse = await gmail.users.messages.list({
+            userId: 'me',
+            maxResults: 10,
+        });
+        const messageIds = listResponse.data.messages || [];
+        
+        if (messageIds.length === 0) {
+            return res.json({ success: true, emails: [], total: 0 });
+        }
+
+        // 4. Pro každou zprávu získáme její detaily
+        const emailPromises = messageIds.map(async (msg) => {
+            const msgResponse = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'metadata', metadataHeaders: ['Subject', 'From', 'Date'] });
+            const headers = msgResponse.data.payload.headers;
+            
+            // Pomocná funkce pro nalezení hodnoty v hlavičkách
+            const getHeader = (name) => headers.find(h => h.name === name)?.value || '';
+
+            return {
+                id: msg.id,
+                snippet: msgResponse.data.snippet,
+                sender: getHeader('From'),
+                subject: getHeader('Subject'),
+                date: getHeader('Date')
+            };
+        });
+
+        const emails = await Promise.all(emailPromises);
+        const totalEmails = listResponse.data.resultSizeEstimate; // Celkový počet emailů v inboxu
+
+        res.json({ success: true, emails, total: totalEmails });
+
+    } catch (error) {
+        console.error("Chyba při načítání emailů:", error.message);
+        res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily." });
+    }
+});
+
 
 app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
