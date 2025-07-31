@@ -16,8 +16,8 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const SERVER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 const REDIRECT_URI = `${SERVER_URL}/api/oauth/google/callback`;
 
-if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL) {
-    console.error("Chyba: Chybí potřebné proměnné prostředí (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, FRONTEND_URL)!");
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL) {
+    console.error("Chyba: Chybí jedna z klíčových proměnných prostředí!");
     process.exit(1);
 }
 
