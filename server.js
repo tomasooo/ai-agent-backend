@@ -190,7 +190,7 @@ app.post('/api/oauth/google/revoke', async (req, res) => {
         await client.query('DELETE FROM users WHERE email = $1', [email]);
         console.log(`Záznam pro ${email} byl smazán z databáze.`);
     }
-    client.release();
+    
     res.status(200).json({ success: true, message: "Účet byl úspěšně odpojen." });
 
 } catch (error) {
@@ -435,10 +435,12 @@ app.get('/api/trigger-worker', async (req, res) => {
 });
 
 
-app.listen(PORT, () => {
-    console.log(`✅ Backend server běží na portu ${PORT}`);
-    setupDatabase(); // Zavoláme nastavení databáze při startu
+setupDatabase().then(() => {
+    app.listen(PORT, () => {
+        console.log(`✅ Backend server běží na portu ${PORT}`);
+    });
 });
+
 
 
 
