@@ -36,10 +36,15 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false } // Nutné pro Render
 });
 
+
+
+
+
 // Funkce pro vytvoření tabulky, pokud neexistuje
 async function setupDatabase() {
+    let client;
     try {
-        const client = await pool.connect();
+        client = await pool.connect(); // Přiřadíme hodnotu
         await client.query(`
             CREATE TABLE IF NOT EXISTS users (
                 email VARCHAR(255) PRIMARY KEY,
@@ -64,9 +69,15 @@ async function setupDatabase() {
     } catch (err) {
         console.error('Chyba při nastavování databází:', err);
     } finally {
-        client.release();
+       if (client) { // Uvolníme spojení, pouze pokud bylo úspěšně vytvořeno
+            client.release();
+        }
         }
 }
+
+
+
+
 
 // Nastavení CORS
 const corsOptions = { origin: FRONTEND_URL, optionsSuccessStatus: 200 };
@@ -326,6 +337,7 @@ app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     setupDatabase(); // Zavoláme nastavení databáze při startu
 });
+
 
 
 
