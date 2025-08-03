@@ -337,7 +337,7 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
 
         // 4. Zeptáme se Gemini a pošleme odpověď
         const geminiResult = await model.generateContent(prompt);
-        const analysisText = geminiResult.response.text().replace(/```json|```/g, '');
+        const analysisText = geminiResult.response.candidates[0].content.parts[0].text;
         
         res.json({ success: true, analysis: JSON.parse(analysisText) });
 
@@ -463,6 +463,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
