@@ -5,7 +5,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const { Pool } = require('pg'); // Ovladač pro PostgreSQL
 const { google } = require('googleapis'); // PŘIDÁNO: Knihovna pro Google API
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { VertexAI } = require('@google-cloud/vertex-ai');
 
 
 
@@ -17,7 +17,8 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL;
 const DATABASE_URL = process.env.DATABASE_URL;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const PROJECT_ID = process.env.GOOGLE_PROJECT_ID;
+const LOCATION = 'us-central1';
 const CRON_SECRET = process.env.CRON_SECRET;
 console.log("DEBUG: Načtená DATABASE_URL je:", DATABASE_URL);
 const SERVER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
@@ -26,7 +27,7 @@ const REDIRECT_URI = `${SERVER_URL}/api/oauth/google/callback`;
 
 
 
-if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL || !GEMINI_API_KEY || !CRON_SECRET) {
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL || !PROJECT_ID || !CRON_SECRET) {
     console.error("Chyba: Chybí potřebné proměnné prostředí!");
     process.exit(1);
 }
@@ -426,6 +427,7 @@ app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     setupDatabase(); // Zavoláme nastavení databáze při startu
 });
+
 
 
 
