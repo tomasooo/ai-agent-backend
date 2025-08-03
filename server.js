@@ -170,33 +170,44 @@ app.get('/api/oauth/google/callback', async (req, res) => {
     }
 });
 
+
+
+
+
+
 // ENDPOINT PRO ODPOJENÍ ÚČTU
 app.post('/api/oauth/google/revoke', async (req, res) => {
-
+    let client; // Definujeme klienta zde, aby byl dostupný i ve finally
     try {
-    const { email } = req.body;
-    const client = await pool.connect();
-    
-    // 1. Najdeme refresh_token v databázi
-    const result = await client.query('SELECT refresh_token FROM users WHERE email = $1', [email]);
-    const refreshToken = result.rows[0]?.refresh_token;
-
-    if (refreshToken) {
-        // 2. Řekneme Googlu, aby zneplatnil token
-        await oauth2Client.revokeToken(refreshToken);
-        console.log(`Token pro ${email} byl úspěšně zneplatněn u Googlu.`);
+        const { email } = req.body;
+        client = await pool.connect();
         
-        // 3. Smažeme záznam z naší databáze
-        await client.query('DELETE FROM users WHERE email = $1', [email]);
-        console.log(`Záznam pro ${email} byl smazán z databáze.`);
-    }
-    
-    res.status(200).json({ success: true, message: "Účet byl úspěšně odpojen." });
+        // 1. Najdeme refresh_token v databázi
+        const result = await client.query('SELECT refresh_token FROM users WHERE email = $1', [email]);
+        const refreshToken = result.rows[0]?.refresh_token;
 
-} catch (error) {
-    console.error("Chyba při zneplatnění tokenu:", error.message);
-    res.status(500).json({ success: false, message: "Nepodařilo se odpojit účet." });
-}
+        if (refreshToken) {
+            // 2. Řekneme Googlu, aby zneplatnil token
+            await oauth2Client.revokeToken(refreshToken);
+            console.log(`Token pro email ${email} byl úspěšně zneplatněn u Googlu.`);
+            
+            // 3. Smažeme záznam z naší databáze
+            await client.query('DELETE FROM users WHERE email = $1', [email]);
+            console.log(`Záznam pro ${email} byl smazán z databáze.`);
+        }
+        
+        res.status(200).json({ success: true, message: "Účet byl úspěšně odpojen." });
+
+    } catch (error) {
+        console.error("Chyba při zneplatnění tokenu:", error.message);
+        res.status(500).json({ success: false, message: "Nepodařilo se odpojit účet." });
+    } finally {
+        // TATO ČÁST JE NOVÁ A DŮLEŽITÁ
+        // Uvolní spojení s databází, ať se stane cokoliv
+        if (client) {
+            client.release();
+        }
+    }
 });
 
 
@@ -251,6 +262,10 @@ if (messageIds.length === 0) {
     return res.json({ success: true, emails: [], total: 0 });
 }
 
+
+
+
+        
 // Pro každou zprávu získáme její detaily
 const emailPromises = messageIds.map(async (msg) => {
     const msgResponse = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'metadata', metadataHeaders: ['Subject', 'From', 'Date'] });
@@ -277,6 +292,10 @@ const totalEmails = listResponse.data.resultSizeEstimate;
         res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily." });
     }
 });
+
+
+
+
 
 
 
@@ -341,6 +360,10 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
 });
 
 
+
+
+
+
 // Endpoint pro načtení nastavení
 app.get('/api/settings', async (req, res) => {
     try {
@@ -361,6 +384,11 @@ app.get('/api/settings', async (req, res) => {
         res.status(500).json({ success: false, message: "Nepodařilo se načíst nastavení." });
     }
 });
+
+
+
+
+
 
 // Endpoint pro uložení nastavení
 app.post('/api/settings', async (req, res) => {
@@ -440,6 +468,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
