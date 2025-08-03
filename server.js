@@ -255,8 +255,11 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
         const geminiResponse = await geminiResult.response;
         const analysisText = geminiResponse.text();
         
-        // 5. Pošleme analyzovanou odpověď zpět na frontend
-        res.json({ success: true, analysis: JSON.parse(analysisText) });
+        // Očistíme odpověď od případných formátovacích značek
+const cleanedText = analysisText.replace(/```json/g, '').replace(/```/g, '');
+
+// Pošleme analyzovanou odpověď zpět na frontend
+res.json({ success: true, analysis: JSON.parse(cleanedText) });
 
     } catch (error) {
         console.error("Chyba při analýze emailu:", error);
@@ -269,3 +272,4 @@ app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     setupDatabase(); // Zavoláme nastavení databáze při startu
 });
+
