@@ -45,20 +45,27 @@ async function setupDatabase() {
                 email VARCHAR(255) PRIMARY KEY,
                 refresh_token TEXT NOT NULL,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                tone VARCHAR(50) DEFAULT 'Formální',
-        length VARCHAR(50) DEFAULT 'Střední (1 odstavec)',
-        signature TEXT DEFAULT '',
-        auto_reply BOOLEAN DEFAULT true,
-        approval_required BOOLEAN DEFAULT true,
-        spam_filter BOOLEAN DEFAULT true,
-        FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE
             );
         `);
-        client.release();
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS settings (
+                email VARCHAR(255) PRIMARY KEY,
+                tone VARCHAR(50) DEFAULT 'Formální',
+                length VARCHAR(50) DEFAULT 'Střední (1 odstavec)',
+                signature TEXT DEFAULT '',
+                auto_reply BOOLEAN DEFAULT true,
+                approval_required BOOLEAN DEFAULT true,
+                spam_filter BOOLEAN DEFAULT true,
+                FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE
+            );
+        `);
+       
         console.log("Databázové tabulky jsou připraveny..");
     } catch (err) {
         console.error('Chyba při nastavování databází:', err);
-    }
+    } finally {
+        client.release();
+        }
 }
 
 // Nastavení CORS
@@ -319,5 +326,6 @@ app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     setupDatabase(); // Zavoláme nastavení databáze při startu
 });
+
 
 
