@@ -32,15 +32,7 @@ if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL
     process.exit(1);
 }
 // Dekódování JSON klíče z proměnné prostředí
-const credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-if (!credentialsJson) {
-    console.error("Chyba: Chybí proměnná prostředí GOOGLE_APPLICATION_CREDENTIALS_JSON!");
-    process.exit(1);
-}
-const credentials = JSON.parse(credentialsJson);
-
-// Inicializace Vertex AI s použitím servisního účtu
-const vertex_ai = new VertexAI({project: PROJECT_ID, location: LOCATION, credentials});
+const vertex_ai = new VertexAI({project: PROJECT_ID, location: LOCATION});
 const model = vertex_ai.getGenerativeModel({
     model: 'gemini-1.5-flash-001',
 });
@@ -475,6 +467,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
