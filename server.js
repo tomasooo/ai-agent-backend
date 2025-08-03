@@ -338,8 +338,8 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
         // 4. Zeptáme se Gemini a pošleme odpověď
         const geminiResult = await model.generateContent(prompt);
         const analysisText = geminiResult.response.candidates[0].content.parts[0].text;
-        
-        res.json({ success: true, analysis: JSON.parse(analysisText) });
+        const cleanedText = analysisText.replace(/```json|```/g, '');
+        res.json({ success: true, analysis: JSON.parse(cleanedText) });
 
     } catch (error) {
         console.error("Chyba při analýze emailu:", error);
@@ -444,7 +444,8 @@ app.get('/api/trigger-worker', async (req, res) => {
                 const prompt = `Jsi AI asistent pro třídění emailů. Klasifikuj následující email. Vrať pouze JSON objekt s klíčem "category", který může mít jednu z hodnot: "spam", "approval_required", "routine". Důležité emaily od šéfa nebo klientů označ jako "approval_required". Běžné reklamy a zjevný spam označ jako "spam". Vše ostatní je "routine".\n\nPředmět: ${subject}\nFragment: ${msgResponse.data.snippet}`;
                 
                 const geminiResult = await model.generateContent(prompt);
-                const analysis = JSON.parse(geminiResult.response.text().replace(/```json|```/g, ''));
+                const analysisText = geminiResult.response.candidates[0].content.parts[0].text;
+                const analysis = JSON.parse(analysisText.replace(/```json|```/g, ''));
 
                 if (analysis.category === 'spam' && user.spam_filter) {
                     await gmail.users.messages.modify({ userId: 'me', id: msg.id, requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX'] } });
@@ -477,6 +478,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
