@@ -381,7 +381,7 @@ app.get('/api/trigger-worker', async (req, res) => {
     // Zde je kompletní logika z původního souboru worker.js
     const dbClient = await pool.connect();
     try {
-        const { rows: users } = await db.query('SELECT * FROM users JOIN settings ON users.email = settings.email');
+        const { rows: users } = await dbClient.query('SELECT * FROM users JOIN settings ON users.email = settings.email');
         for (const user of users) {
             console.log(`Zpracovávám emaily pro: ${user.email}`);
             oauth2Client.setCredentials({ refresh_token: user.refresh_token });
@@ -426,6 +426,7 @@ app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     setupDatabase(); // Zavoláme nastavení databáze při startu
 });
+
 
 
 
