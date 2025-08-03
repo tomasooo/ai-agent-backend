@@ -45,9 +45,7 @@ const model = vertex_ai.getGenerativeModel({
     model: 'gemini-1.5-flash-001',
 });
 
-const model = vertex_ai.getGenerativeModel({
-    model: 'gemini-1.5-flash-001',
-});
+
 
 
 
@@ -441,6 +439,7 @@ app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     setupDatabase(); // Zavoláme nastavení databáze při startu
 });
+
 
 
 
