@@ -414,9 +414,15 @@ app.get('/api/trigger-worker', async (req, res) => {
     console.log('Externí Cron Job spuštěn, zahajuji kontrolu emailů...');
     res.status(202).send('Kontrola emailů byla zahájena na pozadí.'); // Okamžitě odpovíme, aby cron nečekal
 
+
+
+
+
+    
     // Zde je kompletní logika z původního souboru worker.js
-    const dbClient = await pool.connect();
+    let dbClient;
     try {
+        dbClient = await pool.connect();
         const { rows: users } = await dbClient.query('SELECT * FROM users JOIN settings ON users.email = settings.email');
         for (const user of users) {
             console.log(`Zpracovávám emaily pro: ${user.email}`);
@@ -452,9 +458,17 @@ app.get('/api/trigger-worker', async (req, res) => {
     } catch (error) {
         console.error('Došlo k chybě v automatickém workeru:', error);
     } finally {
+        if (dbClient) { // Uvolníme, jen pokud existuje
         dbClient.release();
-        console.log('Automatická kontrola dokončena.');
     }
+    console.log('Automatická kontrola dokončena.');
+    }
+
+
+
+
+
+    
 });
 
 
