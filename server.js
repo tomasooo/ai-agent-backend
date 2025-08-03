@@ -5,7 +5,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const { Pool } = require('pg'); // Ovladač pro PostgreSQL
 const { google } = require('googleapis'); // PŘIDÁNO: Knihovna pro Google API
-const { VertexAI } = require('@google-cloud/vertex-ai');
+const { VertexAI } = require('@google-cloud/vertexai');
 
 
 
@@ -32,10 +32,12 @@ if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL
     process.exit(1);
 }
 
+const vertex_ai = new VertexAI({project: PROJECT_ID, location: LOCATION});
+const model = vertex_ai.getGenerativeModel({
+    model: 'gemini-1.5-flash-001',
+});
 
 
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash"});
 
 // Nastavení databázového spojení
 const pool = new Pool({
@@ -427,6 +429,7 @@ app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     setupDatabase(); // Zavoláme nastavení databáze při startu
 });
+
 
 
 
