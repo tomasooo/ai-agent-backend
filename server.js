@@ -169,21 +169,18 @@ app.get('/api/oauth/google/callback', async (req, res) => {
 
 // ENDPOINT PRO ODPOJENÍ ÚČTU
 app.post('/api/oauth/google/revoke', async (req, res) => {
-    let client; // Definujeme klienta zde, aby byl dostupný i ve finally
+    let client; // Definujeme klienta zde
     try {
         const { email } = req.body;
         client = await pool.connect();
         
-        // 1. Najdeme refresh_token v databázi
         const result = await client.query('SELECT refresh_token FROM users WHERE email = $1', [email]);
         const refreshToken = result.rows[0]?.refresh_token;
 
         if (refreshToken) {
-            // 2. Řekneme Googlu, aby zneplatnil token
             await oauth2Client.revokeToken(refreshToken);
             console.log(`Token pro email ${email} byl úspěšně zneplatněn u Googlu.`);
             
-            // 3. Smažeme záznam z naší databáze
             await client.query('DELETE FROM users WHERE email = $1', [email]);
             console.log(`Záznam pro ${email} byl smazán z databáze.`);
         }
@@ -194,8 +191,8 @@ app.post('/api/oauth/google/revoke', async (req, res) => {
         console.error("Chyba při zneplatnění tokenu:", error.message);
         res.status(500).json({ success: false, message: "Nepodařilo se odpojit účet." });
     } finally {
-        // TATO ČÁST JE NOVÁ A DŮLEŽITÁ
-        // Uvolní spojení s databází, ať se stane cokoliv
+        // TATO ČÁST BYLA PŘIDÁNA
+        // Vždy uvolní spojení s databází
         if (client) {
             client.release();
         }
@@ -228,7 +225,7 @@ app.get('/api/gmail/emails', async (req, res) => {
         oauth2Client.setCredentials({ refresh_token: refreshToken });
         const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-        // === ZDE JE NOVÁ LOGIKA PRO SESTAVENÍ FILTRU ===
+    
         const queryParts = [];
         // Filtr podle stavu
         if (status === 'unread') queryParts.push('is:unread');
@@ -239,7 +236,6 @@ app.get('/api/gmail/emails', async (req, res) => {
         if (period === 'week') queryParts.push('newer_than:7d');
 
         const finalQuery = queryParts.join(' ');
-        // ===============================================
 
         const listResponse = await gmail.users.messages.list({
             userId: 'me',
@@ -467,6 +463,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
