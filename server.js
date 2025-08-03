@@ -45,12 +45,19 @@ async function setupDatabase() {
                 email VARCHAR(255) PRIMARY KEY,
                 refresh_token TEXT NOT NULL,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                tone VARCHAR(50) DEFAULT 'Formální',
+        length VARCHAR(50) DEFAULT 'Střední (1 odstavec)',
+        signature TEXT DEFAULT '',
+        auto_reply BOOLEAN DEFAULT true,
+        approval_required BOOLEAN DEFAULT true,
+        spam_filter BOOLEAN DEFAULT true,
+        FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE
             );
         `);
         client.release();
-        console.log("Tabulka 'users' je připravena.");
+        console.log("Databázové tabulky jsou připraveny..");
     } catch (err) {
-        console.error('Chyba při nastavování databáze:', err);
+        console.error('Chyba při nastavování databází:', err);
     }
 }
 
@@ -268,8 +275,49 @@ res.json({ success: true, analysis: JSON.parse(cleanedText) });
 });
 
 
+// Endpoint pro načtení nastavení
+app.get('/api/settings', async (req, res) => {
+    try {
+        const { email } = req.query;
+        const client = await pool.connect();
+        let result = await client.query('SELECT * FROM settings WHERE email = $1', [email]);
+        
+        // Pokud pro uživatele nastavení neexistuje, vytvoříme výchozí
+        if (result.rows.length === 0) {
+            await client.query('INSERT INTO settings (email) VALUES ($1)', [email]);
+            result = await client.query('SELECT * FROM settings WHERE email = $1', [email]);
+        }
+        
+        client.release();
+        res.json({ success: true, settings: result.rows[0] });
+    } catch (error) {
+        console.error("Chyba při načítání nastavení:", error);
+        res.status(500).json({ success: false, message: "Nepodařilo se načíst nastavení." });
+    }
+});
+
+// Endpoint pro uložení nastavení
+app.post('/api/settings', async (req, res) => {
+    try {
+        const { email, tone, length, signature, auto_reply, approval_required, spam_filter } = req.body;
+        const client = await pool.connect();
+        await client.query(
+            `UPDATE settings SET tone = $1, length = $2, signature = $3, auto_reply = $4, approval_required = $5, spam_filter = $6
+             WHERE email = $7`,
+            [tone, length, signature, auto_reply, approval_required, spam_filter, email]
+        );
+        client.release();
+        res.json({ success: true, message: "Nastavení bylo úspěšně uloženo." });
+    } catch (error) {
+        console.error("Chyba při ukládání nastavení:", error);
+        res.status(500).json({ success: false, message: "Nepodařilo se uložit nastavení." });
+    }
+});
+
+
 app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     setupDatabase(); // Zavoláme nastavení databáze při startu
 });
+
 
