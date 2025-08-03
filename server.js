@@ -21,11 +21,16 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 console.log("DEBUG: Načtená DATABASE_URL je:", DATABASE_URL);
 const SERVER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 const REDIRECT_URI = `${SERVER_URL}/api/oauth/google/callback`;
+const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, FRONTEND_URL, DATABASE_URL, GEMINI_API_KEY, RENDER_EXTERNAL_URL, CRON_SECRET } = process.env;
 
-if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL || !GEMINI_API_KEY) {
+
+
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL || !GEMINI_API_KEY || !CRON_SECRET) {
     console.error("Chyba: Chybí potřebné proměnné prostředí!");
     process.exit(1);
 }
+
+
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash"});
@@ -362,10 +367,65 @@ app.post('/api/settings', async (req, res) => {
 });
 
 
+// === NOVÝ ENDPOINT, KTERÝ BUDE VOLAT EXTERNÍ SLUŽBA ===
+app.get('/api/trigger-worker', async (req, res) => {
+    // Jednoduché zabezpečení, aby endpoint nemohl spustit kdokoliv
+    if (req.query.secret !== CRON_SECRET) {
+        return res.status(401).send('Neoprávněný přístup.');
+    }
+
+    console.log('Externí Cron Job spuštěn, zahajuji kontrolu emailů...');
+    res.status(202).send('Kontrola emailů byla zahájena na pozadí.'); // Okamžitě odpovíme, aby cron nečekal
+
+    // Zde je kompletní logika z původního souboru worker.js
+    const dbClient = await pool.connect();
+    try {
+        const { rows: users } = await db.query('SELECT * FROM users JOIN settings ON users.email = settings.email');
+        for (const user of users) {
+            console.log(`Zpracovávám emaily pro: ${user.email}`);
+            oauth2Client.setCredentials({ refresh_token: user.refresh_token });
+            const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+            
+            let labelsRes = await gmail.users.labels.list({ userId: 'me' });
+            let approvalLabel = labelsRes.data.labels.find(l => l.name === 'ceka-na-schvaleni');
+            if (!approvalLabel) {
+                approvalLabel = (await gmail.users.labels.create({ userId: 'me', requestBody: { name: 'ceka-na-schvaleni' } })).data;
+            }
+
+            const listResponse = await gmail.users.messages.list({ userId: 'me', q: 'is:unread in:inbox' });
+            const messages = listResponse.data.messages || [];
+
+            for (const msg of messages) {
+                const msgResponse = await gmail.users.messages.get({ userId: 'me', id: msg.id });
+                const subject = msgResponse.data.payload.headers.find(h => h.name === 'Subject')?.value || '';
+                const prompt = `Jsi AI asistent pro třídění emailů. Klasifikuj následující email. Vrať pouze JSON objekt s klíčem "category", který může mít jednu z hodnot: "spam", "approval_required", "routine". Důležité emaily od šéfa nebo klientů označ jako "approval_required". Běžné reklamy a zjevný spam označ jako "spam". Vše ostatní je "routine".\n\nPředmět: ${subject}\nFragment: ${msgResponse.data.snippet}`;
+                
+                const geminiResult = await model.generateContent(prompt);
+                const analysis = JSON.parse(geminiResult.response.text().replace(/```json|```/g, ''));
+
+                if (analysis.category === 'spam' && user.spam_filter) {
+                    await gmail.users.messages.modify({ userId: 'me', id: msg.id, requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX'] } });
+                    console.log(`Email "${subject}" označen jako SPAM.`);
+                } else if (analysis.category === 'approval_required' && user.approval_required) {
+                    await gmail.users.messages.modify({ userId: 'me', id: msg.id, requestBody: { addLabelIds: [approvalLabel.id], removeLabelIds: ['INBOX'] } });
+                    console.log(`Email "${subject}" přesunut ke schválení.`);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Došlo k chybě v automatickém workeru:', error);
+    } finally {
+        dbClient.release();
+        console.log('Automatická kontrola dokončena.');
+    }
+});
+
+
 app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     setupDatabase(); // Zavoláme nastavení databáze při startu
 });
+
 
 
 
