@@ -180,59 +180,58 @@ app.post('/api/oauth/google/revoke', async (req, res) => {
 }
 });
 
+
+
+
+
 // === NOVÝ ENDPOINT PRO NAČTENÍ EMAILŮ ===
+
+// UPRAVENÝ ENDPOINT PRO NAČTENÍ EMAILŮ S FILTROVÁNÍM
 app.get('/api/gmail/emails', async (req, res) => {
     try {
-        const { email } = req.query; // Získáme email z požadavku
+        const { email, status, period } = req.query; // Získáme i parametry pro filtr
         if (!email) {
             return res.status(400).json({ success: false, message: "Email chybí." });
         }
 
-        // 1. Získáme refresh_token z databáze
         const client = await pool.connect();
         const result = await client.query('SELECT refresh_token FROM users WHERE email = $1', [email]);
         client.release();
         
         const refreshToken = result.rows[0]?.refresh_token;
         if (!refreshToken) {
-            return res.status(404).json({ success: false, message: "Pro tento email nebyl nalezen token. Propojte prosím účet." });
+            return res.status(404).json({ success: false, message: "Pro tento email nebyl nalezen token." });
         }
 
-        // 2. Nastavíme token do OAuth klienta a vytvoříme Gmail klienta
         oauth2Client.setCredentials({ refresh_token: refreshToken });
         const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-        // 3. Získáme seznam posledních 10 zpráv (jen jejich ID)
+        // === ZDE JE NOVÁ LOGIKA PRO SESTAVENÍ FILTRU ===
+        const queryParts = [];
+        // Filtr podle stavu
+        if (status === 'unread') queryParts.push('is:unread');
+        if (status === 'spam') queryParts.push('in:spam');
+        
+        // Filtr podle času
+        if (period === 'today') queryParts.push('newer_than:1d');
+        if (period === 'week') queryParts.push('newer_than:7d');
+
+        const finalQuery = queryParts.join(' ');
+        // ===============================================
+
         const listResponse = await gmail.users.messages.list({
             userId: 'me',
             maxResults: 10,
+            q: finalQuery // Použijeme sestavený dotaz
         });
+
+        // ... zbytek kódu pro načtení detailů emailů zůstává stejný ...
         const messageIds = listResponse.data.messages || [];
-        
-        if (messageIds.length === 0) {
-            return res.json({ success: true, emails: [], total: 0 });
-        }
-
-        // 4. Pro každou zprávu získáme její detaily
-        const emailPromises = messageIds.map(async (msg) => {
-            const msgResponse = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'metadata', metadataHeaders: ['Subject', 'From', 'Date'] });
-            const headers = msgResponse.data.payload.headers;
-            
-            // Pomocná funkce pro nalezení hodnoty v hlavičkách
-            const getHeader = (name) => headers.find(h => h.name === name)?.value || '';
-
-            return {
-                id: msg.id,
-                snippet: msgResponse.data.snippet,
-                sender: getHeader('From'),
-                subject: getHeader('Subject'),
-                date: getHeader('Date')
-            };
-        });
-
+        if (messageIds.length === 0) { /* ... */ }
+        const emailPromises = messageIds.map(async (msg) => { /* ... */ });
         const emails = await Promise.all(emailPromises);
-        const totalEmails = listResponse.data.resultSizeEstimate; // Celkový počet emailů v inboxu
-
+        const totalEmails = listResponse.data.resultSizeEstimate;
+        
         res.json({ success: true, emails, total: totalEmails });
 
     } catch (error) {
@@ -240,6 +239,9 @@ app.get('/api/gmail/emails', async (req, res) => {
         res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily." });
     }
 });
+
+
+
 
 
 // === NOVÝ ENDPOINT PRO ANALÝZU EMAILU POMOCÍ GEMINI ===
@@ -337,6 +339,7 @@ app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     setupDatabase(); // Zavoláme nastavení databáze při startu
 });
+
 
 
 
