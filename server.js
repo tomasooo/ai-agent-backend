@@ -34,7 +34,7 @@ if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL
 // Dekódování JSON klíče z proměnné prostředí
 const vertex_ai = new VertexAI({project: PROJECT_ID, location: LOCATION});
 const model = vertex_ai.getGenerativeModel({
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.5-flash',
 });
 
 
@@ -463,6 +463,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
