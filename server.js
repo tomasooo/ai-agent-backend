@@ -227,10 +227,29 @@ app.get('/api/gmail/emails', async (req, res) => {
 
         // ... zbytek kódu pro načtení detailů emailů zůstává stejný ...
         const messageIds = listResponse.data.messages || [];
-        if (messageIds.length === 0) { /* ... */ }
-        const emailPromises = messageIds.map(async (msg) => { /* ... */ });
-        const emails = await Promise.all(emailPromises);
-        const totalEmails = listResponse.data.resultSizeEstimate;
+
+if (messageIds.length === 0) {
+    return res.json({ success: true, emails: [], total: 0 });
+}
+
+// Pro každou zprávu získáme její detaily
+const emailPromises = messageIds.map(async (msg) => {
+    const msgResponse = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'metadata', metadataHeaders: ['Subject', 'From', 'Date'] });
+    const headers = msgResponse.data.payload.headers;
+
+    const getHeader = (name) => headers.find(h => h.name === name)?.value || '';
+
+    return {
+        id: msg.id,
+        snippet: msgResponse.data.snippet,
+        sender: getHeader('From'),
+        subject: getHeader('Subject'),
+        date: getHeader('Date')
+    };
+});
+
+const emails = await Promise.all(emailPromises);
+const totalEmails = listResponse.data.resultSizeEstimate;
         
         res.json({ success: true, emails, total: totalEmails });
 
@@ -339,6 +358,7 @@ app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     setupDatabase(); // Zavoláme nastavení databáze při startu
 });
+
 
 
 
