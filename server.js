@@ -271,12 +271,17 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
             return res.status(400).json({ success: false, message: "Email nebo ID zprávy chybí." });
         }
 
-        // 1. Získáme refresh_token z databáze
+        // 1. Získáme refresh_token A ZÁROVEŇ NASTAVENÍ z databáze
         const dbClient = await pool.connect();
-        const result = await dbClient.query('SELECT refresh_token FROM users WHERE email = $1', [email]);
+        const userResult = await dbClient.query('SELECT refresh_token FROM users WHERE email = $1', [email]);
+        const settingsResult = await dbClient.query('SELECT * FROM settings WHERE email = $1', [email]);
         dbClient.release();
-        const refreshToken = result.rows[0]?.refresh_token;
-        if (!refreshToken) return res.status(404).json({ success: false, message: "Token nenalezen." });
+        
+        const refreshToken = userResult.rows[0]?.refresh_token;
+        const settings = settingsResult.rows[0];
+        if (!refreshToken || !settings) {
+            return res.status(404).json({ success: false, message: "Token nebo nastavení nenalezeno." });
+        }
 
         // 2. Načteme plné znění emailu
         oauth2Client.setCredentials({ refresh_token: refreshToken });
@@ -293,19 +298,22 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
             emailBody = Buffer.from(msgResponse.data.payload.body.data, 'base64').toString('utf-8');
         }
 
-        // 3. Vytvoříme prompt pro Gemini
-        const prompt = `Jsi profesionální emailový asistent. Analyzuj následující email. V odpovědi uveď pouze JSON objekt se třemi klíči: "summary" (stručné shrnutí emailu v jedné větě), "sentiment" (pozitivní, negativní, nebo neutrální) a "suggested_reply" (návrh krátké, profesionální odpovědi v češtině).\n\nEmail:\n---\n${emailBody.substring(0, 3000)}`;
-
-        // 4. Zeptáme se Gemini
-        const geminiResult = await model.generateContent(prompt);
-        const geminiResponse = await geminiResult.response;
-        const analysisText = geminiResponse.text();
+        // 3. Vytvoříme PROMPT S VYUŽITÍM NASTAVENÍ
+        const prompt = `Jsi profesionální emailový asistent. Analyzuj následující email. V odpovědi uveď pouze JSON objekt se třemi klíči: "summary" (stručné shrnutí emailu v jedné větě), "sentiment" (pozitivní, negativní, nebo neutrální) a "suggested_reply" (návrh krátké, profesionální odpovědi v češtině).
+        Uživatel si přeje, aby odpověď byla v tomto stylu:
+        - Tón: ${settings.tone}
+        - Délka: ${settings.length}
+        Na konec navrhované odpovědi přidej tento podpis, pokud je uveden: "${settings.signature}"
         
-        // Očistíme odpověď od případných formátovacích značek
-const cleanedText = analysisText.replace(/```json/g, '').replace(/```/g, '');
+        Email k analýze:
+        ---
+        ${emailBody.substring(0, 3000)}`;
 
-// Pošleme analyzovanou odpověď zpět na frontend
-res.json({ success: true, analysis: JSON.parse(cleanedText) });
+        // 4. Zeptáme se Gemini a pošleme odpověď
+        const geminiResult = await model.generateContent(prompt);
+        const analysisText = geminiResult.response.text().replace(/```json|```/g, '');
+        
+        res.json({ success: true, analysis: JSON.parse(analysisText) });
 
     } catch (error) {
         console.error("Chyba při analýze emailu:", error);
@@ -358,6 +366,7 @@ app.listen(PORT, () => {
     console.log(`✅ Backend server běží na portu ${PORT}`);
     setupDatabase(); // Zavoláme nastavení databáze při startu
 });
+
 
 
 
