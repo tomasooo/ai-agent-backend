@@ -201,6 +201,67 @@ app.post('/api/oauth/google/revoke', async (req, res) => {
 
 
 
+// === NOVÝ ENDPOINT PRO ODESLÁNÍ ODPOVĚDI ===
+app.post('/api/gmail/send-reply', async (req, res) => {
+    try {
+        const { email, messageId, replyBody } = req.body;
+        if (!email || !messageId || !replyBody) {
+            return res.status(400).json({ success: false, message: "Chybí potřebné údaje pro odeslání." });
+        }
+
+        // 1. Získáme refresh_token z databáze
+        const dbClient = await pool.connect();
+        const result = await dbClient.query('SELECT refresh_token FROM users WHERE email = $1', [email]);
+        dbClient.release();
+        const refreshToken = result.rows[0]?.refresh_token;
+        if (!refreshToken) return res.status(404).json({ success: false, message: "Token nenalezen." });
+
+        // 2. Načteme detaily původního emailu, abychom mohli správně odpovědět
+        oauth2Client.setCredentials({ refresh_token: refreshToken });
+        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+        const msgResponse = await gmail.users.messages.get({ userId: 'me', id: messageId });
+        
+        const originalHeaders = msgResponse.data.payload.headers;
+        const originalSubject = originalHeaders.find(h => h.name.toLowerCase() === 'subject').value;
+        const originalFrom = originalHeaders.find(h => h.name.toLowerCase() === 'from').value;
+        const originalMessageId = originalHeaders.find(h => h.name.toLowerCase() === 'message-id').value;
+        const originalReferences = originalHeaders.find(h => h.name.toLowerCase() === 'references')?.value || '';
+        
+        // 3. Sestavíme hlavičky pro odpověď
+        const replySubject = originalSubject.startsWith('Re: ') ? originalSubject : `Re: ${originalSubject}`;
+        const mailParts = [
+            `From: ${email}`,
+            `To: ${originalFrom}`,
+            `Subject: ${replySubject}`,
+            `In-Reply-To: ${originalMessageId}`,
+            `References: ${originalReferences} ${originalMessageId}`,
+            'Content-Type: text/plain; charset=utf-8',
+            '',
+            replyBody
+        ];
+        const rawMessage = Buffer.from(mailParts.join('\n')).toString('base64url');
+
+        // 4. Odešleme email
+        await gmail.users.messages.send({
+            userId: 'me',
+            requestBody: {
+                raw: rawMessage,
+                threadId: msgResponse.data.threadId // Důležité pro zařazení do konverzace
+            }
+        });
+
+        console.log(`Odpověď na email "${originalSubject}" byla odeslána.`);
+        res.json({ success: true, message: "Email byl úspěšně odeslán." });
+
+    } catch (error) {
+        console.error("Chyba při odesílání emailu:", error);
+        res.status(500).json({ success: false, message: "Nepodařilo se odeslat email." });
+    }
+});
+
+
+
+
 
 
 // === NOVÝ ENDPOINT PRO NAČTENÍ EMAILŮ ===
@@ -478,6 +539,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
