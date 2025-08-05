@@ -264,12 +264,12 @@ app.post('/api/gmail/send-reply', async (req, res) => {
 
 
 
-// === NOVÝ ENDPOINT PRO NAČTENÍ EMAILŮ ===
+
 
 // UPRAVENÝ ENDPOINT PRO NAČTENÍ EMAILŮ S FILTROVÁNÍM
 app.get('/api/gmail/emails', async (req, res) => {
     try {
-        const { email, status, period } = req.query; // Získáme i parametry pro filtr
+        const { email, status, period, searchQuery } = req.query; // Získáme i parametry pro filtr
         if (!email) {
             return res.status(400).json({ success: false, message: "Email chybí." });
         }
@@ -296,6 +296,11 @@ app.get('/api/gmail/emails', async (req, res) => {
         if (period === 'today') queryParts.push('newer_than:1d');
         if (period === 'week') queryParts.push('newer_than:7d');
 
+
+        if (searchQuery) {
+        queryParts.push(searchQuery);
+         }
+        
         const finalQuery = queryParts.join(' ');
 
         const listResponse = await gmail.users.messages.list({
@@ -304,7 +309,7 @@ app.get('/api/gmail/emails', async (req, res) => {
             q: finalQuery // Použijeme sestavený dotaz
         });
 
-        // ... zbytek kódu pro načtení detailů emailů zůstává stejný ...
+        
         const messageIds = listResponse.data.messages || [];
 
 if (messageIds.length === 0) {
@@ -539,6 +544,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
