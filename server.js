@@ -129,18 +129,29 @@ const oauth2Client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, RE
 
 // ENDPOINT PRO PŘIHLÁŠENÍ
 app.post('/api/auth/google', async (req, res) => {
+    let client;
     try {
         const { token } = req.body;
         const ticket = await loginClient.verifyIdToken({
             idToken: token,
             audience: GOOGLE_CLIENT_ID,
         });
-        const payload = ticket.getPayload();
-        console.log(`Uživatel přihlášen: ${payload.name} (${payload.email})`);
+        const payload = ticket.getPayload(); // obsahuje email + name
+
+        client = await pool.connect();
+        await client.query(
+            `INSERT INTO dashboard_users (email, name)
+             VALUES ($1, $2)
+             ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name`,
+            [payload.email, payload.name]
+        );
+
         res.status(200).json({ success: true, user: payload });
     } catch (error) {
         console.error("Chyba při ověřování přihlašovacího tokenu:", error);
         res.status(401).json({ success: false, message: 'Ověření selhalo.' });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -567,3 +578,4 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
