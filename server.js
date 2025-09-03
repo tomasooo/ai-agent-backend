@@ -226,34 +226,36 @@ app.get('/api/oauth/google/callback', async (req, res) => {
 
 // ENDPOINT PRO ODPOJENÍ ÚČTU
 app.post('/api/oauth/google/revoke', async (req, res) => {
-    let client; // Definujeme klienta zde
-    try {
-        const { email } = req.body;
-        client = await pool.connect();
-        
-        const result = await client.query('SELECT refresh_token FROM users WHERE email = $1', [email]);
-        const refreshToken = result.rows[0]?.refresh_token;
-
-        if (refreshToken) {
-            await oauth2Client.revokeToken(refreshToken);
-            console.log(`Token pro email ${email} byl úspěšně zneplatněn u Googlu.`);
-            
-            await client.query('DELETE FROM users WHERE email = $1', [email]);
-            console.log(`Záznam pro ${email} byl smazán z databáze.`);
-        }
-        
-        res.status(200).json({ success: true, message: "Účet byl úspěšně odpojen." });
-
-    } catch (error) {
-        console.error("Chyba při zneplatnění tokenu:", error.message);
-        res.status(500).json({ success: false, message: "Nepodařilo se odpojit účet." });
-    } finally {
-        // TATO ČÁST BYLA PŘIDÁNA
-        // Vždy uvolní spojení s databází
-        if (client) {
-            client.release();
-        }
+     let client;
+  try {
+    const { email, dashboardUserEmail } = req.body;
+    if (!email || !dashboardUserEmail) {
+      return res.status(400).json({ success: false, message: "Chybí email nebo dashboardUserEmail." });
     }
+    client = await pool.connect();
+
+    const r = await client.query(
+      'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
+      [email, dashboardUserEmail]
+    );
+    const refreshToken = r.rows[0]?.refresh_token;
+
+    if (refreshToken) {
+      await oauth2Client.revokeToken(refreshToken);
+      console.log(`Token pro ${email} zneplatněn u Googlu.`);
+    }
+
+    // smaž napojený účet i jeho settings
+    await client.query('DELETE FROM settings WHERE dashboard_user_email = $1 AND connected_email = $2', [dashboardUserEmail, email]);
+    await client.query('DELETE FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2', [email, dashboardUserEmail]);
+
+    res.json({ success: true, message: "Účet byl úspěšně odpojen." });
+  } catch (error) {
+    console.error("Chyba při zneplatnění tokenu:", error.message);
+    res.status(500).json({ success: false, message: "Nepodařilo se odpojit účet." });
+  } finally {
+    if (client) client.release();
+  }
 });
 
 
@@ -520,70 +522,82 @@ app.post('/api/settings', async (req, res) => {
 
 // === NOVÝ ENDPOINT, KTERÝ BUDE VOLAT EXTERNÍ SLUŽBA ===
 app.get('/api/trigger-worker', async (req, res) => {
-    // Jednoduché zabezpečení, aby endpoint nemohl spustit kdokoliv
-    if (req.query.secret !== CRON_SECRET) {
-        return res.status(401).send('Neoprávněný přístup.');
-    }
+    if (req.query.secret !== CRON_SECRET) return res.status(401).send('Neoprávněný přístup.');
+  console.log('Externí Cron Job spuštěn, zahajuji kontrolu emailů...');
+  res.status(202).send('Kontrola emailů zahájena.');
 
-    console.log('Externí Cron Job spuštěn, zahajuji kontrolu emailů...');
-    res.status(202).send('Kontrola emailů byla zahájena na pozadí.'); // Okamžitě odpovíme, aby cron nečekal
+  let dbClient;
+  try {
+    dbClient = await pool.connect();
 
+    // Vezmeme všechny propojené schránky s jejich nastavením
+    const { rows: accounts } = await dbClient.query(`
+      SELECT 
+        ca.email               AS connected_email,
+        ca.refresh_token,
+        ca.dashboard_user_email,
+        s.auto_reply,
+        s.approval_required,
+        s.spam_filter
+      FROM connected_accounts ca
+      LEFT JOIN settings s
+        ON s.dashboard_user_email = ca.dashboard_user_email
+       AND s.connected_email = ca.email
+    `);
 
+    for (const acc of accounts) {
+      console.log(`Zpracovávám: ${acc.connected_email} (uživatel: ${acc.dashboard_user_email})`);
 
+      oauth2Client.setCredentials({ refresh_token: acc.refresh_token });
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
+      // label "ceka-na-schvaleni"
+      const labelsRes = await gmail.users.labels.list({ userId: 'me' });
+      let approvalLabel = labelsRes.data.labels.find(l => l.name === 'ceka-na-schvaleni');
+      if (!approvalLabel) {
+        approvalLabel = (await gmail.users.labels.create({
+          userId: 'me', requestBody: { name: 'ceka-na-schvaleni' }
+        })).data;
+      }
 
-    
-    // Zde je kompletní logika z původního souboru worker.js
-    let dbClient;
-    try {
-        dbClient = await pool.connect();
-        const { rows: users } = await dbClient.query('SELECT * FROM users JOIN settings ON users.email = settings.email');
-        for (const user of users) {
-            console.log(`Zpracovávám emaily pro: ${user.email}`);
-            oauth2Client.setCredentials({ refresh_token: user.refresh_token });
-            const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-            
-            let labelsRes = await gmail.users.labels.list({ userId: 'me' });
-            let approvalLabel = labelsRes.data.labels.find(l => l.name === 'ceka-na-schvaleni');
-            if (!approvalLabel) {
-                approvalLabel = (await gmail.users.labels.create({ userId: 'me', requestBody: { name: 'ceka-na-schvaleni' } })).data;
-            }
+      // nové nepřečtené v inboxu
+      const listResponse = await gmail.users.messages.list({ userId: 'me', q: 'is:unread in:inbox' });
+      const messages = listResponse.data.messages || [];
 
-            const listResponse = await gmail.users.messages.list({ userId: 'me', q: 'is:unread in:inbox' });
-            const messages = listResponse.data.messages || [];
+      for (const msg of messages) {
+        const msgResponse = await gmail.users.messages.get({ userId: 'me', id: msg.id });
+        const subject = msgResponse.data.payload.headers.find(h => h.name === 'Subject')?.value || '';
 
-            for (const msg of messages) {
-                const msgResponse = await gmail.users.messages.get({ userId: 'me', id: msg.id });
-                const subject = msgResponse.data.payload.headers.find(h => h.name === 'Subject')?.value || '';
-                const prompt = `Jsi AI asistent pro třídění emailů. Klasifikuj následující email. Vrať pouze JSON objekt s klíčem "category", který může mít jednu z hodnot: "spam", "approval_required", "routine". Důležité emaily od šéfa nebo klientů označ jako "approval_required". Běžné reklamy a zjevný spam označ jako "spam". Vše ostatní je "routine".\n\nPředmět: ${subject}\nFragment: ${msgResponse.data.snippet}`;
-                
-                const geminiResult = await model.generateContent(prompt);
-                const analysisText = geminiResult.response.candidates[0].content.parts[0].text;
-                const analysis = JSON.parse(analysisText.replace(/```json|```/g, ''));
+        const prompt = `Jsi AI asistent pro třídění emailů. Klasifikuj následující email. Vrať pouze JSON {"category": "spam"|"approval_required"|"routine"}.
+Důležité emaily od šéfa nebo klientů označ jako "approval_required". Běžné reklamy a zjevný spam "spam".
+Předmět: ${subject}
+Fragment: ${msgResponse.data.snippet}`;
 
-                if (analysis.category === 'spam' && user.spam_filter) {
-                    await gmail.users.messages.modify({ userId: 'me', id: msg.id, requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX'] } });
-                    console.log(`Email "${subject}" označen jako SPAM.`);
-                } else if (analysis.category === 'approval_required' && user.approval_required) {
-                    await gmail.users.messages.modify({ userId: 'me', id: msg.id, requestBody: { addLabelIds: [approvalLabel.id], removeLabelIds: ['INBOX'] } });
-                    console.log(`Email "${subject}" přesunut ke schválení.`);
-                }
-            }
+        const geminiResult = await model.generateContent(prompt);
+        const analysisText = geminiResult.response.candidates[0].content.parts[0].text;
+        const analysis = JSON.parse(analysisText.replace(/```json|```/g, ''));
+
+        if (analysis.category === 'spam' && acc.spam_filter) {
+          await gmail.users.messages.modify({
+            userId: 'me', id: msg.id,
+            requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX'] }
+          });
+          console.log(`"${subject}" → SPAM`);
+        } else if (analysis.category === 'approval_required' && acc.approval_required) {
+          await gmail.users.messages.modify({
+            userId: 'me', id: msg.id,
+            requestBody: { addLabelIds: [approvalLabel.id], removeLabelIds: ['INBOX'] }
+          });
+          console.log(`"${subject}" → čeká na schválení`);
         }
-    } catch (error) {
-        console.error('Došlo k chybě v automatickém workeru:', error);
-    } finally {
-        if (dbClient) { // Uvolníme, jen pokud existuje
-        dbClient.release();
+      }
     }
+  } catch (err) {
+    console.error('Došlo k chybě v automatickém workeru:', err);
+  } finally {
+    if (dbClient) dbClient.release();
     console.log('Automatická kontrola dokončena.');
-    }
-
-
-
-
-
-    
+  }
 });
 
 
@@ -592,5 +606,6 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
