@@ -221,38 +221,66 @@ app.get('/api/oauth/google/callback', async (req, res) => {
 
 
 
+async function listConnectedAccountsHandler(req, res) {
+  let client;
+  try {
+    const { dashboardUserEmail } = req.query;
+    if (!dashboardUserEmail) {
+      return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail.' });
+    }
+    client = await pool.connect();
+    const r = await client.query(
+      'SELECT email FROM connected_accounts WHERE dashboard_user_email = $1 ORDER BY created_at ASC',
+      [dashboardUserEmail]
+    );
+    const emails = r.rows.map(row => row.email);
+    return res.json({ success: true, emails });
+  } catch (err) {
+    console.error('Chyba při čtení connected_accounts:', err);
+    return res.status(500).json({ success: false, message: 'Nepodařilo se načíst připojené účty.' });
+  } finally {
+    if (client) client.release();
+  }
+}
+
+app.get('/api/accounts', listConnectedAccountsHandler);
+app.get('/api/accounts/list', listConnectedAccountsHandler); // kvůli fallbacku z FE
+
+
 
 
 
 // ENDPOINT PRO ODPOJENÍ ÚČTU
 app.post('/api/oauth/google/revoke', async (req, res) => {
-     let client;
+    let client;
   try {
     const { email, dashboardUserEmail } = req.body;
     if (!email || !dashboardUserEmail) {
-      return res.status(400).json({ success: false, message: "Chybí email nebo dashboardUserEmail." });
+      return res.status(400).json({ success: false, message: 'Chybí email nebo dashboardUserEmail.' });
     }
-    client = await pool.connect();
 
-    const r = await client.query(
+    client = await pool.connect();
+    const result = await client.query(
       'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
       [email, dashboardUserEmail]
     );
-    const refreshToken = r.rows[0]?.refresh_token;
+    const refreshToken = result.rows[0]?.refresh_token;
 
     if (refreshToken) {
       await oauth2Client.revokeToken(refreshToken);
       console.log(`Token pro ${email} zneplatněn u Googlu.`);
     }
 
-    // smaž napojený účet i jeho settings
-    await client.query('DELETE FROM settings WHERE dashboard_user_email = $1 AND connected_email = $2', [dashboardUserEmail, email]);
-    await client.query('DELETE FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2', [email, dashboardUserEmail]);
+    // Smazáním z connected_accounts (FK v settings je ON DELETE CASCADE)
+    await client.query(
+      'DELETE FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
+      [email, dashboardUserEmail]
+    );
 
-    res.json({ success: true, message: "Účet byl úspěšně odpojen." });
+    return res.status(200).json({ success: true, message: 'Účet byl úspěšně odpojen.' });
   } catch (error) {
-    console.error("Chyba při zneplatnění tokenu:", error.message);
-    res.status(500).json({ success: false, message: "Nepodařilo se odpojit účet." });
+    console.error('Chyba při odpojení účtu:', error);
+    return res.status(500).json({ success: false, message: 'Nepodařilo se odpojit účet.' });
   } finally {
     if (client) client.release();
   }
@@ -606,6 +634,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
