@@ -62,6 +62,7 @@ async function setupDatabase() {
             CREATE TABLE IF NOT EXISTS dashboard_users (
                 email VARCHAR(255) PRIMARY KEY,
                 name VARCHAR(255),
+                plan VARCHAR(50) DEFAULT 'Free'
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         `);
@@ -216,6 +217,47 @@ app.get('/api/oauth/google/callback', async (req, res) => {
         res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=error`);
     } finally {
         if (client) client.release();
+    }
+});
+
+
+app.get('/api/user/plan', async (req, res) => {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ success: false, message: "Chybí email." });
+    const client = await pool.connect();
+    try {
+        const result = await client.query(
+            'SELECT plan FROM dashboard_users WHERE email = $1',
+            [email]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: "Uživatel nenalezen." });
+        }
+        res.json({ success: true, plan: result.rows[0].plan });
+    } catch (err) {
+        console.error("Chyba při načítání tarifu:", err);
+        res.status(500).json({ success: false, message: "Nepodařilo se načíst tarif." });
+    } finally {
+        client.release();
+    }
+});
+
+
+app.post('/api/user/plan', async (req, res) => {
+    const { email, plan } = req.body;
+    if (!email || !plan) return res.status(400).json({ success: false, message: "Chybí email nebo plán." });
+    const client = await pool.connect();
+    try {
+        await client.query(
+            'UPDATE dashboard_users SET plan = $1 WHERE email = $2',
+            [plan, email]
+        );
+        res.json({ success: true, message: "Plán byl změněn." });
+    } catch (err) {
+        console.error("Chyba při ukládání tarifu:", err);
+        res.status(500).json({ success: false, message: "Nepodařilo se změnit tarif." });
+    } finally {
+        client.release();
     }
 });
 
@@ -634,6 +676,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
