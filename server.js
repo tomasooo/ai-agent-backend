@@ -291,6 +291,37 @@ app.post('/api/auth/register', async (req, res) => {
 
 
 
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: 'Zadejte email i heslo.' });
+  }
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      'SELECT email, name, password_hash FROM dashboard_users WHERE email = $1',
+      [email]
+    );
+    if (r.rowCount === 0 || !r.rows[0].password_hash) {
+      return res.status(401).json({ success: false, message: 'Nesprávný email nebo heslo.' });
+    }
+    const ok = await require('bcryptjs').compare(password, r.rows[0].password_hash);
+    if (!ok) return res.status(401).json({ success: false, message: 'Nesprávný email nebo heslo.' });
+
+    return res.json({ success: true, user: { email: r.rows[0].email, name: r.rows[0].name }});
+  } catch (e) {
+    console.error('LOGIN ERROR', e);
+    return res.status(500).json({ success: false, message: 'Přihlášení selhalo.' });
+  } finally {
+    client.release();
+  }
+});
+
+
+
+
+
 // ENDPOINT PRO ZPRACOVÁNÍ SOUHLASU OD GOOGLE (PROPOJENÍ)
 app.get('/api/oauth/google/callback', async (req, res) => {
    let client;
@@ -967,6 +998,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
