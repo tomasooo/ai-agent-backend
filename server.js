@@ -62,7 +62,7 @@ async function setupDatabase() {
             CREATE TABLE IF NOT EXISTS dashboard_users (
                 email VARCHAR(255) PRIMARY KEY,
                 name VARCHAR(255),
-                plan VARCHAR(50) DEFAULT 'Free'
+                plan VARCHAR(50) DEFAULT 'Free',
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         `);
@@ -855,6 +855,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
