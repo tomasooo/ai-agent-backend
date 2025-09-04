@@ -74,10 +74,22 @@ async function setupDatabase() {
                 email VARCHAR(255) PRIMARY KEY,
                 refresh_token TEXT NOT NULL,
                 dashboard_user_email VARCHAR(255) NOT NULL,
+                active BOOLEAN DEFAULT true,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
             );
         `);
+
+        await client.query(`
+  DO $$ BEGIN
+    BEGIN
+      ALTER TABLE connected_accounts ADD COLUMN active BOOLEAN DEFAULT true;
+    EXCEPTION WHEN duplicate_column THEN
+      -- sloupec už existuje
+      NULL;
+    END;
+  END $$;
+`);
         
         // Smazání staré tabulky users, pokud existuje (jen pro přechod)
         // await client.query(`DROP TABLE IF EXISTS users;`);
@@ -197,23 +209,29 @@ app.post('/api/auth/google', async (req, res) => {
 });
 
 app.post('/api/accounts/set-active', async (req, res) => {
+ const { dashboardUserEmail, email, active } = req.body;
+  if (!dashboardUserEmail || !email || typeof active !== 'boolean') {
+    return res.status(400).json({ success: false, message: 'Chybné parametry.' });
+  }
+
+  let client;
   try {
-    const { dashboardUserEmail, email, active } = req.body;
-    if (!dashboardUserEmail || !email || typeof active !== 'boolean') {
-      return res.json({ success: false, message: 'Chybné parametry.' });
+    client = await pool.connect();
+    const r = await client.query(
+      `UPDATE connected_accounts
+       SET active = $1
+       WHERE email = $2 AND dashboard_user_email = $3`,
+      [active, email, dashboardUserEmail]
+    );
+    if (r.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Účet nenalezen.' });
     }
-
-    // TODO: ulož do DB – pseudokód:
-    // await Accounts.updateOne(
-    //   { dashboardUserEmail, email },
-    //   { $set: { active } }
-    // );
-
-    // vrať aktuální stav účtu (volitelné)
-    return res.json({ success: true, message: 'Stav účtu uložen.' });
+    return res.json({ success: true, message: `Účet ${email} byl ${active ? 'aktivován' : 'deaktivován'}.` });
   } catch (e) {
     console.error(e);
-    res.json({ success: false, message: 'Server error' });
+    return res.status(500).json({ success: false, message: 'Chyba při ukládání stavu účtu.' });
+  } finally {
+    if (client) client.release();
   }
 });
 
@@ -440,7 +458,7 @@ async function tryConsumeAiAction(client, dashboardUserEmail) {
 
 
 async function listConnectedAccountsHandler(req, res) {
-  let client;
+ let client;
   try {
     const { dashboardUserEmail } = req.query;
     if (!dashboardUserEmail) {
@@ -448,11 +466,20 @@ async function listConnectedAccountsHandler(req, res) {
     }
     client = await pool.connect();
     const r = await client.query(
-      'SELECT email FROM connected_accounts WHERE dashboard_user_email = $1 ORDER BY created_at ASC',
+      'SELECT email, active FROM connected_accounts WHERE dashboard_user_email = $1 ORDER BY created_at ASC',
       [dashboardUserEmail]
     );
+
+    // „nový“ tvar pro FE: accounts: [{email, active}]
+    const accounts = r.rows.map(row => ({ email: row.email, active: !!row.active }));
+    // „starý“ fallback tvar jen pro /api/accounts/list: emails: [...]
     const emails = r.rows.map(row => row.email);
-    return res.json({ success: true, emails });
+
+    // Rozlišíme podle cesty (aby FE fallback pořád fungoval)
+    if (req.path.endsWith('/list')) {
+      return res.json({ success: true, emails });
+    }
+    return res.json({ success: true, accounts });
   } catch (err) {
     console.error('Chyba při čtení connected_accounts:', err);
     return res.status(500).json({ success: false, message: 'Nepodařilo se načíst připojené účty.' });
@@ -582,18 +609,26 @@ const consume = await tryConsumeAiAction(db, dashboardUserEmail);
 // UPRAVENÝ ENDPOINT PRO NAČTENÍ EMAILŮ S FILTROVÁNÍM
 app.get('/api/gmail/emails', async (req, res) => {
   try {
-        const { email, dashboardUserEmail, status, period, searchQuery } = req.query;
-        if (!email || !dashboardUserEmail) {
-            return res.status(400).json({ success: false, message: "Chybí email nebo dashboardUserEmail." });
-        }
+    const { email, dashboardUserEmail, status, period, searchQuery } = req.query;
+    if (!email || !dashboardUserEmail) {
+      return res.status(400).json({ success: false, message: "Chybí email nebo dashboardUserEmail." });
+    }
 
-        const db = await pool.connect();
-        const r = await db.query(
-            'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
-            [email, dashboardUserEmail]
-        );
-        db.release();
-        const refreshToken = r.rows[0]?.refresh_token;
+    const db = await pool.connect();
+    const acc = await db.query(
+      'SELECT refresh_token, active FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
+      [email, dashboardUserEmail]
+    );
+    db.release();
+
+    if (acc.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Účet nenalezen." });
+    }
+    if (acc.rows[0].active === false) {
+      return res.status(403).json({ success: false, message: "Tento účet je neaktivní." });
+    }
+
+    const refreshToken = acc.rows[0].refresh_token;
         if (!refreshToken) {
             return res.status(404).json({ success: false, message: "Pro tento email u tohoto uživatele nebyl nalezen token." });
         }
@@ -806,6 +841,7 @@ app.get('/api/trigger-worker', async (req, res) => {
         ca.email               AS connected_email,
         ca.refresh_token,
         ca.dashboard_user_email,
+         ca.active,
         s.auto_reply,
         s.approval_required,
         s.spam_filter
@@ -813,6 +849,7 @@ app.get('/api/trigger-worker', async (req, res) => {
       LEFT JOIN settings s
         ON s.dashboard_user_email = ca.dashboard_user_email
        AND s.connected_email = ca.email
+       WHERE ca.active = true 
     `);
 
     for (const acc of accounts) {
@@ -876,6 +913,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
