@@ -99,6 +99,38 @@ async function setupDatabase() {
                 FOREIGN KEY (connected_email) REFERENCES connected_accounts(email) ON DELETE CASCADE
             );
         `);
+
+
+        await client.query(`
+  CREATE TABLE IF NOT EXISTS plans (
+    code VARCHAR(50) PRIMARY KEY,     -- např. 'Starter', 'Professional', 'Enterprise'
+    label VARCHAR(100) NOT NULL,      -- zobrazovací název
+    max_accounts INT NOT NULL,        -- max počet připojených účtů
+    monthly_ai_actions INT NOT NULL   -- měsíční limit na AI akce (analyzuj + odeslání odpovědi)
+  );
+`);
+
+// 5) Seed základních plánů (lze kdykoli změnit v DB)
+await client.query(`
+  INSERT INTO plans (code, label, max_accounts, monthly_ai_actions) VALUES
+    ('Starter','Starter', 1, 50),
+    ('Professional','Professional', 5, 1000),
+    ('Enterprise','Enterprise', 999, 100000)
+  ON CONFLICT (code) DO NOTHING;
+`);
+
+// 6) Měsíční čítač použití AI
+await client.query(`
+  CREATE TABLE IF NOT EXISTS usage_counters (
+    dashboard_user_email VARCHAR(255) NOT NULL,
+    period_start DATE NOT NULL,                  -- první den měsíce (UTC)
+    ai_actions_used INT NOT NULL DEFAULT 0,      -- počet provedených AI akcí v období
+    PRIMARY KEY (dashboard_user_email, period_start),
+    FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
+  );
+`);
+
+
         
         console.log("✅ Databázové tabulky pro víceuživatelský provoz jsou připraveny.");
     } catch (err) {
@@ -126,6 +158,14 @@ const loginClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 // Tento klient potřebuje i Client Secret a Redirect URI
 const oauth2Client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, REDIRECT_URI);
 // ==========================================================
+
+
+
+
+
+
+
+
 
 
 // ENDPOINT PRO PŘIHLÁŠENÍ
@@ -183,6 +223,15 @@ app.get('/api/oauth/google/callback', async (req, res) => {
         }
 
         client = await pool.connect();
+
+const canAdd = await canAddConnectedAccount(client, dashboardUserEmail || connectedEmail);
+if (!canAdd.ok) {
+  console.warn(`Limit účtů dosažen: ${canAdd.have}/${canAdd.max} pro ${dashboardUserEmail}`);
+  // pošli zpět na FE s chybou
+  client.release();
+  return res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=limit&reason=accounts`);
+}
+
 
         // Ujistíme se, že dashboard user existuje (pro jistotu)
         await client.query(
@@ -245,21 +294,127 @@ app.get('/api/user/plan', async (req, res) => {
 
 app.post('/api/user/plan', async (req, res) => {
     const { email, plan } = req.body;
-    if (!email || !plan) return res.status(400).json({ success: false, message: "Chybí email nebo plán." });
-    const client = await pool.connect();
-    try {
-        await client.query(
-            'UPDATE dashboard_users SET plan = $1 WHERE email = $2',
-            [plan, email]
-        );
-        res.json({ success: true, message: "Plán byl změněn." });
-    } catch (err) {
-        console.error("Chyba při ukládání tarifu:", err);
-        res.status(500).json({ success: false, message: "Nepodařilo se změnit tarif." });
-    } finally {
-        client.release();
+  if (!email || !plan) return res.status(400).json({ success: false, message: "Chybí email nebo plán." });
+  const client = await pool.connect();
+  try {
+    const p = await client.query(`SELECT max_accounts FROM plans WHERE code = $1`, [plan]);
+    if (p.rowCount === 0) return res.status(400).json({ success: false, message: "Neznámý plán." });
+    const maxAcc = p.rows[0].max_accounts;
+
+    const c = await client.query(`SELECT COUNT(*)::INT AS c FROM connected_accounts WHERE dashboard_user_email = $1`, [email]);
+    if (c.rows[0].c > maxAcc) {
+      return res.status(400).json({
+        success: false,
+        message: `Nelze přejít na ${plan}. Máte připojeno ${c.rows[0].c} účtů, limit je ${maxAcc}.`
+      });
     }
+
+    await client.query(`UPDATE dashboard_users SET plan = $1 WHERE email = $2`, [plan, email]);
+    res.json({ success: true, message: "Plán byl změněn." });
+  } catch (err) {
+    console.error("Chyba při ukládání tarifu:", err);
+    res.status(500).json({ success: false, message: "Nepodařilo se změnit tarif." });
+  } finally {
+    client.release();
+  }
 });
+
+
+
+
+app.get('/api/limits', async (req, res) => {
+  const { dashboardUserEmail } = req.query;
+  if (!dashboardUserEmail) return res.status(400).json({ success: false, message: "Chybí dashboardUserEmail." });
+  const client = await pool.connect();
+  try {
+    const limits = await getPlanLimits(client, dashboardUserEmail);
+    await ensureUsageRow(client, dashboardUserEmail);
+    const used = await getUsage(client, dashboardUserEmail);
+    res.json({
+      success: true,
+      plan: limits.code,
+      max_accounts: limits.max_accounts,
+      monthly_ai_actions: limits.monthly_ai_actions,
+      ai_actions_used: used,
+      ai_actions_remaining: Math.max(0, limits.monthly_ai_actions - used),
+      period_start: currentPeriodStartDateUTC()
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, message: "Nepodařilo se načíst limity." });
+  } finally {
+    client.release();
+  }
+});
+
+
+
+
+function currentPeriodStartDateUTC() {
+  // první den aktuálního měsíce v UTC jako 'YYYY-MM-DD'
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth(); // 0–11
+  return new Date(Date.UTC(y, m, 1)).toISOString().slice(0,10);
+}
+
+async function getPlanLimits(client, dashboardUserEmail) {
+  // z dashboard_users vezmi plán a z plans načti limity
+  const u = await client.query(`SELECT plan FROM dashboard_users WHERE email = $1`, [dashboardUserEmail]);
+  if (u.rowCount === 0) throw new Error('Uživatel neexistuje');
+  const plan = u.rows[0].plan || 'Starter';
+  const p = await client.query(`SELECT code, max_accounts, monthly_ai_actions FROM plans WHERE code = $1`, [plan]);
+  if (p.rowCount === 0) throw new Error(`Plán ${plan} není definován v tabulce plans`);
+  return p.rows[0];
+}
+
+async function ensureUsageRow(client, dashboardUserEmail) {
+  const period = currentPeriodStartDateUTC();
+  await client.query(`
+    INSERT INTO usage_counters (dashboard_user_email, period_start, ai_actions_used)
+    VALUES ($1,$2,0)
+    ON CONFLICT (dashboard_user_email, period_start) DO NOTHING
+  `, [dashboardUserEmail, period]);
+}
+
+async function getUsage(client, dashboardUserEmail) {
+  const period = currentPeriodStartDateUTC();
+  const r = await client.query(`
+    SELECT ai_actions_used FROM usage_counters
+    WHERE dashboard_user_email = $1 AND period_start = $2
+  `, [dashboardUserEmail, period]);
+  return r.rowCount ? r.rows[0].ai_actions_used : 0;
+}
+
+async function canAddConnectedAccount(client, dashboardUserEmail) {
+  const limits = await getPlanLimits(client, dashboardUserEmail);
+  const r = await client.query(`
+    SELECT COUNT(*)::INT AS c FROM connected_accounts WHERE dashboard_user_email = $1
+  `, [dashboardUserEmail]);
+  const count = r.rows[0].c;
+  return { ok: count < limits.max_accounts, max: limits.max_accounts, have: count };
+}
+
+async function tryConsumeAiAction(client, dashboardUserEmail) {
+  const limits = await getPlanLimits(client, dashboardUserEmail);
+  await ensureUsageRow(client, dashboardUserEmail);
+  const period = currentPeriodStartDateUTC();
+  const r = await client.query(`
+    SELECT ai_actions_used FROM usage_counters WHERE dashboard_user_email = $1 AND period_start = $2
+  `, [dashboardUserEmail, period]);
+  const used = r.rowCount ? r.rows[0].ai_actions_used : 0;
+  if (used >= limits.monthly_ai_actions) {
+    return { ok: false, used, limit: limits.monthly_ai_actions };
+  }
+  await client.query(`
+    UPDATE usage_counters
+    SET ai_actions_used = ai_actions_used + 1
+    WHERE dashboard_user_email = $1 AND period_start = $2
+  `, [dashboardUserEmail, period]);
+  return { ok: true, used: used + 1, limit: limits.monthly_ai_actions };
+}
+
+
 
 
 
@@ -339,6 +494,19 @@ app.post('/api/gmail/send-reply', async (req, res) => {
         }
 
         const db = await pool.connect();
+
+
+const consume = await tryConsumeAiAction(db, dashboardUserEmail);
+    if (!consume.ok) {
+      db.release();
+      return res.status(429).json({
+        success: false,
+        message: `Vyčerpán měsíční limit AI akcí (${consume.limit}). Zvažte navýšení tarifu.`
+      });
+    }
+
+
+
         const r = await db.query(
             'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
             [email, dashboardUserEmail]
@@ -470,6 +638,17 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
         }
 
         const db = await pool.connect();
+           
+const consume = await tryConsumeAiAction(db, dashboardUserEmail);
+    if (!consume.ok) {
+      db.release();
+      return res.status(429).json({
+        success: false,
+        message: `Vyčerpán měsíční limit AI akcí (${consume.limit}). Zvažte navýšení tarifu.`
+      });
+    } 
+
+
         const rTok = await db.query(
             'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
             [email, dashboardUserEmail]
@@ -676,7 +855,6 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
-
 
 
 
