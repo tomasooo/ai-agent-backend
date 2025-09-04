@@ -6,7 +6,10 @@ const cors = require('cors');
 const { Pool } = require('pg'); // Ovladač pro PostgreSQL
 const { google } = require('googleapis'); // PŘIDÁNO: Knihovna pro Google API
 const { VertexAI } = require('@google-cloud/vertexai');
-
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken'); // pokud chceš tokeny; není nutné pro toto minimum
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 
 
 const app = express();
@@ -66,6 +69,13 @@ async function setupDatabase() {
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         `);
+
+        await client.query(`
+  ALTER TABLE dashboard_users
+    ADD COLUMN IF NOT EXISTS password_hash TEXT,
+    ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS verification_token TEXT
+`);
 
         // 2. Tabulka pro emaily, které si uživatelé připojí (původní "users")
         // PŘIDALI JSME dashboard_user_email, který je cizím klíčem
@@ -913,6 +923,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
