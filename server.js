@@ -6,7 +6,7 @@ const cors = require('cors');
 const { Pool } = require('pg'); // Ovladač pro PostgreSQL
 const { google } = require('googleapis'); // PŘIDÁNO: Knihovna pro Google API
 const { VertexAI } = require('@google-cloud/vertexai');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken'); // pokud chceš tokeny; není nutné pro toto minimum
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
@@ -967,6 +967,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
