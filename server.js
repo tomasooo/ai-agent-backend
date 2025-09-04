@@ -2,7 +2,6 @@
 const express = require('express');
 const { OAuth2Client } = require('google-auth-library');
 const bodyParser = require('body-parser');
-const cors = require('cors');
 const { Pool } = require('pg'); // Ovladač pro PostgreSQL
 const { google } = require('googleapis'); // PŘIDÁNO: Knihovna pro Google API
 const { VertexAI } = require('@google-cloud/vertexai');
@@ -1030,6 +1029,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
