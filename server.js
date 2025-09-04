@@ -169,10 +169,42 @@ await client.query(`
 
 
 // Nastavení CORS
-const corsOptions = { origin: FRONTEND_URL, optionsSuccessStatus: 200 };
-app.use(cors(corsOptions));
-app.use(bodyParser.json());
+const cors = require('cors');
 
+const DEFAULT_ALLOWED = [
+  'https://ai-agent-frontend-9nrf.onrender.com', // Render frontend
+  'http://localhost:5500',                        // local dev
+  'http://127.0.0.1:5500',                        // local dev
+];
+
+// možnost doplnit další origins přes ENV (ALLOWED_ORIGINS="url1,url2")
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+if (process.env.FRONTEND_URL) ALLOWED_ORIGINS.push(process.env.FRONTEND_URL);
+
+const ORIGINS = Array.from(new Set([...DEFAULT_ALLOWED, ...ALLOWED_ORIGINS]));
+
+console.log('CORS allowed origins:', ORIGINS);
+
+const corsOptions = {
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // např. curl nebo server-side request
+    return ORIGINS.includes(origin)
+      ? cb(null, true)
+      : cb(new Error('Not allowed by CORS: ' + origin));
+  },
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false, // dej true jen pokud používáš cookies
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+app.use(bodyParser.json());
 // Klient pro ověření PŘIHLAŠOVACÍHO tokenu (zůstává)
 const loginClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
@@ -998,6 +1030,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
