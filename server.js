@@ -1,5 +1,6 @@
 // server.js
 const express = require('express');
+const cors = require('cors');
 const { OAuth2Client } = require('google-auth-library');
 const bodyParser = require('body-parser');
 const { Pool } = require('pg'); // Ovladač pro PostgreSQL
@@ -14,7 +15,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Načtení proměnných prostředí
+// Načtení proměnných prostředíconst cors = require('cors');
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL;
@@ -168,7 +169,7 @@ await client.query(`
 
 
 // Nastavení CORS
-const cors = require('cors');
+
 
 const DEFAULT_ALLOWED = [
   'https://ai-agent-frontend-9nrf.onrender.com', // Render frontend
@@ -202,7 +203,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+
 app.use(bodyParser.json());
 // Klient pro ověření PŘIHLAŠOVACÍHO tokenu (zůstává)
 const loginClient = new OAuth2Client(GOOGLE_CLIENT_ID);
