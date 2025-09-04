@@ -246,6 +246,50 @@ app.post('/api/accounts/set-active', async (req, res) => {
 });
 
 
+app.post('/api/auth/register', async (req, res) => {
+  const { fullName, email, password } = req.body || {};
+  if (!fullName || !email || !password || password.length < 8) {
+    return res.status(400).json({ success: false, message: 'Chybné parametry.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    // už existuje social login?
+    const exists = await client.query(
+      'SELECT email FROM dashboard_users WHERE email = $1',
+      [email]
+    );
+    if (exists.rowCount > 0 && !exists.rows[0].password_hash) {
+      // účet existuje jen přes Google – povolíme i heslo
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const verificationToken = crypto.randomBytes(24).toString('hex');
+
+    await client.query(`
+      INSERT INTO dashboard_users (email, name, plan, password_hash, email_verified, verification_token)
+      VALUES ($1,$2,$3,$4,$5,$6)
+      ON CONFLICT (email) DO UPDATE
+      SET name = EXCLUDED.name,
+          password_hash = EXCLUDED.password_hash,
+          verification_token = EXCLUDED.verification_token
+    `, [email, fullName, 'Starter', passwordHash, /* email_verified: */ true, verificationToken]);
+
+    // TODO: odeslání verifikačního e-mailu (volitelné)
+    // Zatím vrátíme úspěch a „přihlásíme“
+    return res.json({
+      success: true,
+      user: { email, name: fullName, plan: 'Starter' }
+    });
+  } catch (e) {
+    console.error('REG ERROR', e);
+    return res.status(500).json({ success: false, message: 'Registrace selhala.' });
+  } finally {
+    client.release();
+  }
+});
+
+
 
 // ENDPOINT PRO ZPRACOVÁNÍ SOUHLASU OD GOOGLE (PROPOJENÍ)
 app.get('/api/oauth/google/callback', async (req, res) => {
@@ -923,6 +967,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
