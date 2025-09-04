@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Emailový Agent - Inteligentní automatizace vaší emailové komunikace</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            animation: float 20s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(2deg); }
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+            position: relative;
+            z-index: 2;
+        }
+
+        .logo {
+            font-size: 1.8rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo::before {
+            content: "🤖";
+            font-size: 2rem;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .nav-links a:hover {
+            transform: translateY(-2px);
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: white;
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        .hero {
+            text-align: center;
+            position: relative;
+            z-index: 2;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(45deg, #fff, #f0f8ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: slideInUp 1s ease-out;
+        }
+
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .hero p {
+            font-size: 1.3rem;
+            margin-bottom: 2.5rem;
+            opacity: 0.9;
+            animation: slideInUp 1s ease-out 0.2s both;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 15px 35px;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(255, 107, 107, 0.3);
+            animation: slideInUp 1s ease-out 0.4s both;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 15px 40px rgba(255, 107, 107, 0.4);
+        }
+
+        /* Features Section */
+        .features {
+            padding: 5rem 0;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 3rem;
+            color: #2c3e50;
+            position: relative;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 4px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border-radius: 2px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-top: 4rem;
+        }
+
+        .feature-card {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+        }
+
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+            display: block;
+        }
+
+        .feature-card h3 {
+            font-size: 1.4rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+
+        .feature-card p {
+            color: #7f8c8d;
+            line-height: 1.8;
+        }
+
+        /* How it works */
+        .how-it-works {
+            padding: 5rem 0;
+            background: white;
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 3rem;
+            margin-top: 4rem;
+        }
+
+        .step {
+            text-align: center;
+            position: relative;
+        }
+
+        .step-number {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 0 auto 2rem;
+            position: relative;
+            z-index: 2;
+        }
+
+        .step:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 40px;
+            left: 60%;
+            width: 40%;
+            height: 2px;
+            background: linear-gradient(90deg, #667eea, transparent);
+            z-index: 1;
+        }
+
+        .step h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+
+        /* Pricing */
+        .pricing {
+            padding: 5rem 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .pricing-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 4rem;
+        }
+
+        .pricing-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 3rem 2rem;
+            border-radius: 20px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .pricing-card.popular {
+            transform: scale(1.05);
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .pricing-card.popular::before {
+            content: 'NEJPOPULÁRNĚJŠÍ';
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ff6b6b;
+            color: white;
+            padding: 5px 20px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .pricing-card:hover {
+            transform: translateY(-10px) scale(1.02);
+        }
+
+        .pricing-card.popular:hover {
+            transform: translateY(-10px) scale(1.07);
+        }
+
+        .price {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .price-period {
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 2rem;
+        }
+
+        .features-list {
+            list-style: none;
+            margin-bottom: 2rem;
+        }
+
+        .features-list li {
+            padding: 0.5rem 0;
+            position: relative;
+            padding-left: 2rem;
+        }
+
+        .features-list li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #2ecc71;
+            font-weight: bold;
+        }
+
+        .pricing-button {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .pricing-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        /* Footer */
+        footer {
+            background: #2c3e50;
+            color: white;
+            padding: 3rem 0 2rem;
+            text-align: center;
+        }
+
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .footer-section h3 {
+            margin-bottom: 1rem;
+            color: #ecf0f1;
+        }
+
+        .footer-section a {
+            color: #bdc3c7;
+            text-decoration: none;
+            display: block;
+            margin-bottom: 0.5rem;
+            transition: color 0.3s ease;
+        }
+
+        .footer-section a:hover {
+            color: #3498db;
+        }
+
+        .footer-bottom {
+            border-top: 1px solid #34495e;
+            padding-top: 2rem;
+            color: #7f8c8d;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
+            .nav-links {
+                display: none;
+            }
+            
+            .step:not(:last-child)::after {
+                display: none;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Animations */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-bg"></div>
+        <div class="container">
+            <nav>
+                <div class="logo">AI Emailový Agent</div>
+                <ul class="nav-links">
+                    <li><a href="#features">Funkce</a></li>
+                    <li><a href="#how-it-works">Jak to funguje</a></li>
+                    <li><a href="#pricing">Ceny</a></li>
+                    <li><a href="#contact">Kontakt</a></li>
+                </ul>
+            </nav>
+            
+            <div class="hero">
+                <h1>Revoluce v emailové komunikaci</h1>
+                <p>Inteligentní AI agent, který automaticky spravuje vaše emaily s plnou personalizací a kontrolou</p>
+                <a href="login.html" class="cta-button">Začít zdarma</a>
+            </div>
+        </div>
+    </header>
+
+    <section class="features" id="features">
+        <div class="container">
+            <h2 class="section-title">Klíčové funkce</h2>
+            
+            <div class="features-grid">
+                <div class="feature-card fade-in">
+                    <span class="feature-icon">🔗</span>
+                    <h3>Bezpečné propojení</h3>
+                    <p>Připojte své Gmail, Outlook nebo jiné emailové účty pomocí šifrovaného OAuth 2.0 protokolu. Vaše data jsou v bezpečí.</p>
+                </div>
+                
+                <div class="feature-card fade-in">
+                    <span class="feature-icon">🧠</span>
+                    <h3>AI generování odpovědí</h3>
+                    <p>Pokročilá umělá inteligence analyzuje příchozí emaily a generuje relevantní, personalizované odpovědi v reálném čase.</p>
+                </div>
+                
+                <div class="feature-card fade-in">
+                    <span class="feature-icon">🎨</span>
+                    <h3>Plná personalizace</h3>
+                    <p>Nastavte tón, délku, styl a klíčová slova. AI se přizpůsobí vaší komunikaci a firemní kultuře.</p>
+                </div>
+                
+                <div class="feature-card fade-in">
+                    <span class="feature-icon">✅</span>
+                    <h3>Schvalovací proces</h3>
+                    <p>Vyberte si mezi automatickým odesíláním nebo manuálním schvalováním každé odpovědi podle vašich potřeb.</p>
+                </div>
+                
+                <div class="feature-card fade-in">
+                    <span class="feature-icon">📝</span>
+                    <h3>Vlastní šablony</h3>
+                    <p>Vytvářejte a spravujte neomezené množství šablon pro různé typy emailové komunikace.</p>
+                </div>
+                
+                <div class="feature-card fade-in">
+                    <span class="feature-icon">🌍</span>
+                    <h3>Vícejazyčná podpora</h3>
+                    <p>Komunikujte v češtině, angličtině, němčině a dalších jazycích. AI automaticky detekuje a odpovídá ve správném jazyce.</p>
+                </div>
+                
+                <div class="feature-card fade-in">
+                    <span class="feature-icon">🔍</span>
+                    <h3>Inteligentní filtrování</h3>
+                    <p>Automatická detekce spamu, prioritizace důležitých zpráv a kategorizace emailů podle obsahu.</p>
+                </div>
+                
+                <div class="feature-card fade-in">
+                    <span class="feature-icon">📊</span>
+                    <h3>Podrobné statistiky</h3>
+                    <p>Sledujte svou emailovou aktivitu, ušetřený čas a efektivitu AI agenta pomocí pokročilých analytics.</p>
+                </div>
+                
+                <div class="feature-card fade-in">
+                    <span class="feature-icon">📅</span>
+                    <h3>Kalendářová integrace</h3>
+                    <p>Propojení s Google Calendar a Outlook pro automatické navrhování termínů schůzek a událostí.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="how-it-works" id="how-it-works">
+        <div class="container">
+            <h2 class="section-title">Jak to funguje</h2>
+            
+            <div class="steps">
+                <div class="step fade-in">
+                    <div class="step-number">1</div>
+                    <h3>Připojte email</h3>
+                    <p>Bezpečně propojte svůj emailový účet pomocí OAuth autorizace. Proces trvá méně než 2 minuty.</p>
+                </div>
+                
+                <div class="step fade-in">
+                    <div class="step-number">2</div>
+                    <h3>Nastavte preferences</h3>
+                    <p>Definujte svůj komunikační styl, tón odpovědí a vytvořte vlastní šablony pro různé situace.</p>
+                </div>
+                
+                <div class="step fade-in">
+                    <div class="step-number">3</div>
+                    <h3>AI pracuje za vás</h3>
+                    <p>Umělá inteligence analyzuje příchozí emaily a automaticky generuje personalizované odpovědi.</p>
+                </div>
+                
+                <div class="step fade-in">
+                    <div class="step-number">4</div>
+                    <h3>Kontrola & odeslání</h3>
+                    <p>Zkontrolujte a schvalte odpovědi nebo nechte AI pracovat plně automaticky podle vašich nastavení.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="pricing" id="pricing">
+        <div class="container">
+            <h2 class="section-title">Cenové plány</h2>
+            
+            <div class="pricing-cards">
+                <div class="pricing-card fade-in">
+                    <h3>Starter</h3>
+                    <div class="price">Zdarma</div>
+                    <div class="price-period">navždy</div>
+                    <ul class="features-list">
+                        <li>Až 50 emailů měsíčně</li>
+                        <li>1 emailový účet</li>
+                        <li>Základní šablony</li>
+                        <li>Email podpora</li>
+                    </ul>
+                    <a href="#" class="pricing-button">Začít zdarma</a>
+                </div>
+                
+                <div class="pricing-card popular fade-in">
+                    <h3>Professional</h3>
+                    <div class="price">490 Kč</div>
+                    <div class="price-period">měsíčně</div>
+                    <ul class="features-list">
+                        <li>Neomezené emaily</li>
+                        <li>5 emailových účtů</li>
+                        <li>Vlastní šablony</li>
+                        <li>Kalendářová integrace</li>
+                        <li>Pokročilé analytics</li>
+                        <li>Priority podpora</li>
+                    </ul>
+                    <a href="#" class="pricing-button">Vybrat plán</a>
+                </div>
+                
+                <div class="pricing-card fade-in">
+                    <h3>Enterprise</h3>
+                    <div class="price">1,490 Kč</div>
+                    <div class="price-period">měsíčně</div>
+                    <ul class="features-list">
+                        <li>Neomezené emaily</li>
+                        <li>Neomezené účty</li>
+                        <li>Team management</li>
+                        <li>API přístup</li>
+                        <li>White-label řešení</li>
+                        <li>Dedikovaná podpora</li>
+                        <li>SLA garantie</li>
+                    </ul>
+                    <a href="#" class="pricing-button">Kontaktovat</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer id="contact">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>Produkt</h3>
+                    <a href="#">Funkce</a>
+                    <a href="#">Security</a>
+                    <a href="#">API dokumentace</a>
+                    <a href="#">Integrace</a>
+                </div>
+                
+                <div class="footer-section">
+                    <h3>Společnost</h3>
+                    <a href="#">O nás</a>
+                    <a href="#">Kariéra</a>
+                    <a href="#">Blog</a>
+                    <a href="#">Press</a>
+                </div>
+                
+                <div class="footer-section">
+                    <h3>Podpora</h3>
+                    <a href="#">Nápověda</a>
+                    <a href="#">Kontakt</a>
+                    <a href="#">Status</a>
+                    <a href="#">GDPR</a>
+                </div>
+                
+                <div class="footer-section">
+                    <h3>Kontakt</h3>
+                    <a href="mailto:info@aiemailagent.cz">info@aiemailagent.cz</a>
+                    <a href="tel:+420123456789">+420 123 456 789</a>
+                    <p>Praha, Česká republika</p>
+                </div>
+            </div>
+            
+            <div class="footer-bottom">
+                <p><p>&copy; 2025 AI Emailový Agent | Vytvořil <a href="https://stejdesign.cz" target="_blank" rel="noopener noreferrer" style="color: white;">stejdesign.cz</a></p></p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Fade in animation on scroll
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.fade-in').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Add some interactive effects
+        document.querySelectorAll('.feature-card').forEach(card => {
+            card.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateY(-10px) rotateX(5deg)';
+            });
+            
+            card.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateY(0) rotateX(0)';
+            });
+        });
+
+        
+
+        // Add ripple animation CSS
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes ripple {
+                to {
+                    transform: scale(4);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Dynamic pricing based on scroll position
+        let scrollTimer = null;
+        window.addEventListener('scroll', () => {
+            if (scrollTimer) clearTimeout(scrollTimer);
+            
+            scrollTimer = setTimeout(() => {
+                const scrolled = window.pageYOffset;
+                const pricingSection = document.querySelector('.pricing');
+                const pricingTop = pricingSection.offsetTop;
+                
+                if (scrolled > pricingTop - window.innerHeight) {
+                    document.querySelectorAll('.price').forEach((price, index) => {
+                        setTimeout(() => {
+                            price.style.transform = 'scale(1.1)';
+                            setTimeout(() => {
+                                price.style.transform = 'scale(1)';
+                            }, 200);
+                        }, index * 100);
+                    });
+                }
+            }, 100);
+        });
+    </script>
+</body>
+</html>

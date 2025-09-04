@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Začít zdarma - AI Emailový Agent</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .mode-login .signup-steps,
+.mode-login #authToggle,               /* „Máte už účet?“ link */
+.mode-login #step1                     /* registrační formulář */
+{ display: none !important; }
+
+.mode-login #loginForm { 
+  display: block !important; 
+}
+
+.mode-login #formTitle { 
+  content: none; 
+}
+
+.mode-login .signup-form-container { 
+  padding-top: 2.25rem; 
+}
+
+.mode-login .form-header { 
+  margin-bottom: 1.25rem; 
+}
+
+/* menší mezery, ať login působí kompaktněji */
+.mode-login #loginForm .form-group { 
+  margin-bottom: 1rem; 
+}
+
+        /* Jemný overlay při odesílání */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(250, 250, 255, 0.55);
+  backdrop-filter: blur(8px) saturate(1.2);
+  -webkit-backdrop-filter: blur(8px) saturate(1.2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease;
+  z-index: 3000;
+}
+
+.overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* karta uprostřed */
+.loader {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.75);
+  box-shadow: 0 8px 30px rgba(0,0,0,.12);
+}
+
+/* moderní spinner */
+.loader .ring {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background:
+    conic-gradient(from 0turn, #667eea, #764ba2, #667eea) border-box;
+  -webkit-mask: 
+    radial-gradient(farthest-side, transparent 55%, #000 57%) 
+    center/100% 100% no-repeat,
+    linear-gradient(#000 0 0) padding-box; 
+  mask: 
+    radial-gradient(farthest-side, transparent 55%, #000 57%) 
+    center/100% 100% no-repeat,
+    linear-gradient(#000 0 0) padding-box;
+  animation: spin 0.9s linear infinite;
+}
+
+.loader p {
+  margin: 0;
+  font-weight: 600;
+  color: #2c3e50;
+  letter-spacing: .2px;
+}
+
+/* jemné „dýchání“ celé karty */
+.overlay.show .loader { animation: breathe 1.6s ease-in-out infinite; }
+
+@keyframes spin {
+  to { transform: rotate(1turn); }
+}
+@keyframes breathe {
+  0%,100% { transform: translateZ(0) scale(1); }
+  50% { transform: translateZ(0) scale(.985); }
+}
+
+.pulse {
+  animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.98); opacity: 0.9; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* button loading transition */
+.btn .loading { transition: opacity .2s; }
+
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        .header {
+            padding: 1rem 0;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+        }
+
+        .logo::before {
+            content: "🤖";
+            font-size: 1.8rem;
+        }
+
+        .back-link {
+            color: white;
+            text-decoration: none;
+            padding: 8px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .back-link:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+
+        /* Main Content */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 80px);
+            align-items: center;
+            padding: 2rem 0;
+        }
+
+        .signup-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            width: 100%;
+            align-items: center;
+        }
+
+        .signup-info {
+            color: white;
+        }
+
+        .signup-info h1 {
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(45deg, #fff, #f0f8ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: slideInLeft 1s ease-out;
+        }
+
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .signup-info p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+            animation: slideInLeft 1s ease-out 0.2s both;
+        }
+
+        .benefits {
+            list-style: none;
+            animation: slideInLeft 1s ease-out 0.4s both;
+        }
+
+        .benefits li {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+
+        .benefits li::before {
+            content: '✓';
+            background: #2ecc71;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        /* Signup Form */
+        .signup-form-container {
+            background: white;
+            border-radius: 20px;
+            padding: 3rem;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.2);
+            animation: slideInRight 1s ease-out;
+            position: relative;
+            overflow: hidden;
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .signup-form-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+        }
+
+        .form-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .form-header h2 {
+            font-size: 2rem;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-header p {
+            color: #7f8c8d;
+            font-size: 1rem;
+        }
+
+        .signup-steps {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            color: #bdc3c7;
+            font-size: 0.9rem;
+        }
+
+        .step.active {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .step-number {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #ecf0f1;
+            color: #7f8c8d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 0.5rem;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+        .step.active .step-number {
+            background: #667eea;
+            color: white;
+        }
+
+        .step:not(:last-child)::after {
+            content: '';
+            width: 40px;
+            height: 2px;
+            background: #ecf0f1;
+            margin: 0 1rem;
+        }
+
+        .step.active:not(:last-child)::after {
+            background: #667eea;
+        }
+
+        /* Form Styles */
+        .signup-form {
+            display: none;
+        }
+
+        .signup-form.active {
+            display: block;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #2c3e50;
+            font-weight: 500;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #ecf0f1;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: #fff;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .form-control.error {
+            border-color: #e74c3c;
+            box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.1);
+        }
+
+        .error-message {
+            color: #e74c3c;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+            display: none;
+        }
+
+        .password-strength {
+            margin-top: 0.5rem;
+        }
+
+        .strength-bar {
+            height: 4px;
+            background: #ecf0f1;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        }
+
+        .strength-fill {
+            height: 100%;
+            width: 0%;
+            transition: all 0.3s ease;
+            border-radius: 2px;
+        }
+
+        .strength-text {
+            font-size: 0.875rem;
+            color: #7f8c8d;
+        }
+
+        .oauth-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .oauth-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+            border: 2px solid #ecf0f1;
+            border-radius: 10px;
+            text-decoration: none;
+            color: #2c3e50;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            gap: 0.5rem;
+        }
+
+        .oauth-button:hover {
+            border-color: #bdc3c7;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .oauth-button.google {
+            border-color: #db4437;
+            color: #db4437;
+        }
+
+        .oauth-button.microsoft {
+            border-color: #0078d4;
+            color: #0078d4;
+        }
+
+        .divider {
+            text-align: center;
+            margin: 2rem 0;
+            position: relative;
+            color: #bdc3c7;
+        }
+
+        .divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: #ecf0f1;
+            z-index: 1;
+        }
+
+        .divider span {
+            background: white;
+            padding: 0 1rem;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            width: 100%;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: #667eea;
+            border: 2px solid #667eea;
+            margin-right: 1rem;
+        }
+
+        .btn-secondary:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .form-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 2rem;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 0.5rem;
+            transform: scale(1.2);
+        }
+
+        .checkbox-group label {
+            margin-bottom: 0;
+            font-size: 0.9rem;
+            color: #7f8c8d;
+        }
+
+        .checkbox-group a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .checkbox-group a:hover {
+            text-decoration: underline;
+        }
+
+        /* Success Message */
+        .success-message {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .success-message.show {
+            display: block;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        .success-icon {
+            font-size: 4rem;
+            color: #2ecc71;
+            margin-bottom: 1rem;
+            animation: bounce 1s ease-in-out;
+        }
+
+        @keyframes bounce {
+            0%, 20%, 60%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-20px); }
+            80% { transform: translateY(-10px); }
+        }
+
+        /* Loading Animation */
+        .loading {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .loading.show {
+            display: flex;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ecf0f1;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .signup-container {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+
+            .signup-info {
+                text-align: center;
+                order: 2;
+            }
+
+            .signup-info h1 {
+                font-size: 2rem;
+            }
+
+            .signup-form-container {
+                order: 1;
+                padding: 2rem;
+            }
+
+            .oauth-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .form-actions {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .btn-secondary {
+                margin-right: 0;
+                width: 100%;
+            }
+        }
+
+        /* Email validation styles */
+        .validation-icon {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.2rem;
+        }
+
+        .form-group {
+            position: relative;
+        }
+
+        .validation-icon.valid {
+            color: #2ecc71;
+        }
+
+        .validation-icon.invalid {
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <a href="#" class="logo">AI Emailový Agent</a>
+                <a href="home.html" class="back-link">← Zpět na hlavní stránku</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="container">
+            <div class="signup-container">
+                <div class="signup-info">
+                    <h1>Začněte šetřit čas už dnes</h1>
+                    <p>Připojte se k tisícům spokojených uživatelů, kteří automatizovali svou emailovou komunikaci pomocí AI.</p>
+                    
+                    <ul class="benefits">
+                        <li>Ušetřete až 5 hodin týdně</li>
+                        <li>Nikdy nezmeškáte důležitý email</li>
+                        <li>Personalizované odpovědi 24/7</li>
+                        <li>Bezpečné šifrování všech dat</li>
+                        <li>Zdarma navždy pro základní plán</li>
+                    </ul>
+                </div>
+
+                <div class="signup-form-container">
+                   <div class="form-header">
+  <h2 id="formTitle">Vytvořte si účet</h2>
+  <p id="formSubtitle">Registrace trvá méně než 2 minuty</p>
+</div>
+
+<p id="authToggle" style="text-align:center;margin:10px 0;">
+  Máte už účet? <a href="#" id="showLogin">Přihlásit se</a>
+</p>
+ 
+
+<!-- Skrytý login formulář -->
+<form class="signup-form" id="loginForm" style="display:none;">
+  <div class="form-group">
+    <label for="loginEmail">Email</label>
+    <input type="email" id="loginEmail" class="form-control" placeholder="jan@priklad.cz" required>
+  </div>
+  <div class="form-group">
+    <label for="loginPassword">Heslo</label>
+    <input type="password" id="loginPassword" class="form-control" placeholder="Heslo" required>
+  </div>
+  <div class="form-actions">
+    <button type="button" class="btn btn-secondary" id="backToRegister">Zpět</button>
+    <button type="submit" class="btn btn-primary" id="loginBtn">
+      <span class="button-text">Přihlásit se</span>
+      <div class="loading"><div class="spinner"></div><span>Přihlašuji…</span></div>
+    </button>
+  </div>
+</form>
+
+                    <div class="signup-steps">
+                        <div class="step active">
+                            <div class="step-number">1</div>
+                            <span>Účet</span>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <span>Email</span>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <span>Hotovo</span>
+                        </div>
+                    </div>
+
+                    <!-- Step 1: Account Creation -->
+                    <form class="signup-form active" id="step1">
+                        <div id="googleSignup" style="margin-bottom: 1rem; display: flex; justify-content: center;"></div>
+
+                        <div class="divider">
+                            <span>nebo</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fullName">Celé jméno</label>
+                            <input type="text" id="fullName" class="form-control" placeholder="Jan Novák" required>
+                            <div class="error-message" id="fullNameError">Zadejte prosím vaše celé jméno</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="email">Email</label>
+                            <input type="email" id="email" class="form-control" placeholder="jan@priklad.cz" required>
+                            <span class="validation-icon" id="emailIcon"></span>
+                            <div class="error-message" id="emailError">Zadejte platnou emailovou adresu</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="password">Heslo</label>
+                            <input type="password" id="password" class="form-control" placeholder="Minimálně 8 znaků" required>
+                            <div class="password-strength">
+                                <div class="strength-bar">
+                                    <div class="strength-fill" id="strengthFill"></div>
+                                </div>
+                                <div class="strength-text" id="strengthText">Zadejte heslo</div>
+                            </div>
+                            <div class="error-message" id="passwordError">Heslo musí mít alespoň 8 znaků</div>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="terms" required>
+                            <label for="terms">
+                                Souhlasím s <a href="#">podmínkami použití</a> a <a href="#">zásadami ochrany osobních údajů</a>
+                            </label>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="step1Submit">
+                                <span class="button-text">Pokračovat</span>
+                                <div class="loading">
+                                    <div class="spinner"></div>
+                                    <span>Ověřuji...</span>
+                                </div>
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Step 2: Email Connection -->
+                    <form class="signup-form" id="step2">
+                        <h3 style="text-align: center; margin-bottom: 2rem; color: #2c3e50;">Připojte svůj emailový účet</h3>
+                        
+                        <div class="oauth-buttons">
+                            <a href="#" class="oauth-button google" id="connectGmail">
+                                <span>📧</span>
+                                Připojit Gmail
+                            </a>
+                            <a href="#" class="oauth-button microsoft" id="connectOutlook">
+                                <span>📧</span>
+                                Připojit Outlook
+                            </a>
+                        </div>
+
+                        <div class="divider">
+                            <span>nebo</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="emailProvider">Jiný poskytovatel</label>
+                            <select id="emailProvider" class="form-control">
+                                <option value="">Vyberte poskytovatele</option>
+                                <option value="yahoo">Yahoo Mail</option>
+                                <option value="icloud">iCloud Mail</option>
+                                <option value="custom">Vlastní IMAP/SMTP</option>
+                            </select>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="step2Back">Zpět</button>
+                            <button type="button" class="btn btn-primary" id="step2Skip">Přeskočit prozatím</button>
+                        </div>
+                    </form>
+
+                    <!-- Step 3: Success -->
+                    <div class="signup-form" id="step3">
+                        <div class="success-message show">
+                            <div class="success-icon">🎉</div>
+                            <h3 style="color: #2c3e50; margin-bottom: 1rem;">Vítejte v AI Emailový Agent!</h3>
+                            <p style="color: #7f8c8d; margin-bottom: 2rem;">
+                                Váš účet byl úspěšně vytvořen. Na váš email jsme poslali ověřovací odkaz.
+                            </p>
+                            <button class="btn btn-primary" id="goToDashboard">Přejít do aplikace</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // === GOOGLE SIGN-IN ===
+  window.onload = function () {
+    google.accounts.id.initialize({
+      client_id: "990614891314-kugic255rq68tt1m7uqg4rdp9jdig5lb.apps.googleusercontent.com",
+      callback: handleCredentialResponse
+    });
+    google.accounts.id.renderButton(
+      document.getElementById("googleSignup"),
+      { theme: "outline", size: "large", type: "standard", text: "signin_with", shape: "pill", width: "250" }
+    );
+  };
+
+  function handleCredentialResponse(response) {
+    const id_token = response.credential;
+    startLoading();
+    fetch('https://ai-email-server-stejdesign.onrender.com/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: id_token }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) throw new Error(data.message || 'Ověření selhalo.');
+      localStorage.setItem('userName', data.user.name);
+      localStorage.setItem('userEmail', data.user.email);
+      localStorage.setItem('userPicture', data.user.picture || '');
+      window.location.href = 'dashboard.html';
+    })
+    .catch(err => alert(err.message || 'Chyba při přihlášení Googlem.'))
+    .finally(() => stopLoading());
+  }
+
+  // === UI helpers (jedna verze!) ===
+  function startLoading(btn) {
+    const overlay = document.getElementById('overlay');
+    const container = document.querySelector('.signup-form-container');
+    overlay?.classList.add('show');
+    container?.classList.add('pulse');
+    if (btn) {
+      btn.disabled = true;
+      btn.querySelector('.button-text')?.style && (btn.querySelector('.button-text').style.display = 'none');
+      btn.querySelector('.loading')?.classList.add('show');
+    }
+  }
+  function stopLoading(btn) {
+    const overlay = document.getElementById('overlay');
+    const container = document.querySelector('.signup-form-container');
+    overlay?.classList.remove('show');
+    container?.classList.remove('pulse');
+    if (btn) {
+      btn.disabled = false;
+      btn.querySelector('.button-text')?.style && (btn.querySelector('.button-text').style.display = 'inline');
+      btn.querySelector('.loading')?.classList.remove('show');
+    }
+  }
+
+  // === Přepínání režimu login/registrace (pouze JEDEN způsob) ===
+  const formTitle    = document.getElementById('formTitle');
+  const formSubtitle = document.getElementById('formSubtitle');
+  const showLogin    = document.getElementById('showLogin');
+  const backToReg    = document.getElementById('backToRegister');
+
+  function enterLoginMode() {
+    document.body.classList.add('mode-login');
+    formTitle.textContent    = 'Přihlášení do účtu';
+    formSubtitle.textContent = 'Zadejte své přihlašovací údaje';
+  }
+  function enterRegisterMode() {
+    document.body.classList.remove('mode-login');
+    formTitle.textContent    = 'Vytvořte si účet';
+    formSubtitle.textContent = 'Registrace trvá méně než 2 minuty';
+  }
+
+  showLogin?.addEventListener('click', (e) => { e.preventDefault(); enterLoginMode(); });
+  backToReg?.addEventListener('click', (e) => { e.preventDefault(); enterRegisterMode(); });
+
+  // === Registrace (jediný handler) ===
+  const step1Form = document.getElementById('step1');
+  const step1Btn  = document.getElementById('step1Submit');
+
+  step1Form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const fullName = document.getElementById('fullName').value.trim();
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+
+    // jednoduchá validace
+    let ok = true;
+    document.getElementById('fullNameError').style.display = fullName ? 'none' : 'block';
+    document.getElementById('emailError').style.display    =
+      (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ? 'block' : 'none';
+    document.getElementById('passwordError').style.display = (!password || password.length < 8) ? 'block' : 'none';
+    ok = fullName && email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && password && password.length >= 8;
+    if (!ok) return;
+
+    startLoading(step1Btn);
+    try {
+      const r = await fetch('https://ai-email-server-stejdesign.onrender.com/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ fullName, email, password })
+      });
+      const data = await r.json();
+      if (!r.ok || !data.success) throw new Error(data.message || 'Registrace selhala.');
+
+      localStorage.setItem('userName', data.user.name);
+      localStorage.setItem('userEmail', data.user.email);
+      window.location.href = 'dashboard.html';
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Chyba při registraci.');
+    } finally {
+      stopLoading(step1Btn);
+    }
+  });
+
+  // === Login (jediný handler) ===
+  const loginForm = document.getElementById('loginForm');
+  const loginBtn  = document.getElementById('loginBtn');
+
+  loginForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    if (!email || !password) return;
+
+    startLoading(loginBtn);
+    try {
+      const r = await fetch('https://ai-email-server-stejdesign.onrender.com/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await r.json();
+      if (!r.ok || !data.success) throw new Error(data.message || 'Přihlášení selhalo.');
+
+      localStorage.setItem('userName', data.user.name);
+      localStorage.setItem('userEmail', data.user.email);
+      window.location.href = 'dashboard.html';
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Chyba při přihlášení.');
+    } finally {
+      stopLoading(loginBtn);
+    }
+  });
+
+  // === Krok 2 a 3 – přesměrování ===
+  document.getElementById('step2Skip')?.addEventListener('click', () => window.location.href = 'dashboard.html');
+  document.getElementById('goToDashboard')?.addEventListener('click', () => window.location.href = 'dashboard.html');
+
+</script>
+    
+<div class="overlay" id="overlay">
+  <div class="loader">
+    <div class="ring" aria-hidden="true"></div>
+    <p>Probíhá přihlášení…</p>
+  </div>
+</div>
+
+
+</body>
+</html>
