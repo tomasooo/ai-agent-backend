@@ -196,6 +196,27 @@ app.post('/api/auth/google', async (req, res) => {
     }
 });
 
+app.post('/api/accounts/set-active', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, active } = req.body;
+    if (!dashboardUserEmail || !email || typeof active !== 'boolean') {
+      return res.json({ success: false, message: 'Chybné parametry.' });
+    }
+
+    // TODO: ulož do DB – pseudokód:
+    // await Accounts.updateOne(
+    //   { dashboardUserEmail, email },
+    //   { $set: { active } }
+    // );
+
+    // vrať aktuální stav účtu (volitelné)
+    return res.json({ success: true, message: 'Stav účtu uložen.' });
+  } catch (e) {
+    console.error(e);
+    res.json({ success: false, message: 'Server error' });
+  }
+});
+
 
 
 // ENDPOINT PRO ZPRACOVÁNÍ SOUHLASU OD GOOGLE (PROPOJENÍ)
@@ -855,6 +876,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
