@@ -250,6 +250,78 @@ app.post('/api/auth/google', async (req, res) => {
     }
 });
 
+
+
+
+app.get('/api/auth/has-password', async (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.status(400).json({ success: false, message: 'Chybí email.' });
+
+  const client = await pool.connect();
+  try {
+    const r = await client.query('SELECT password_hash IS NOT NULL AS has_password FROM dashboard_users WHERE email=$1', [email]);
+    if (r.rowCount === 0) return res.json({ success: true, hasPassword: false });
+    return res.json({ success: true, hasPassword: !!r.rows[0].has_password });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ success: false, message: 'Chyba dotazu.' });
+  } finally {
+    client.release();
+  }
+});
+
+
+
+
+app.post('/api/auth/change-password', async (req, res) => {
+  const { email, currentPassword, newPassword, newPasswordConfirm } = req.body || {};
+  if (!email || !newPassword || !newPasswordConfirm) {
+    return res.status(400).json({ success: false, message: 'Chybí povinná pole.' });
+  }
+  if (newPassword !== newPasswordConfirm) {
+    return res.status(400).json({ success: false, message: 'Nová hesla se neshodují.' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ success: false, message: 'Heslo musí mít alespoň 8 znaků.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      'SELECT password_hash FROM dashboard_users WHERE email=$1',
+      [email]
+    );
+    if (r.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Uživatel nenalezen.' });
+    }
+
+    const oldHash = r.rows[0].password_hash;
+
+    // a) Uživatel už heslo má → ověř currentPassword
+    if (oldHash) {
+      const ok = await bcrypt.compare(currentPassword || '', oldHash);
+      if (!ok) return res.status(401).json({ success: false, message: 'Současné heslo není správné.' });
+
+      // nepovolit stejné heslo
+      const same = await bcrypt.compare(newPassword, oldHash);
+      if (same) return res.status(400).json({ success: false, message: 'Nové heslo se nesmí shodovat se současným.' });
+    }
+    // b) Uživatel nemá heslo (Google-only) → povolit „první nastavení“ bez současného hesla
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+    await client.query('UPDATE dashboard_users SET password_hash=$1, email_verified=true WHERE email=$2', [newHash, email]);
+
+    return res.json({ success: true, message: oldHash ? 'Heslo bylo změněno.' : 'Heslo bylo nastaveno.' });
+  } catch (e) {
+    console.error('CHANGE PASSWORD ERROR', e);
+    return res.status(500).json({ success: false, message: 'Změna hesla selhala.' });
+  } finally {
+    client.release();
+  }
+});
+
+
+
 app.post('/api/accounts/set-active', async (req, res) => {
  const { dashboardUserEmail, email, active } = req.body;
   if (!dashboardUserEmail || !email || typeof active !== 'boolean') {
@@ -1030,6 +1102,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
