@@ -152,6 +152,21 @@ await client.query(`
   );
 `);
 
+        await client.query(`
+  CREATE TABLE IF NOT EXISTS templates (
+    id SERIAL PRIMARY KEY,
+    dashboard_user_email VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(100) DEFAULT 'Obecné',
+    content TEXT NOT NULL,
+    uses INT DEFAULT 0,
+    success_rate NUMERIC(5,2) DEFAULT 0.00,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
+  );
+`);
+
 
         
         console.log("✅ Databázové tabulky pro víceuživatelský provoz jsou připraveny.");
@@ -980,6 +995,109 @@ app.get('/api/settings', async (req, res) => {
 
 
 
+app.get('/api/templates', async (req, res) => {
+  const email = req.query.dashboardUserEmail;
+  if (!email) return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail' });
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      `SELECT id, name, category, content, uses, success_rate, created_at, updated_at
+       FROM templates
+       WHERE dashboard_user_email=$1
+       ORDER BY updated_at DESC`,
+      [email]
+    );
+    res.json({ success:true, templates:r.rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Nepodařilo se načíst šablony' });
+  } finally { client.release(); }
+});
+
+// Create
+app.post('/api/templates', async (req, res) => {
+  const { dashboardUserEmail, name, category, content } = req.body || {};
+  if (!dashboardUserEmail || !name || !content) {
+    return res.status(400).json({ success:false, message:'Chybí data' });
+  }
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      `INSERT INTO templates (dashboard_user_email, name, category, content)
+       VALUES ($1,$2,$3,$4)
+       RETURNING id, name, category, content, uses, success_rate, created_at, updated_at`,
+      [dashboardUserEmail, name, category || 'Obecné', content]
+    );
+    res.json({ success:true, template:r.rows[0] });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Nepodařilo se vytvořit šablonu' });
+  } finally { client.release(); }
+});
+
+// Update
+app.put('/api/templates/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const { dashboardUserEmail, name, category, content } = req.body || {};
+  if (!dashboardUserEmail || !id || !name || !content) {
+    return res.status(400).json({ success:false, message:'Chybí data' });
+  }
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      `UPDATE templates
+       SET name=$1, category=$2, content=$3, updated_at=NOW()
+       WHERE id=$4 AND dashboard_user_email=$5
+       RETURNING id, name, category, content, uses, success_rate, created_at, updated_at`,
+      [name, category || 'Obecné', content, id, dashboardUserEmail]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ success:false, message:'Šablona nenalezena' });
+    res.json({ success:true, template:r.rows[0] });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Nepodařilo se upravit šablonu' });
+  } finally { client.release(); }
+});
+
+// Delete
+app.delete('/api/templates/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const email = req.query.dashboardUserEmail;
+  if (!email || !id) return res.status(400).json({ success:false, message:'Chybí data' });
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      `DELETE FROM templates WHERE id=$1 AND dashboard_user_email=$2`,
+      [id, email]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ success:false, message:'Šablona nenalezena' });
+    res.json({ success:true, message:'Šablona smazána' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Nepodařilo se smazat šablonu' });
+  } finally { client.release(); }
+});
+
+// (Volitelné) inkrementace použití po odeslání mailu s template_id
+app.post('/api/templates/:id/increment-use', async (req,res) => {
+  const id = Number(req.params.id);
+  const email = req.body?.dashboardUserEmail;
+  if (!email || !id) return res.status(400).json({ success:false, message:'Chybí data' });
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `UPDATE templates SET uses = uses + 1, updated_at=NOW()
+       WHERE id=$1 AND dashboard_user_email=$2`,
+      [id, email]
+    );
+    res.json({ success:true });
+  } catch(e){
+    console.error(e);
+    res.status(500).json({ success:false });
+  } finally { client.release(); }
+});
+
+
 
 
 
@@ -1102,6 +1220,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
