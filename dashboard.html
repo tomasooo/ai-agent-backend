@@ -2094,7 +2094,7 @@ const dashboardUserEmail = localStorage.getItem('userEmail'); // majitel dashboa
 let primaryEmail = localStorage.getItem('primaryEmail') || '';
 // =============== SYNC PŘIPOJENÝCH ÚČTŮ S BACKENDEM (PŘIDEJ) ===============
 async function fetchConnectedEmailsFromServer() {
-  if (!dashboardUserEmail) return [];
+if (!dashboardUserEmail) return [];
 
   const urls = [
     `https://ai-email-server-stejdesign.onrender.com/api/accounts?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`,
@@ -2103,11 +2103,10 @@ async function fetchConnectedEmailsFromServer() {
 
   for (const u of urls) {
     try {
-      const r = await fetch(u);
+      const r = await fetch(u, { cache: 'no-store' });  // <<< důležité
       const j = await r.json();
       if (j && j.success) {
-        // podpora obou formátů: [{email,active}] i ["a@b.cz", ...]
-        if (Array.isArray(j.accounts)) return j.accounts;
+        if (Array.isArray(j.accounts)) return j.accounts;                         // [{email, active}]
         if (Array.isArray(j.emails))   return j.emails.map(e => ({ email: e, active: true }));
       }
     } catch (_) {}
@@ -2743,54 +2742,43 @@ async function disconnectAccount(email) {
     if (!confirm(`Opravdu chcete odpojit účet ${email}?`)) return;
 
   const dashboardUserEmail = localStorage.getItem('userEmail');
-  if (!dashboardUserEmail) {
-    showToast('Nejste přihlášen.', 'error');
-    return;
-  }
+  if (!dashboardUserEmail) { showToast('Nejste přihlášen.', 'error'); return; }
 
   try {
-    // 1) odpojit na serveru + smazat v DB (a zneplatnit token u Google)
     const res = await fetch('https://ai-email-server-stejdesign.onrender.com/api/oauth/google/revoke', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, dashboardUserEmail })
     });
     const data = await res.json();
-    if (!data.success) {
-      showToast(data.message || 'Nepodařilo se odpojit účet.', 'error');
-      return;
-    }
+    if (!data.success) { showToast(data.message || 'Nepodařilo se odpojit účet.', 'error'); return; }
 
-    // 2) znovu stáhnout aktuální seznam účtů ze serveru (source of truth)
-    const serverEmails = await fetchConnectedEmailsFromServer();
-    setConnectedEmailsLS(serverEmails); // přepiš localStorage stavem z DB
+    // ⬇⬇⬇ DŮLEŽITÉ: stáhni z DB a ulož do paměti i do LS (volitelně)
+    const serverAccs = await fetchConnectedEmailsFromServer();
+    setConnectedAccounts(serverAccs);          // <<< přepiš stav, ze kterého se renderuje
+    // setConnectedEmailsLS(serverAccs);      // pokud už LS nepoužíváš jinde, můžeš klidně zrušit
 
-    // 3) pokud jsme odpojili primární, zvol nový (nebo smaž nastavení)
+    // pokud jsme odpojili primární, nastav nového
     const currentPrimary = localStorage.getItem('primaryEmail');
     if (currentPrimary === email) {
-      const newPrimary = serverEmails[0] || null;
-      if (newPrimary) localStorage.setItem('primaryEmail', newPrimary);
+      const firstEmail = serverAccs[0]?.email;
+      if (firstEmail) localStorage.setItem('primaryEmail', firstEmail);
       else localStorage.removeItem('primaryEmail');
     }
 
-    // 4) překreslit UI + případně načíst settings a emaily pro nový primární
     renderConnectedAccounts();
 
     const newPrimaryAfter = localStorage.getItem('primaryEmail');
     if (newPrimaryAfter) {
-      // jen když je něco vybrané
       await loadSettings();
       const emailsPageActive = document.getElementById('emails')?.classList.contains('active');
       if (emailsPageActive) fetchEmails();
     } else {
-      // když už nemáš žádný účet
       if (emailListContainer)
         emailListContainer.innerHTML = `<div class="empty-state"><h3>Nemáte připojený žádný účet</h3><p>Přidejte si účet v Nastavení → Email účty.</p></div>`;
     }
 
-    // 5) aktualizovat limity (progres bar) – důležité kvůli přechodu na Starter
     await loadLimits();
-
     showToast('Účet byl úspěšně odpojen.', 'success');
   } catch (err) {
     console.error(err);
@@ -2812,14 +2800,14 @@ async function initializeDashboard() {
   }
 
   // 1) stáhni připojené účty z backendu a ulož do localStorage
-  const connectedEmails = await syncConnectedEmails();
-
-  // 2) nastav/validuj primární účet
   let currentPrimary = localStorage.getItem('primaryEmail');
+const connectedEmails = await syncConnectedEmails();
+
 if (!currentPrimary || !connectedEmails.some(a => a.email === currentPrimary)) {
-  currentPrimary = connectedEmails[0]?.email || null;
-  if (currentPrimary) localStorage.setItem('primaryEmail', currentPrimary);
+  const firstEmail = connectedEmails[0]?.email || null;
+  if (firstEmail) localStorage.setItem('primaryEmail', firstEmail);
   else localStorage.removeItem('primaryEmail');
+  currentPrimary = firstEmail;
 }
 
   // 3) vykresli seznam účtů + stav „Nastavuji: ...“
