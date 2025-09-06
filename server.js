@@ -404,7 +404,46 @@ app.post('/api/style-examples/ingest', async (req, res) => {
 });
 
 
+const cryptoNode = require('crypto');
 
+function parseEncKey() {
+  const raw = process.env.CUSTOM_EMAIL_KEY || '';
+  if (!raw) throw new Error('CUSTOM_EMAIL_KEY is missing');
+
+  // 64 hex znaků = 32 bytů
+  if (/^[0-9a-fA-F]{64}$/.test(raw)) return Buffer.from(raw, 'hex');
+
+  // base64 (doplníme padding)
+  const looksBase64 = /^[A-Za-z0-9+/]+={0,2}$/.test(raw);
+  if (looksBase64) return Buffer.from(raw, 'base64');
+
+  // fallback: oříznout/napadovat na 32B
+  const buf = Buffer.from(raw);
+  if (buf.length >= 32) return buf.subarray(0,32);
+  const out = Buffer.alloc(32);
+  buf.copy(out);
+  return out;
+}
+const ENC_KEY = parseEncKey(); // Buffer o délce 32
+
+function encSecret(plain='') {
+  if (!plain) return '';
+  const iv = cryptoNode.randomBytes(12); // GCM
+  const cipher = cryptoNode.createCipheriv('aes-256-gcm', ENC_KEY, iv);
+  const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, enc]).toString('base64'); // [12B IV][16B TAG][data]
+}
+function decSecret(b64='') {
+  if (!b64) return '';
+  const raw = Buffer.from(b64, 'base64');
+  const iv = raw.subarray(0,12);
+  const tag = raw.subarray(12,28);
+  const data = raw.subarray(28);
+  const decipher = cryptoNode.createDecipheriv('aes-256-gcm', ENC_KEY, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
+}
 
 
 
@@ -1909,6 +1948,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
