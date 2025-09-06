@@ -332,6 +332,28 @@ app.get('/api/auth/has-password', async (req, res) => {
 
 
 
+app.get('/api/style-profile', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, rebuild } = req.query;
+    if (!dashboardUserEmail || !email) {
+      return res.status(400).json({ success:false, message:'Chybí parametry' });
+    }
+
+    // ⬇ sem použij tvůj loader/builder z předchozí části
+    const profile = await loadStyleProfile({
+      dashboardUserEmail,
+      email,
+      forceRebuild: rebuild === '1'   // volitelně přegeneruje z historie
+    });
+
+    return res.json({ success:true, style_profile: profile });
+  } catch (e) {
+    console.error('STYLE_PROFILE ERROR', e);
+    return res.status(500).json({ success:false, message:'Chyba při čtení profilu' });
+  }
+});
+
+
 
 
 app.post('/api/templates/render', async (req, res) => {
@@ -1592,6 +1614,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
