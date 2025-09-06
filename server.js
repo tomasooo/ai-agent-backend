@@ -333,23 +333,87 @@ app.get('/api/auth/has-password', async (req, res) => {
 
 
 app.get('/api/style-profile', async (req, res) => {
+  const { dashboardUserEmail, email, debug } = req.query || {};
+  if (!dashboardUserEmail || !email) {
+    return res.status(400).json({ success:false, message:'Chybí parametry (dashboardUserEmail, email).' });
+  }
+
+  let client;
   try {
-    const { dashboardUserEmail, email, rebuild } = req.query;
-    if (!dashboardUserEmail || !email) {
-      return res.status(400).json({ success:false, message:'Chybí parametry' });
+    client = await pool.connect();
+
+    // 1) Ověř, že tabulka existuje
+    const t = await client.query(`
+      SELECT to_regclass('public.style_examples') AS exists
+    `);
+    if (!t.rows[0].exists) {
+      return res.status(200).json({
+        success: true,
+        message: 'Tabulka style_examples neexistuje – spusť SQL migraci (viz níže).',
+        profile: null,
+        examples: 0
+      });
     }
 
-    // ⬇ sem použij tvůj loader/builder z předchozí části
-    const profile = await loadStyleProfile({
-      dashboardUserEmail,
-      email,
-      forceRebuild: rebuild === '1'   // volitelně přegeneruje z historie
-    });
+    // 2) Načti poslední příklady pro daný účet
+    const q = await client.query(
+      `SELECT role, subject, body, created_at
+         FROM style_examples
+        WHERE dashboard_user_email = $1 AND connected_email = $2
+        ORDER BY created_at DESC
+        LIMIT 200`,
+      [dashboardUserEmail, email]
+    );
 
-    return res.json({ success:true, style_profile: profile });
-  } catch (e) {
-    console.error('STYLE_PROFILE ERROR', e);
-    return res.status(500).json({ success:false, message:'Chyba při čtení profilu' });
+    const examples = q.rows || [];
+    if (!examples.length) {
+      return res.json({
+        success: true,
+        message: 'Pro tento účet zatím nejsou uloženy žádné příklady.',
+        profile: null,
+        examples: 0
+      });
+    }
+
+    // 3) Sestav jednoduchý profil (klidně stejné jako jsme řešili dřív)
+    const outgoing = examples.filter(e => e.role === 'outgoing');
+    const endings = [];
+    const greetings = [];
+    for (const e of outgoing) {
+      const body = (e.body || '').trim();
+      if (!body) continue;
+      // naivní detekce pozdravu a závěru
+      const lines = body.split('\n').map(s => s.trim()).filter(Boolean);
+      if (lines.length) {
+        greetings.push(lines[0]);
+        endings.push(lines.slice(-1)[0]);
+      }
+    }
+
+    const profile = {
+      default_tone: 'Profesionální',
+      default_length: 'Adaptivní',
+      common_greetings: [...new Set(greetings)].slice(0, 5),
+      common_endings:  [...new Set(endings)].slice(0, 5),
+      // sem si můžeš později přidat další statistiky
+    };
+
+    return res.json({
+      success: true,
+      profile,
+      examples: examples.length,
+      hint: 'Použij tento profil v promptu (SYSTÉMOVÁ INSTRUKCE).',
+      debug: debug ? { sample: examples.slice(0,3) } : undefined
+    });
+  } catch (err) {
+    console.error('[STYLE-PROFILE] Error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Chyba při čtení profilu',
+      detail: debug ? String(err?.message || err) : undefined
+    });
+  } finally {
+    client?.release?.();
   }
 });
 
@@ -1614,6 +1678,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
