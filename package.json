@@ -21,6 +21,7 @@
     "googleapis": "^154.1.0",
     "imapflow": "^1.0.195",
     "jsonwebtoken": "^9.0.2",
+    "mailparser": "^3.7.4",
     "nodemailer": "^7.0.6",
     "pg": "^8.16.3"
   }
