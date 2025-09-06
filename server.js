@@ -288,6 +288,85 @@ app.get('/api/auth/has-password', async (req, res) => {
 
 
 
+
+app.post('/api/templates/render', async (req, res) => {
+  try {
+    const { dashboardUserEmail, templateId, content, variables, context } = req.body || {};
+    if (!dashboardUserEmail || (!templateId && !content)) {
+      return res.status(400).json({ success:false, message:'Chybí data' });
+    }
+
+    const client = await pool.connect();
+    let tplText = content;
+    if (!tplText) {
+      const r = await client.query(
+        'SELECT content FROM templates WHERE id=$1 AND dashboard_user_email=$2',
+        [templateId, dashboardUserEmail]
+      );
+      if (r.rowCount === 0) {
+        client.release();
+        return res.status(404).json({ success:false, message:'Šablona nenalezena' });
+      }
+      tplText = r.rows[0].content;
+    }
+
+    // 1) Nahrazení manuálních proměnných {{var}}
+    let filled = String(tplText);
+    if (variables && typeof variables === 'object') {
+      for (const [key, val] of Object.entries(variables)) {
+        const re = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
+        filled = filled.replace(re, val ?? '');
+      }
+    }
+
+    // 2) Najdi AI sloty [[AI: ...]]
+    const aiSlotRegex = /\[\[\s*AI\s*:(.*?)\]\]/gs;
+    const slots = [...filled.matchAll(aiSlotRegex)];
+    if (slots.length) {
+      // vyrob společný kontext
+      const emailBody = context?.emailBody || '';
+      const analysis  = context?.analysis  || {};
+      const settings  = context?.settings  || {};
+
+      // postupně dopočítej každé místo
+      for (const m of slots) {
+        const whole  = m[0];
+        const instr  = (m[1] || '').trim();
+
+        const prompt = `Úkol: ${instr}
+---
+Kontext emailu (text):
+${emailBody.slice(0, 4000)}
+
+Analýza (JSON):
+${JSON.stringify(analysis).slice(0, 2000)}
+
+Preferovaný tón: ${settings.tone || 'Formální'}
+Délka: ${settings.length || 'Střední (1 odstavec)'}
+Podpis (pokud relevantní přidej až na konec): ${settings.signature || ''}
+
+Odpověz pouze textem bez dalších vysvětlivek.`;
+
+        const out = await model.generateContent(prompt);
+        const aiText = out?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        filled = filled.replace(whole, aiText.trim());
+      }
+    }
+
+    client.release();
+    return res.json({ success:true, rendered: filled });
+  } catch (e) {
+    console.error('TEMPLATE RENDER ERROR', e);
+    return res.status(500).json({ success:false, message:'Render selhal' });
+  }
+});
+
+
+
+
+
+
+
 app.post('/api/auth/change-password', async (req, res) => {
   const { email, currentPassword, newPassword, newPasswordConfirm } = req.body || {};
   if (!email || !newPassword || !newPasswordConfirm) {
@@ -997,16 +1076,23 @@ app.get('/api/settings', async (req, res) => {
 
 app.get('/api/templates', async (req, res) => {
   const email = req.query.dashboardUserEmail;
+  const category = req.query.category;
   if (!email) return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail' });
   const client = await pool.connect();
   try {
-    const r = await client.query(
-      `SELECT id, name, category, content, uses, success_rate, created_at, updated_at
-       FROM templates
-       WHERE dashboard_user_email=$1
-       ORDER BY updated_at DESC`,
-      [email]
-    );
+    const args = [email];
+    let sql = `
+      SELECT id, name, category, content, uses, success_rate, created_at, updated_at
+      FROM templates
+      WHERE dashboard_user_email=$1
+    `;
+    if (category && category !== 'Vše') {
+      sql += ' AND category = $2';
+      args.push(category);
+    }
+    sql += ' ORDER BY updated_at DESC';
+
+    const r = await client.query(sql, args);
     res.json({ success:true, templates:r.rows });
   } catch (e) {
     console.error(e);
@@ -1220,6 +1306,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
