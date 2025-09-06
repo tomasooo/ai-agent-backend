@@ -139,19 +139,34 @@ async function setupDatabase() {
         // 3. Tabulka pro nastavení, nyní s vazbou na uživatele i připojený účet
         await client.query(`
             CREATE TABLE IF NOT EXISTS settings (
-                dashboard_user_email VARCHAR(255) NOT NULL,
-                connected_email VARCHAR(255) NOT NULL,
-                tone VARCHAR(50) DEFAULT 'Formální',
-                length VARCHAR(50) DEFAULT 'Střední (1 odstavec)',
-                signature TEXT DEFAULT '',
-                auto_reply BOOLEAN DEFAULT true,
-                approval_required BOOLEAN DEFAULT true,
-                spam_filter BOOLEAN DEFAULT true,
-                PRIMARY KEY (dashboard_user_email, connected_email),
-                FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE,
-                FOREIGN KEY (connected_email) REFERENCES connected_accounts(email) ON DELETE CASCADE
-            );
+    dashboard_user_email VARCHAR(255) NOT NULL,
+    connected_email VARCHAR(255) NOT NULL,
+    tone VARCHAR(50) DEFAULT 'Formální',
+    length VARCHAR(50) DEFAULT 'Střední (1 odstavec)',
+    signature TEXT DEFAULT '',
+    auto_reply BOOLEAN DEFAULT true,
+    approval_required BOOLEAN DEFAULT true,
+    spam_filter BOOLEAN DEFAULT true,
+    PRIMARY KEY (dashboard_user_email, connected_email),
+    FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
+    -- POZOR: žádný FK na connected_accounts, ať to funguje i pro custom účty
+  );
         `);
+
+
+      await client.query(`
+  DO $$ BEGIN
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.table_constraints tc
+      WHERE tc.constraint_type = 'FOREIGN KEY'
+        AND tc.table_name = 'settings'
+        AND tc.constraint_name = 'settings_connected_email_fkey'
+    ) THEN
+      ALTER TABLE settings DROP CONSTRAINT settings_connected_email_fkey;
+    END IF;
+  END $$;
+`);
 
       await client.query(`
   CREATE TABLE IF NOT EXISTS custom_accounts (
@@ -1585,6 +1600,11 @@ app.post('/api/oauth/google/revoke', async (req, res) => {
 });
 
 
+await client.query(
+  'DELETE FROM settings WHERE dashboard_user_email=$1 AND connected_email=$2',
+  [dashboardUserEmail, email]
+);
+
 
 // === NOVÝ ENDPOINT PRO ODESLÁNÍ ODPOVĚDI ===
 app.post('/api/gmail/send-reply', async (req, res) => {
@@ -1659,75 +1679,176 @@ const consume = await tryConsumeAiAction(db, dashboardUserEmail);
 
 
 
-// UPRAVENÝ ENDPOINT PRO NAČTENÍ EMAILŮ S FILTROVÁNÍM
 app.get('/api/gmail/emails', async (req, res) => {
+  let db;
   try {
     const { email, dashboardUserEmail, status, period, searchQuery } = req.query;
     if (!email || !dashboardUserEmail) {
       return res.status(400).json({ success: false, message: "Chybí email nebo dashboardUserEmail." });
     }
 
-    const db = await pool.connect();
+    db = await pool.connect();
+
+    // 1) Zkusíme Gmail účet
     const acc = await db.query(
       'SELECT refresh_token, active FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
       [email, dashboardUserEmail]
     );
-    db.release();
+
+    // 2) Pokud není v Gmail tabulce, zkusíme custom IMAP
+    let isCustom = false;
+    let customRow = null;
 
     if (acc.rowCount === 0) {
-      return res.status(404).json({ success: false, message: "Účet nenalezen." });
+      const r = await db.query(`
+        SELECT imap_host, imap_port, imap_secure, enc_username, enc_password, active
+        FROM custom_accounts
+        WHERE dashboard_user_email=$1 AND email_address=$2
+        LIMIT 1
+      `, [dashboardUserEmail, email]);
+
+      if (r.rowCount === 0) {
+        db.release();
+        return res.status(404).json({ success: false, message: "Účet nenalezen." });
+      }
+      isCustom = true;
+      customRow = r.rows[0];
     }
-    if (acc.rows[0].active === false) {
+
+    // 3) Kontrola "active"
+    if (!isCustom && acc.rows[0].active === false) {
+      db.release();
+      return res.status(403).json({ success: false, message: "Tento účet je neaktivní." });
+    }
+    if (isCustom && customRow.active === false) {
+      db.release();
       return res.status(403).json({ success: false, message: "Tento účet je neaktivní." });
     }
 
-    const refreshToken = acc.rows[0].refresh_token;
-        if (!refreshToken) {
-            return res.status(404).json({ success: false, message: "Pro tento email u tohoto uživatele nebyl nalezen token." });
+    // === Gmail větev ===
+    if (!isCustom) {
+      const refreshToken = acc.rows[0].refresh_token;
+      if (!refreshToken) {
+        db.release();
+        return res.status(404).json({ success: false, message: "Pro tento email u tohoto uživatele nebyl nalezen token." });
+      }
+
+      db.release();
+
+      oauth2Client.setCredentials({ refresh_token: refreshToken });
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+      const queryParts = [];
+      if (status === 'unread') queryParts.push('is:unread');
+      if (status === 'spam') queryParts.push('in:spam');
+      if (period === 'today') queryParts.push('newer_than:1d');
+      if (period === 'week') queryParts.push('newer_than:7d');
+      if (searchQuery) queryParts.push(String(searchQuery));
+      const finalQuery = queryParts.join(' ');
+
+      const listResponse = await gmail.users.messages.list({
+        userId: 'me',
+        maxResults: 10,
+        q: finalQuery
+      });
+
+      const messageIds = listResponse.data.messages || [];
+      if (messageIds.length === 0) {
+        return res.json({ success: true, emails: [], total: 0 });
+      }
+
+      const emails = await Promise.all(messageIds.map(async (m) => {
+        const mr = await gmail.users.messages.get({
+          userId: 'me',
+          id: m.id,
+          format: 'metadata',
+          metadataHeaders: ['Subject', 'From', 'Date']
+        });
+        const headers = mr.data.payload.headers || [];
+        const getHeader = (n) => headers.find(h => h.name === n)?.value || '';
+        return {
+          id: m.id,
+          snippet: mr.data.snippet,
+          sender: getHeader('From'),
+          subject: getHeader('Subject'),
+          date: getHeader('Date')
+        };
+      }));
+
+      return res.json({ success: true, emails, total: listResponse.data.resultSizeEstimate });
+    }
+
+    // === Custom IMAP větev ===
+    try {
+      const user = decSecret(customRow.enc_username);
+      const pass = decSecret(customRow.enc_password);
+
+      const imap = new ImapFlow({
+        host: customRow.imap_host,
+        port: Number(customRow.imap_port),
+        secure: !!customRow.imap_secure,
+        auth: { user, pass }
+      });
+
+      await imap.connect();
+      await imap.mailboxOpen('INBOX');
+
+      const out = [];
+      let fetched = 0;
+
+      // Připravíme si datumové filtry pro "today" a "week"
+      const now = new Date();
+      const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
+      const oneWeekAgo = new Date(now); oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+      // Načti posledních ~500 zpráv a filtruj v JS (jednoduché a spolehlivé)
+      const startSeq = Math.max(1, imap.mailbox.exists - 500);
+      for await (let msg of imap.fetch(
+        { seq: `${startSeq}:*` },
+        { uid: true, envelope: true, internalDate: true, flags: true }
+      )) {
+        // Filtrování: unread
+        if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
+
+        // Filtrování: period
+        const d = msg.internalDate;
+        if (period === 'today' && (!d || d < startOfToday)) continue;
+        if (period === 'week' && (!d || d < oneWeekAgo)) continue;
+
+        const subj = msg.envelope?.subject || '';
+        const from = msg.envelope?.from?.map(a => a.address || a.name).join(', ') || '';
+
+        // Filtrování: searchQuery (na subject + from)
+        if (searchQuery) {
+          const q = String(searchQuery).toLowerCase();
+          if (!subj.toLowerCase().includes(q) && !from.toLowerCase().includes(q)) continue;
         }
 
-        oauth2Client.setCredentials({ refresh_token: refreshToken });
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-        const queryParts = [];
-        if (status === 'unread') queryParts.push('is:unread');
-        if (status === 'spam') queryParts.push('in:spam');
-        if (period === 'today') queryParts.push('newer_than:1d');
-        if (period === 'week') queryParts.push('newer_than:7d');
-        if (searchQuery) queryParts.push(searchQuery);
-        const finalQuery = queryParts.join(' ');
-
-        const listResponse = await gmail.users.messages.list({
-            userId: 'me',
-            maxResults: 10,
-            q: finalQuery
+        out.push({
+          id: String(msg.uid),        // sjednocené jméno pole jako u Gmailu
+          snippet: '',                // (volitelně lze doplnit přes body peek)
+          sender: from,
+          subject: subj,
+          date: d ? d.toISOString() : null
         });
 
-        const messageIds = listResponse.data.messages || [];
-        if (messageIds.length === 0) {
-            return res.json({ success: true, emails: [], total: 0 });
-        }
+        if (++fetched >= 10) break;   // stejné „maxResults“ jako u Gmailu
+      }
 
-        const emails = await Promise.all(messageIds.map(async (m) => {
-            const mr = await gmail.users.messages.get({
-                userId: 'me', id: m.id, format: 'metadata', metadataHeaders: ['Subject', 'From', 'Date']
-            });
-            const headers = mr.data.payload.headers;
-            const getHeader = (n) => headers.find(h => h.name === n)?.value || '';
-            return {
-                id: m.id,
-                snippet: mr.data.snippet,
-                sender: getHeader('From'),
-                subject: getHeader('Subject'),
-                date: getHeader('Date')
-            };
-        }));
-
-        res.json({ success: true, emails, total: listResponse.data.resultSizeEstimate });
-    } catch (error) {
-        console.error("Chyba při načítání emailů:", error.message);
-        res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily." });
+      await imap.logout();
+      db.release();
+      return res.json({ success: true, emails: out, total: out.length });
+    } catch (e) {
+      db.release();
+      console.error("Chyba IMAP:", e);
+      return res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily (custom)." });
     }
+
+  } catch (error) {
+    if (db) db.release();
+    console.error("Chyba při načítání emailů:", error.message);
+    return res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily." });
+  }
 });
 
 
@@ -2238,6 +2359,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
