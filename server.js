@@ -319,6 +319,96 @@ app.post('/api/templates/render', async (req, res) => {
       }
     }
 
+/* === 1.5) AI doplnění chybějících {{proměnných}} z emailu (rozšířená verze) === */
+try {
+  // 1) Seznam chybějících klíčů
+  const missingKeys = Array.from(new Set(
+    [...filled.matchAll(/{{\s*([a-zA-Z0-9_]+)\s*}}/g)].map(m => m[1])
+  ));
+
+  if (missingKeys.length) {
+    const emailBody = context?.emailBody || '';
+    const analysis  = context?.analysis  || {};
+    const settings  = context?.settings  || {};
+    const meta      = context?.meta      || {}; // { subject, from, date }
+
+    // 2) Prompt se speciálními pravidly pro tvoje klíče
+    const promptVars = `Jsi asistent pro doplňování proměnných v šabloně emailu.
+Máš seznam proměnných, metadata a text původního emailu. Pokud informaci NELZE spolehlivě vyčíst,
+dej null nebo prázdný řetězec. NEVYMÝŠLEJ nesmysly.
+
+Vrať POUZE JSON objekt { "klic": "hodnota", ... } bez dalšího textu.
+
+Proměnné k doplnění:
+${JSON.stringify(missingKeys)}
+
+Metadata (např. subject, from):
+${JSON.stringify(meta).slice(0,1000)}
+
+Analýza (pokud je k dispozici):
+${JSON.stringify(analysis).slice(0,1200)}
+
+Text emailu:
+${emailBody.slice(0, 4000)}
+
+Speciální pravidla a mapování:
+- recipientName: vytvoř vhodné ČESKÉ oslovení ("paní Nováková"/"pane Dvořáku") podle „From:“ nebo podpisu.
+- senderName: když nejde zjistit, nech null (doplní se ze signature aplikace).
+- orderNumber: hledej tvary jako "#2025-0915", "objednávka 12345", "Order 12345".
+- issue: jednou větou stručně pojmenuj problém.
+- product: název produktu/služby z předmětu/textu; krátce, bez okolí.
+- price: číslo + měna přesně jak v emailu, např. "8 990 Kč" / "€120".
+- deliveryTime: např. "3–5 pracovních dní" (pokud je to v emailu).
+- company: název firmy z podpisu, From: nebo domény; uveď jen název.
+- painPoint: shrň hlavní problém firmy jednou krátkou frází.
+- kpi: pojmenuj sledovaný ukazatel (např. "konverzní poměr", "náklady na akvizici").
+- kpiValue: číselně s jednotkou (např. "32 %", "20 %", "1,5 s"), jen když je to v emailu; jinak null.
+- timeframe: např. "30 dní", "6 týdnů", pokud se dá rozumně odhadnout z textu; jinak null.
+- step1, step2, step3: navrhni tři KONKRÉTNÍ krátké kroky (imperativně), bez úvodních frází.
+- slot1, slot2: navrhni dva KONKRÉTNÍ termíny pro 15min call v blízké budoucnosti (např. "středa 14:00", "čtvrtek 10:00"); respektuj češtinu.
+- solutionOptionA, solutionOptionB: navrhni dvě realistické varianty řešení úměrné "issue" (např. "výměna za nový kus", "refundace po vrácení zboží po doručení").
+- Hodnoty piš stručně, bez uvozovek navíc a bez vysvětlování.`;
+
+    const ai = await model.generateContent(promptVars);
+    const raw = ai?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const inferred = JSON.parse(raw.replace(/```json|```/g, '').trim() || '{}');
+
+    // 3) Defaultní fallbacky (když AI/zdroj nic nedá)
+    const DEFAULTS = {
+      solutionOptionA: 'výměna za nový kus',
+      solutionOptionB: 'refundace po vrácení zboží',
+      kpi: 'konverzní poměr',
+      timeframe: '', // raději prázdné, ať si doplníš sám
+    };
+
+    // fallback pro senderName ze signature (první řádek)
+    if ((inferred?.senderName == null || inferred.senderName === '') && settings?.signature) {
+      const firstLine = (settings.signature || '').split('\n')[0].trim().replace(/^[-–—\s]*/, '');
+      if (firstLine) inferred.senderName = firstLine;
+    }
+
+    // 4) Aplikace doplněných hodnot do šablony + defaulty
+    for (const key of missingKeys) {
+      let val = (inferred?.[key] ?? '').toString().trim();
+
+      if (!val && Object.prototype.hasOwnProperty.call(DEFAULTS, key)) {
+        val = DEFAULTS[key];
+      }
+
+      if (val) {
+        const re = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
+        filled = filled.replace(re, val);
+      }
+    }
+  }
+} catch (err) {
+  console.warn('AI variable fill failed, skipping.', err?.message);
+}
+/* === /1.5) === */
+
+
+      
+
     // 2) Najdi AI sloty [[AI: ...]]
     const aiSlotRegex = /\[\[\s*AI\s*:(.*?)\]\]/gs;
     const slots = [...filled.matchAll(aiSlotRegex)];
@@ -1028,7 +1118,7 @@ ${emailBody.substring(0, 3000)}`;
         const geminiResult = await model.generateContent(prompt);
         const text = geminiResult.response.candidates[0].content.parts[0].text;
         const cleaned = text.replace(/```json|```/g, '');
-        res.json({ success: true, analysis: JSON.parse(cleaned) });
+        res.json({ success: true, analysis: JSON.parse(cleaned), emailBody });
     } catch (error) {
         console.error("Chyba při analýze emailu:", error);
         res.status(500).json({ success: false, message: "Nepodařilo se analyzovat email." });
@@ -1306,6 +1396,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
