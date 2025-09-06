@@ -1164,7 +1164,7 @@ app.post('/api/auth/change-password', async (req, res) => {
 
 
 app.post('/api/accounts/set-active', async (req, res) => {
- const { dashboardUserEmail, email, active } = req.body;
+  const { dashboardUserEmail, email, active } = req.body;
   if (!dashboardUserEmail || !email || typeof active !== 'boolean') {
     return res.status(400).json({ success: false, message: 'Chybné parametry.' });
   }
@@ -1172,15 +1172,29 @@ app.post('/api/accounts/set-active', async (req, res) => {
   let client;
   try {
     client = await pool.connect();
-    const r = await client.query(
+
+    // 1) Gmail účty
+    let r = await client.query(
       `UPDATE connected_accounts
        SET active = $1
        WHERE email = $2 AND dashboard_user_email = $3`,
       [active, email, dashboardUserEmail]
     );
+
+    // 2) Pokud se nenašlo, zkus custom účty
+    if (r.rowCount === 0) {
+      r = await client.query(
+        `UPDATE custom_accounts
+         SET active = $1
+         WHERE email_address = $2 AND dashboard_user_email = $3`,
+        [active, email, dashboardUserEmail]
+      );
+    }
+
     if (r.rowCount === 0) {
       return res.status(404).json({ success: false, message: 'Účet nenalezen.' });
     }
+
     return res.json({ success: true, message: `Účet ${email} byl ${active ? 'aktivován' : 'deaktivován'}.` });
   } catch (e) {
     console.error(e);
@@ -1457,10 +1471,9 @@ async function getUsage(client, dashboardUserEmail) {
 
 async function canAddConnectedAccount(client, dashboardUserEmail) {
   const limits = await getPlanLimits(client, dashboardUserEmail);
-  const r = await client.query(`
-    SELECT COUNT(*)::INT AS c FROM connected_accounts WHERE dashboard_user_email = $1
-  `, [dashboardUserEmail]);
-  const count = r.rows[0].c;
+  const r1 = await client.query(`SELECT COUNT(*)::INT AS c FROM connected_accounts WHERE dashboard_user_email = $1`, [dashboardUserEmail]);
+  const r2 = await client.query(`SELECT COUNT(*)::INT AS c FROM custom_accounts WHERE dashboard_user_email = $1`, [dashboardUserEmail]);
+  const count = r1.rows[0].c + r2.rows[0].c;
   return { ok: count < limits.max_accounts, max: limits.max_accounts, have: count };
 }
 
@@ -1488,30 +1501,40 @@ async function tryConsumeAiAction(client, dashboardUserEmail) {
 
 
 async function listConnectedAccountsHandler(req, res) {
- let client;
+let client;
   try {
     const { dashboardUserEmail } = req.query;
     if (!dashboardUserEmail) {
       return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail.' });
     }
+
     client = await pool.connect();
-    const r = await client.query(
-      'SELECT email, active FROM connected_accounts WHERE dashboard_user_email = $1 ORDER BY created_at ASC',
-      [dashboardUserEmail]
-    );
 
-    // „nový“ tvar pro FE: accounts: [{email, active}]
-    const accounts = r.rows.map(row => ({ email: row.email, active: !!row.active }));
-    // „starý“ fallback tvar jen pro /api/accounts/list: emails: [...]
-    const emails = r.rows.map(row => row.email);
+    const r = await client.query(`
+      SELECT email AS address, active, created_at, 'gmail'::text AS type
+      FROM connected_accounts
+      WHERE dashboard_user_email = $1
+      UNION ALL
+      SELECT email_address AS address, active, created_at, 'custom'::text AS type
+      FROM custom_accounts
+      WHERE dashboard_user_email = $1
+      ORDER BY created_at ASC
+    `, [dashboardUserEmail]);
 
-    // Rozlišíme podle cesty (aby FE fallback pořád fungoval)
+    const accounts = r.rows.map(row => ({
+      email: row.address,
+      active: !!row.active,
+      type: row.type,             // 'gmail' | 'custom' (FE může ignorovat, pokud ho nepotřebuje)
+    }));
+
+    // fallback endpoint udrž: /api/accounts/list → vrací jen pole emailů
     if (req.path.endsWith('/list')) {
-      return res.json({ success: true, emails });
+      return res.json({ success: true, emails: accounts.map(a => a.email) });
     }
+
     return res.json({ success: true, accounts });
   } catch (err) {
-    console.error('Chyba při čtení connected_accounts:', err);
+    console.error('Chyba při čtení accounts:', err);
     return res.status(500).json({ success: false, message: 'Nepodařilo se načíst připojené účty.' });
   } finally {
     if (client) client.release();
@@ -2215,6 +2238,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
