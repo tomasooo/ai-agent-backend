@@ -267,6 +267,51 @@ app.post('/api/auth/google', async (req, res) => {
 
 
 
+app.post('/api/style/learn', async (req,res) => {
+  const { dashboardUserEmail, email, sampleCount=200 } = req.body;
+  try {
+    // 1) načíst zprávy z Gmailu (odeslané)
+    const samples = await fetchSentReplies({ dashboardUserEmail, email, limit: sampleCount });
+
+    // 2) vybrat reprezentativní (např. clustering / náhodný stratifikovaný výběr)
+    const picked = pickRepresentative(samples, 20); // 20 ukázek stačí
+
+    // 3) vyrobit stylový profil přes LLM
+    const prompt = `
+Analyzuj následující e-mailové odpovědi a vytvoř konsolidovaný STYLOVÝ PROFIL ve formátu JSON.
+Zaměř se na:
+- tone ("formální", "neformální", "přátelský-profesionální"…)
+- vykání/tykání
+- délka (krátká/střední/dlouhá), hustota informací
+- struktura (odstavce, odrážky, shrnutí nahoře apod.)
+- typické pozdravy a oslovení (greeting), sign-off (podpis, „S pozdravem…“)
+- používání emoji/odrážek/tučné zvýraznění
+- typické fráze/do & don't
+- jazykové preference (čeština, diakritika, formality)
+Vrať čistý JSON (bez komentářů), klíč "style_profile".
+
+PŘÍKLADY ODPOVĚDÍ:
+${picked.map((t,i)=>`[${i+1}] ${t}`).join('\n\n')}
+    `.trim();
+
+    const styleJson = await callLLMForStyle(prompt);   // tvá utilita pro LLM
+    const style_profile = JSON.parse(styleJson).style_profile;
+
+    await saveStyleProfile({ dashboardUserEmail, email, style_profile });
+
+    res.json({ success:true, style_profile });
+  } catch (e) {
+    res.json({ success:false, message: e.message || 'Learning failed' });
+  }
+});
+
+
+app.get('/api/style/get', async (req,res) => {
+  const { dashboardUserEmail, email } = req.query;
+  const style_profile = await loadStyleProfile({ dashboardUserEmail, email });
+  res.json({ success:true, style_profile: style_profile || null });
+});
+
 
 app.get('/api/auth/has-password', async (req, res) => {
   const email = req.query.email;
@@ -290,50 +335,84 @@ app.get('/api/auth/has-password', async (req, res) => {
 
 
 app.post('/api/templates/render', async (req, res) => {
-  try {
-    const { dashboardUserEmail, templateId, content, variables, context } = req.body || {};
-    if (!dashboardUserEmail || (!templateId && !content)) {
-      return res.status(400).json({ success:false, message:'Chybí data' });
-    }
+  const { dashboardUserEmail, templateId, content, variables, context } = req.body || {};
 
-    const client = await pool.connect();
-    let tplText = content;
+  if (!dashboardUserEmail || (!templateId && !content)) {
+    return res.status(400).json({ success: false, message: 'Chybí data' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+
+    // 0) Získání textu šablony
+    let tplText = String(content ?? '');
     if (!tplText) {
       const r = await client.query(
         'SELECT content FROM templates WHERE id=$1 AND dashboard_user_email=$2',
         [templateId, dashboardUserEmail]
       );
       if (r.rowCount === 0) {
-        client.release();
-        return res.status(404).json({ success:false, message:'Šablona nenalezena' });
+        return res.status(404).json({ success: false, message: 'Šablona nenalezena' });
       }
-      tplText = r.rows[0].content;
+      tplText = String(r.rows[0].content || '');
     }
 
-    // 1) Nahrazení manuálních proměnných {{var}}
-    let filled = String(tplText);
+    // 1) Aplikace ručně dodaných proměnných {{var}}
+    let filled = tplText;
     if (variables && typeof variables === 'object') {
       for (const [key, val] of Object.entries(variables)) {
-        const re = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-        filled = filled.replace(re, val ?? '');
+        const re = new RegExp(`{{\\s*${escapeRegExp(key)}\\s*}}`, 'g');
+        filled = filled.replace(re, String(val ?? ''));
       }
     }
 
-/* === 1.5) AI doplnění chybějících {{proměnných}} z emailu (rozšířená verze) === */
-try {
-  // 1) Seznam chybějících klíčů
-  const missingKeys = Array.from(new Set(
-    [...filled.matchAll(/{{\s*([a-zA-Z0-9_]+)\s*}}/g)].map(m => m[1])
-  ));
+    // === Kontext (co přišlo z FE) ===
+    const ctx = context || {};
+    const emailBody = String(ctx.emailBody || '');
+    const analysis  = ctx.analysis || {};
+    const meta      = ctx.meta || {};        // např. { subject, from, date, account }
+    const settings  = ctx.settings || {};    // např. { tone, length, signature, ... }
 
-  if (missingKeys.length) {
-    const emailBody = context?.emailBody || '';
-    const analysis  = context?.analysis  || {};
-    const settings  = context?.settings  || {};
-    const meta      = context?.meta      || {}; // { subject, from, date }
+    // === STYLE_PROFILE (systémová instrukce) ===
+    let styleProfile = {
+      tone: settings.tone || 'Profesionální',
+      length: settings.length || 'Střední (1 odstavec)',
+      signature: settings.signature || '',
+      language: 'cs-CZ'
+    };
 
-    // 2) Prompt se speciálními pravidly pro tvoje klíče
-const promptVars = `Jsi asistent pro doplňování proměnných v šabloně emailu.
+    // Volitelně: pokus o načtení uloženého profilu z DB (pokud tabulka existuje)
+    try {
+      const prof = await client.query(
+        'SELECT profile_json FROM style_profiles WHERE dashboard_user_email=$1 AND (connected_email=$2 OR $2 IS NULL) LIMIT 1',
+        [dashboardUserEmail, meta.account || null]
+      );
+      if (prof.rowCount && prof.rows[0]?.profile_json) {
+        styleProfile = { ...styleProfile, ...prof.rows[0].profile_json };
+      }
+    } catch (_) {
+      // tabulka nemusí existovat — ignoruj
+    }
+
+    const systemInstruction =
+`SYSTÉMOVÁ INSTRUKCE:
+Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu,
+použij rozumný default, ale profil má přednost.
+
+STYLE_PROFILE:
+${JSON.stringify(styleProfile, null, 2)}
+`;
+
+    // 1.5) AI doplnění chybějících {{proměnných}} z emailu
+    const missingKeys = Array.from(new Set(
+      [...filled.matchAll(/{{\s*([a-zA-Z0-9_]+)\s*}}/g)].map(m => m[1])
+    ));
+
+    if (missingKeys.length) {
+      const promptVars =
+`${systemInstruction}
+Jsi asistent pro doplňování proměnných v šabloně emailu.
 Máš seznam proměnných, metadata a text původního emailu. Pokud informaci NELZE spolehlivě vyčíst,
 dej null nebo prázdný řetězec. NEVYMÝŠLEJ nesmysly.
 
@@ -343,18 +422,18 @@ Proměnné k doplnění:
 ${JSON.stringify(missingKeys)}
 
 Metadata (např. subject, from):
-${JSON.stringify(meta).slice(0,1000)}
+${JSON.stringify(meta).slice(0, 1000)}
 
 Analýza (pokud je k dispozici):
-${JSON.stringify(analysis).slice(0,1200)}
+${JSON.stringify(analysis).slice(0, 1200)}
 
 Text emailu:
 ${emailBody.slice(0, 4000)}
 
-Speciální pravidla a mapování (CZ):
+Speciální pravidla (CZ):
 - recipientName: vytvoř vhodné ČESKÉ oslovení ("paní Nováková"/"pane Dvořáku") podle „From:“ nebo podpisu.
-- senderName: když nejde zjistit, nech null (doplní se ze signature aplikace).
-- company: název firmy z podpisu, From: nebo domény; uveď jen název (bez s.r.o., a.s. pokud to dává smysl).
+- senderName: celé jméno OSOBY, která psala původní email (z „From:“ nebo podpisu). Když nejde zjistit, nech prázdné.
+- company: název firmy z podpisu/From:/domény (bez právní formy, pokud to dává smysl).
 - product: stručný název produktu/služby z předmětu/textu.
 - price: přesně tak, jak je v emailu (např. "8 990 Kč", "€120").
 - deliveryTime: např. "3–5 pracovních dní" (jen pokud to v emailu je).
@@ -367,81 +446,74 @@ Speciální pravidla a mapování (CZ):
 - timeframe: např. "30 dní", "6 týdnů", pokud to lze rozumně odvodit; jinak prázdné.
 - step1, step2, step3: tři KONKRÉTNÍ krátké akční kroky (imperativně).
 - slot1, slot2: dva KONKRÉTNÍ 15min termíny v blízké budoucnosti (např. "středa 14:00", "čtvrtek 10:00"), česky.
-- meetingDate: pokud je v emailu explicitní termín schůzky, vrať jej; jinak nech prázdné (nedopočítávej).
-- ourNextStep / theirNextStep: jeden krátký jasný krok, co uděláme my / co mají udělat oni.
-- ourDeadline / theirDeadline / deadline: pokud je v emailu datum/termín, vrať jej; formátuj jako "7. 9. 2025" nebo "7. 9. 2025 14:00".
+- meetingDate: pokud je v emailu explicitní termín schůzky, vrať jej; jinak prázdné (nedopočítávej).
+- ourNextStep / theirNextStep: co uděláme my / co mají udělat oni (jedna krátká věta).
+- ourDeadline / theirDeadline / deadline: pokud je v emailu datum/termín, formát "7. 9. 2025" nebo "7. 9. 2025 14:00".
 - Hodnoty piš stručně, bez uvozovek navíc a bez vysvětlování.`;
 
-
-      
-
-    const ai = await model.generateContent(promptVars);
-    const raw = ai?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const inferred = JSON.parse(raw.replace(/```json|```/g, '').trim() || '{}');
-
-
-if (!inferred?.meetingDate && inferred?.slot1) {
-  inferred.meetingDate = inferred.slot1; // použij první slot
-}
-      
-    // 3) Defaultní fallbacky (když AI/zdroj nic nedá)
-    const DEFAULTS = {
-      solutionOptionA: 'výměna za nový kus',
-  solutionOptionB: 'refundace po vrácení zboží',
-  kpi: 'konverzní poměr',
-  timeframe: '',
-  // nové:
-  ourNextStep: '',
-  ourDeadline: '',
-  theirNextStep: '',
-  theirDeadline: '',
-  meetingDate: '',
-  deadline: ''
-    };
-
-    // fallback pro senderName ze signature (první řádek)
-    if ((inferred?.senderName == null || inferred.senderName === '') && settings?.signature) {
-      const firstLine = (settings.signature || '').split('\n')[0].trim().replace(/^[-–—\s]*/, '');
-      if (firstLine) inferred.senderName = firstLine;
-    }
-
-    // 4) Aplikace doplněných hodnot do šablony + defaulty
-    for (const key of missingKeys) {
-      let val = (inferred?.[key] ?? '').toString().trim();
-
-      if (!val && Object.prototype.hasOwnProperty.call(DEFAULTS, key)) {
-        val = DEFAULTS[key];
+      let inferred = {};
+      try {
+        const ai = await model.generateContent(promptVars);
+        const raw = ai?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+        inferred = JSON.parse(stripJsonFence(raw) || '{}');
+      } catch (err) {
+        console.warn('AI variable fill failed, skipping.', err?.message);
       }
 
-      if (val) {
-        const re = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-        filled = filled.replace(re, val);
+      // Doplň meetingDate ze slot1 pokud není a slot1 existuje
+      if (!inferred?.meetingDate && inferred?.slot1) {
+        inferred.meetingDate = inferred.slot1;
+      }
+
+      // Fallbacky (pokud ani AI nic nedala)
+      const DEFAULTS = {
+        solutionOptionA: 'výměna za nový kus',
+        solutionOptionB: 'refundace po vrácení zboží',
+        kpi: 'konverzní poměr',
+        timeframe: '',
+        ourNextStep: '',
+        ourDeadline: '',
+        theirNextStep: '',
+        theirDeadline: '',
+        meetingDate: '',
+        deadline: ''
+      };
+
+      // (Pozn.: už NEpoužíváme fallback na settings.signature pro senderName — je to jméno protistrany.)
+      // Heuristika: když AI nedoplní senderName, zkus to vyčíst z From:
+      if (!inferred?.senderName && meta?.from) {
+        const parsed = parseNameFromFromHeader(String(meta.from));
+        if (parsed) inferred.senderName = parsed;
+      }
+      // (volitelné) pokus o extrakci jména z podpisu v textu e-mailu
+      if (!inferred?.senderName) {
+        const sign = parseNameFromEmailSignature(emailBody);
+        if (sign) inferred.senderName = sign;
+      }
+
+      for (const key of missingKeys) {
+        let val = (inferred?.[key] ?? '').toString().trim();
+        if (!val && Object.prototype.hasOwnProperty.call(DEFAULTS, key)) {
+          val = DEFAULTS[key];
+        }
+        if (val) {
+          const re = new RegExp(`{{\\s*${escapeRegExp(key)}\\s*}}`, 'g');
+          filled = filled.replace(re, val);
+        }
       }
     }
-  }
-} catch (err) {
-  console.warn('AI variable fill failed, skipping.', err?.message);
-}
-/* === /1.5) === */
 
-
-      
-
-    // 2) Najdi AI sloty [[AI: ...]]
+    // 2) AI sloty [[AI: ...]]
     const aiSlotRegex = /\[\[\s*AI\s*:(.*?)\]\]/gs;
     const slots = [...filled.matchAll(aiSlotRegex)];
     if (slots.length) {
-      // vyrob společný kontext
-      const emailBody = context?.emailBody || '';
-      const analysis  = context?.analysis  || {};
-      const settings  = context?.settings  || {};
-
-      // postupně dopočítej každé místo
       for (const m of slots) {
-        const whole  = m[0];
-        const instr  = (m[1] || '').trim();
+        const whole = m[0];
+        const instr = (m[1] || '').trim();
 
-        const prompt = `Úkol: ${instr}
+        const prompt =
+`${systemInstruction}
+Úkol: ${instr}
 ---
 Kontext emailu (text):
 ${emailBody.slice(0, 4000)}
@@ -449,27 +521,101 @@ ${emailBody.slice(0, 4000)}
 Analýza (JSON):
 ${JSON.stringify(analysis).slice(0, 2000)}
 
-Preferovaný tón: ${settings.tone || 'Formální'}
-Délka: ${settings.length || 'Střední (1 odstavec)'}
-Podpis (pokud relevantní přidej až na konec): ${settings.signature || ''}
+Preferovaný tón: ${styleProfile.tone}
+Délka: ${styleProfile.length}
+Podpis (pokud je vhodné, přidej až úplně na konec odpovědi): ${styleProfile.signature || ''}
 
-Odpověz pouze textem bez dalších vysvětlivek.`;
+Odpověz pouze textem, bez vysvětlivek a bez markdownu.`;
 
-        const out = await model.generateContent(prompt);
-        const aiText = out?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        filled = filled.replace(whole, aiText.trim());
+        let aiText = '';
+        try {
+          const out = await model.generateContent(prompt);
+          aiText = (out?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+        } catch (err) {
+          console.warn('AI slot generation failed, leaving empty.', err?.message);
+        }
+
+        filled = filled.replace(whole, aiText);
       }
     }
 
-    client.release();
-    return res.json({ success:true, rendered: filled });
+    return res.json({ success: true, rendered: filled });
   } catch (e) {
     console.error('TEMPLATE RENDER ERROR', e);
-    return res.status(500).json({ success:false, message:'Render selhal' });
+    return res.status(500).json({ success: false, message: 'Render selhal' });
+  } finally {
+    client?.release?.();
   }
 });
 
+/* ===== Pomocné funkce ===== */
 
+function stripJsonFence(s = '') {
+  return String(s).replace(/^\s*```json\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+}
+
+function escapeRegExp(s = '') {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// "John Doe" <john@firma.cz>  |  John Doe <john@firma.cz>  |  john@firma.cz (John Doe)
+function parseNameFromFromHeader(from = '') {
+  const f = String(from).trim();
+
+  // 1) Úsek v uvozovkách "..."
+  const quoted = f.match(/"([^"]+)"/);
+  if (quoted?.[1]) return quoted[1].trim();
+
+  // 2) Text před <email>
+  const beforeAngle = f.match(/^([^<]+)</);
+  if (beforeAngle?.[1]) return beforeAngle[1].trim().replace(/^'+|'+$/g, '');
+
+  // 3) Text v závorkách (email) (Jméno)
+  const paren = f.match(/\(([^)]+)\)\s*$/);
+  if (paren?.[1]) return paren[1].trim();
+
+  // 4) Když je jen e-mail, zkusit z uživatelské části něco jako "john.doe" => "John Doe"
+  const justMail = f.match(/<?([A-Z0-9._%+-]+)@[A-Z0-9.-]+\.[A-Z]{2,}>?/i);
+  if (justMail?.[1]) {
+    const candidate = justMail[1]
+      .replace(/[._-]+/g, ' ')
+      .split(' ')
+      .map(w => w ? (w[0].toUpperCase() + w.slice(1)) : '')
+      .join(' ')
+      .trim();
+    return candidate || '';
+  }
+
+  return '';
+}
+
+// jednoduchý heuristický výtah jména z podpisu na konci e-mailu
+function parseNameFromEmailSignature(body = '') {
+  const text = String(body || '').replace(/\r/g, '');
+  // vezmi posledních ~12 řádků
+  const lines = text.split('\n').slice(-12).map(l => l.trim()).filter(Boolean);
+
+  // najdi řádek po sign-off “S pozdravem”, “Děkuji”, “Děkujeme”, “Hezký den” apod.
+  const signIdx = lines.findIndex(l => /^(s pozdravem|děkuji|děkujeme|hezký den|s úctou)/i.test(l));
+  if (signIdx >= 0 && signIdx + 1 < lines.length) {
+    const candidate = lines[signIdx + 1];
+    if (isLikelyPersonName(candidate)) return candidate;
+  }
+
+  // jinak vezmi první řádek, který vypadá jako jméno
+  for (const l of lines) {
+    if (isLikelyPersonName(l)) return l;
+  }
+  return '';
+}
+
+function isLikelyPersonName(s = '') {
+  const words = String(s).trim().split(/\s+/);
+  if (words.length < 2 || words.length > 4) return false;
+  // jednoduchá heuristika: začíná velkým písmenem a není to firma (s.r.o., a.s., sro, as)
+  if (/\b(s\.?r\.?o\.?|a\.?s\.?)\b/i.test(s)) return false;
+  return words.every(w => /^[A-ZÁČĎÉĚÍĽĹŇÓŘŠŤÚŮÝŽ][a-záčďéěíľĺňóřšťúůýž-]+$/.test(w));
+}
 
 
 
@@ -1079,68 +1225,100 @@ app.get('/api/gmail/emails', async (req, res) => {
 // === NOVÝ ENDPOINT PRO ANALÝZU EMAILU POMOCÍ GEMINI ===
 app.post('/api/gmail/analyze-email', async (req, res) => {
     try {
-        const { dashboardUserEmail, email, messageId } = req.body;
-        if (!dashboardUserEmail || !email || !messageId) {
-            return res.status(400).json({ success: false, message: "Chybí data." });
-        }
+    const { dashboardUserEmail, email, messageId } = req.body;
+    if (!dashboardUserEmail || !email || !messageId) {
+      return res.status(400).json({ success: false, message: "Chybí data." });
+    }
 
-        const db = await pool.connect();
-           
-const consume = await tryConsumeAiAction(db, dashboardUserEmail);
+    const db = await pool.connect();
+
+    const consume = await tryConsumeAiAction(db, dashboardUserEmail);
     if (!consume.ok) {
       db.release();
       return res.status(429).json({
         success: false,
         message: `Vyčerpán měsíční limit AI akcí (${consume.limit}). Zvažte navýšení tarifu.`
       });
-    } 
+    }
 
+    const rTok = await db.query(
+      'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
+      [email, dashboardUserEmail]
+    );
+    const rSet = await db.query(
+      'SELECT * FROM settings WHERE dashboard_user_email = $1 AND connected_email = $2',
+      [dashboardUserEmail, email]
+    );
+    db.release();
 
-        const rTok = await db.query(
-            'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
-            [email, dashboardUserEmail]
-        );
-        const rSet = await db.query(
-            'SELECT * FROM settings WHERE dashboard_user_email = $1 AND connected_email = $2',
-            [dashboardUserEmail, email]
-        );
-        db.release();
+    const refreshToken = rTok.rows[0]?.refresh_token;
+    const settings = rSet.rows[0];
+    if (!refreshToken || !settings) {
+      return res.status(404).json({ success: false, message: "Token nebo nastavení nenalezeno." });
+    }
 
-        const refreshToken = rTok.rows[0]?.refresh_token;
-        const settings = rSet.rows[0];
-        if (!refreshToken || !settings) {
-            return res.status(404).json({ success: false, message: "Token nebo nastavení nenalezeno." });
-        }
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const msgResponse = await gmail.users.messages.get({ userId: 'me', id: messageId });
 
-        oauth2Client.setCredentials({ refresh_token: refreshToken });
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-        const msgResponse = await gmail.users.messages.get({ userId: 'me', id: messageId });
+    let emailBody = '';
+    if (msgResponse.data.payload.parts) {
+      const part = msgResponse.data.payload.parts.find(p => p.mimeType === 'text/plain');
+      if (part?.body?.data) emailBody = Buffer.from(part.body.data, 'base64').toString('utf-8');
+    } else if (msgResponse.data.payload.body?.data) {
+      emailBody = Buffer.from(msgResponse.data.payload.body.data, 'base64').toString('utf-8');
+    }
 
-        let emailBody = '';
-        if (msgResponse.data.payload.parts) {
-            const part = msgResponse.data.payload.parts.find(p => p.mimeType === 'text/plain');
-            if (part?.body?.data) emailBody = Buffer.from(part.body.data, 'base64').toString('utf-8');
-        } else if (msgResponse.data.payload.body?.data) {
-            emailBody = Buffer.from(msgResponse.data.payload.body.data, 'base64').toString('utf-8');
-        }
+    // NEW: poskládej STYLE_PROFILE z tvých nastavení (můžeš ho později rozšířit o „učení z historie“)
+    const styleProfile = {
+      tone: settings.tone,           // např. "Formální" | "Přátelský"…
+      length: settings.length,       // "Krátká" | "Střední" | "Dlouhá" | "Adaptivní"
+      signature: settings.signature, // tvůj podpis
+      language: "cs-CZ"              // volitelné: vynutí češtinu
+    };
 
-        const prompt = `Jsi profesionální emailový asistent. Analyzuj následující email. V odpovědi vrať JSON s klíči "summary", "sentiment", "suggested_reply".
-Tón: ${settings.tone}
-Délka: ${settings.length}
-Podpis: "${settings.signature}"
+    // NEW: systémová instrukce + profil -> musí být úplně na začátku promptu
+    const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
+Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu, použij rozumný default, ale profil má přednost.
+STYLE_PROFILE:
+${JSON.stringify(styleProfile, null, 2)}
+`;
+
+    // PŮVODNÍ ÚKOL – necháš za systémovou částí
+    const task = `Jsi profesionální emailový asistent. Analyzuj následující email a vrať JSON s klíči "summary", "sentiment", "suggested_reply".
+- Dodržuj STYLE_PROFILE výše.
+- Odpovědi piš česky.
 
 Email:
 ---
-${emailBody.substring(0, 3000)}`;
+${emailBody.substring(0, 3000)}
+---`;
 
-        const geminiResult = await model.generateContent(prompt);
-        const text = geminiResult.response.candidates[0].content.parts[0].text;
-        const cleaned = text.replace(/```json|```/g, '');
-        res.json({ success: true, analysis: JSON.parse(cleaned), emailBody });
-    } catch (error) {
-        console.error("Chyba při analýze emailu:", error);
-        res.status(500).json({ success: false, message: "Nepodařilo se analyzovat email." });
+    // NEW: finální prompt = systémová instrukce + úkol
+    const prompt = `${systemInstruction}\n${task}`;
+
+    const geminiResult = await model.generateContent(prompt);
+
+    // Bezpečnější parsování JSONu z modelu
+    const raw = geminiResult?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+
+    let analysis;
+    try {
+      analysis = JSON.parse(cleaned);
+    } catch {
+      // fallback: když model nevrátí čistý JSON, zkus to znovu „vynutit“ rychlým opravným krokem
+      const fix = await model.generateContent(
+        `Oprav tento text na validní JSON se strukturou { "summary": "", "sentiment": "", "suggested_reply": "" }:\n${raw}`
+      );
+      analysis = JSON.parse(fix.response.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim());
     }
+
+    return res.json({ success: true, analysis, emailBody });
+  } catch (error) {
+    console.error("Chyba při analýze emailu:", error);
+    return res.status(500).json({ success: false, message: "Nepodařilo se analyzovat email." });
+  }
 });
 
 
@@ -1414,6 +1592,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
