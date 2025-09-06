@@ -33,7 +33,7 @@ app.use(require('cors')({
   credentials: false,
 }));
 
-app.options('/(.*)', cors());
+app.options('/:path*', cors());
 app.use(express.json()); // místo bodyParser.json()
 
 const PORT = process.env.PORT || 3000;
@@ -50,7 +50,16 @@ console.log("DEBUG: Načtená DATABASE_URL je:", DATABASE_URL);
 const SERVER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 const REDIRECT_URI = `${SERVER_URL}/api/oauth/google/callback`;
 
-
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin) return cb(null, true);
+    cb(null, ORIGINS.includes(origin));
+  },
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+  credentials: false,
+  optionsSuccessStatus: 204,
+}));
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL || !PROJECT_ID || !CRON_SECRET) {
     console.error("Chyba: Chybí potřebné proměnné prostředí!");
@@ -1835,6 +1844,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
