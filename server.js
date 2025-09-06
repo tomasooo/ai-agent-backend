@@ -333,7 +333,7 @@ try {
     const meta      = context?.meta      || {}; // { subject, from, date }
 
     // 2) Prompt se speciálními pravidly pro tvoje klíče
-    const promptVars = `Jsi asistent pro doplňování proměnných v šabloně emailu.
+const promptVars = `Jsi asistent pro doplňování proměnných v šabloně emailu.
 Máš seznam proměnných, metadata a text původního emailu. Pokud informaci NELZE spolehlivě vyčíst,
 dej null nebo prázdný řetězec. NEVYMÝŠLEJ nesmysly.
 
@@ -351,34 +351,52 @@ ${JSON.stringify(analysis).slice(0,1200)}
 Text emailu:
 ${emailBody.slice(0, 4000)}
 
-Speciální pravidla a mapování:
+Speciální pravidla a mapování (CZ):
 - recipientName: vytvoř vhodné ČESKÉ oslovení ("paní Nováková"/"pane Dvořáku") podle „From:“ nebo podpisu.
 - senderName: když nejde zjistit, nech null (doplní se ze signature aplikace).
-- orderNumber: hledej tvary jako "#2025-0915", "objednávka 12345", "Order 12345".
-- issue: jednou větou stručně pojmenuj problém.
-- product: název produktu/služby z předmětu/textu; krátce, bez okolí.
-- price: číslo + měna přesně jak v emailu, např. "8 990 Kč" / "€120".
-- deliveryTime: např. "3–5 pracovních dní" (pokud je to v emailu).
-- company: název firmy z podpisu, From: nebo domény; uveď jen název.
-- painPoint: shrň hlavní problém firmy jednou krátkou frází.
-- kpi: pojmenuj sledovaný ukazatel (např. "konverzní poměr", "náklady na akvizici").
-- kpiValue: číselně s jednotkou (např. "32 %", "20 %", "1,5 s"), jen když je to v emailu; jinak null.
-- timeframe: např. "30 dní", "6 týdnů", pokud se dá rozumně odhadnout z textu; jinak null.
-- step1, step2, step3: navrhni tři KONKRÉTNÍ krátké kroky (imperativně), bez úvodních frází.
-- slot1, slot2: navrhni dva KONKRÉTNÍ termíny pro 15min call v blízké budoucnosti (např. "středa 14:00", "čtvrtek 10:00"); respektuj češtinu.
-- solutionOptionA, solutionOptionB: navrhni dvě realistické varianty řešení úměrné "issue" (např. "výměna za nový kus", "refundace po vrácení zboží po doručení").
+- company: název firmy z podpisu, From: nebo domény; uveď jen název (bez s.r.o., a.s. pokud to dává smysl).
+- product: stručný název produktu/služby z předmětu/textu.
+- price: přesně tak, jak je v emailu (např. "8 990 Kč", "€120").
+- deliveryTime: např. "3–5 pracovních dní" (jen pokud to v emailu je).
+- orderNumber: hledej tvary "#2025-0915", "objednávka 12345", "Order 12345".
+- issue: jednou větou pojmenuj problém.
+- solutionOptionA / solutionOptionB: dvě realistické varianty řešení adekvátní k "issue".
+- painPoint: hlavní bolest/priorita firmy v jedné krátké frázi.
+- kpi: sledovaný ukazatel ("konverzní poměr", "CAC", "odpovědní doba").
+- kpiValue: číselně s jednotkou (např. "32 %", "1,5 s"), jen pokud to v emailu je.
+- timeframe: např. "30 dní", "6 týdnů", pokud to lze rozumně odvodit; jinak prázdné.
+- step1, step2, step3: tři KONKRÉTNÍ krátké akční kroky (imperativně).
+- slot1, slot2: dva KONKRÉTNÍ 15min termíny v blízké budoucnosti (např. "středa 14:00", "čtvrtek 10:00"), česky.
+- meetingDate: pokud je v emailu explicitní termín schůzky, vrať jej; jinak nech prázdné (nedopočítávej).
+- ourNextStep / theirNextStep: jeden krátký jasný krok, co uděláme my / co mají udělat oni.
+- ourDeadline / theirDeadline / deadline: pokud je v emailu datum/termín, vrať jej; formátuj jako "7. 9. 2025" nebo "7. 9. 2025 14:00".
 - Hodnoty piš stručně, bez uvozovek navíc a bez vysvětlování.`;
+
+
+      
 
     const ai = await model.generateContent(promptVars);
     const raw = ai?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     const inferred = JSON.parse(raw.replace(/```json|```/g, '').trim() || '{}');
 
+
+if (!inferred?.meetingDate && inferred?.slot1) {
+  inferred.meetingDate = inferred.slot1; // použij první slot
+}
+      
     // 3) Defaultní fallbacky (když AI/zdroj nic nedá)
     const DEFAULTS = {
       solutionOptionA: 'výměna za nový kus',
-      solutionOptionB: 'refundace po vrácení zboží',
-      kpi: 'konverzní poměr',
-      timeframe: '', // raději prázdné, ať si doplníš sám
+  solutionOptionB: 'refundace po vrácení zboží',
+  kpi: 'konverzní poměr',
+  timeframe: '',
+  // nové:
+  ourNextStep: '',
+  ourDeadline: '',
+  theirNextStep: '',
+  theirDeadline: '',
+  meetingDate: '',
+  deadline: ''
     };
 
     // fallback pro senderName ze signature (první řádek)
@@ -1396,6 +1414,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
