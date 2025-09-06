@@ -13,6 +13,29 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 
 
 const app = express();
+
+// --- CORS + JSON (jediná globální konfigurace, musí být před routami) ---
+const ORIGINS = [
+  'https://ai-agent-frontend-9nrf.onrender.com',
+  'http://localhost:5500',
+  'http://127.0.0.1:5500',
+  ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()) : []),
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+];
+
+app.use(require('cors')({
+  origin: function(origin, cb) {
+    if (!origin) return cb(null, true); // curl / server-side
+    cb(null, ORIGINS.includes(origin));
+  },
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+  credentials: false,
+}));
+
+app.options('*', require('cors')()); // preflight
+app.use(express.json()); // místo bodyParser.json()
+
 const PORT = process.env.PORT || 3000;
 
 // Načtení proměnných prostředíconst cors = require('cors');
@@ -27,11 +50,6 @@ console.log("DEBUG: Načtená DATABASE_URL je:", DATABASE_URL);
 const SERVER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 const REDIRECT_URI = `${SERVER_URL}/api/oauth/google/callback`;
 
-// povolte všechno (nejrychlejší cesta)
-app.use(cors());
-
-// volitelně přidejte OPTIONS preflight
-app.options('*', cors());
 
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL || !PROJECT_ID || !CRON_SECRET) {
@@ -1949,6 +1967,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
