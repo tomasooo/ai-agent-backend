@@ -144,23 +144,25 @@ async function setupDatabase() {
             );
         `);
 
-
-        await client.query(`
+await client.query(`
   CREATE TABLE IF NOT EXISTS plans (
-    code VARCHAR(50) PRIMARY KEY,     -- např. 'Starter', 'Professional', 'Enterprise'
-    label VARCHAR(100) NOT NULL,      -- zobrazovací název
-    max_accounts INT NOT NULL,        -- max počet připojených účtů
-    monthly_ai_actions INT NOT NULL   -- měsíční limit na AI akce (analyzuj + odeslání odpovědi)
+    code VARCHAR(50) PRIMARY KEY,
+    label VARCHAR(100) NOT NULL,
+    max_accounts INT NOT NULL,
+    monthly_ai_actions INT NOT NULL
   );
 `);
 
-      CREATE TABLE IF NOT EXISTS style_profiles (
-  dashboard_user_email TEXT NOT NULL,
-  connected_email TEXT,
-  profile_json JSONB NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  PRIMARY KEY (dashboard_user_email, connected_email)
-);
+await client.query(`
+  CREATE TABLE IF NOT EXISTS style_profiles (
+    dashboard_user_email TEXT NOT NULL,
+    connected_email TEXT,
+    profile_json JSONB NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (dashboard_user_email, connected_email)
+  );
+`);
+        
 
 // 5) Seed základních plánů (lze kdykoli změnit v DB)
 await client.query(`
@@ -392,92 +394,6 @@ app.post('/api/style-examples/ingest', async (req, res) => {
   }
 });
 
-app.get('/api/style-profile', async (req, res) => {
-  try {
-    const { dashboardUserEmail, email, limit = 200 } = req.query;
-    if (!dashboardUserEmail || !email) {
-      return res.status(400).json({ success:false, message:'Chybí parametry.' });
-    }
-
-    const db = await pool.connect();
-    let examples;
-    let settings;
-    try {
-      const ex = await db.query(
-        `SELECT role, subject, body
-           FROM style_examples
-          WHERE dashboard_user_email=$1 AND connected_email=$2
-          ORDER BY id DESC
-          LIMIT $3`,
-        [dashboardUserEmail, email, Math.min(Number(limit) || 200, 1000)]
-      );
-      examples = ex.rows || [];
-
-      const st = await db.query(
-        `SELECT tone, length, signature
-           FROM settings
-          WHERE dashboard_user_email=$1 AND connected_email=$2
-          LIMIT 1`,
-        [dashboardUserEmail, email]
-      );
-      settings = st.rows[0] || {};
-    } finally { db.release(); }
-
-    if (!examples.length) {
-      return res.json({ success:true, profile: null, message:'Žádné příklady v databázi.' });
-    }
-
-    // Slož prompt – omez délku
-    const pack = examples.slice(0, 400); // bezpečný strop do promptu
-    const sampleText = pack.map((e, i) => {
-      const role = e.role === 'outgoing' ? 'OUT' : 'IN';
-      const subj = (e.subject || '').trim();
-      const body = (e.body || '').trim().slice(0, 1500);
-      return `#${i+1} [${role}] Subject: ${subj}\n${body}`;
-    }).join('\n\n---\n\n');
-
-    const sysInstr = `SYSTÉMOVÁ INSTRUKCE:
-Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu, zvol rozumný default, ale profil má přednost.`;
-
-    const userPrompt = `
-Na základě ukázek příchozí/odchozí korespondence vygeneruj STYLE_PROFILE v JSON.
-JSON musí být *validní* a samostatný, bez komentářů, bez dalšího textu.
-Vymysli jen to, co lze rozumně zobecnit z ukázek.
-
-Doporučená struktura:
-{
-  "formality": "formální|neformální|smíšená",
-  "tone": "stručný|přátelský|profesionální|empatický|... (kombinace povolena)",
-  "sentence_length": "krátké|střední|delší",
-  "greetings": { "incoming_pref": "Dobrý den|Ahoj|...", "outgoing_pref": "Dobrý den|..." },
-  "signoff": { "primary": "S pozdravem", "alternatives": ["Díky", "Hezký den"] },
-  "emoji_usage": "žádné|minimální|občasné|časté",
-  "paragraph_style": "jedno-odstavcové|více odstavců|odrážky",
-  "typical_phrases": ["děkuji za zprávu", "můžeme se spojit", "..."],
-  "politeness": "nízká|střední|vysoká",
-  "response_length_pref": "Krátká (1-2 věty)|Střední (1 odstavec)|Dlouhá (více odstavců)|Adaptivní",
-  "signature_hint": "používaný podpis, pokud je patrný",
-  "language": "cs-CZ"
-}
-
-Pokud máš záznam o podpisu v nastavení, preferuj jej: ${JSON.stringify(settings || {})}
-
-UKÁZKY (zkrácené):
-${sampleText}
-`;
-
-    const prompt = `${sysInstr}\n\n${userPrompt}`.slice(0, 24000); // pojistka
-
-    const ai = await model.generateContent(prompt);
-    const raw = ai?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const json = JSON.parse(raw.replace(/```json|```/g, '').trim() || '{}');
-
-    return res.json({ success:true, profile: json });
-  } catch (e) {
-    console.error('style-profile error', e);
-    return res.status(500).json({ success:false, message:'Chyba při čtení profilu' });
-  }
-});
 
 
 
@@ -554,6 +470,23 @@ app.get('/api/auth/has-password', async (req, res) => {
   }
 });
 
+
+async function loadStyleProfile({ dashboardUserEmail, email }) {
+  const db = await pool.connect();
+  try {
+    const r = await db.query(
+      `SELECT profile_json
+         FROM style_profiles
+        WHERE dashboard_user_email = $1
+          AND (connected_email = $2 OR $2 IS NULL)
+        LIMIT 1`,
+      [dashboardUserEmail, email || null]
+    );
+    return r.rowCount ? r.rows[0].profile_json : null;
+  } finally {
+    db.release();
+  }
+}
 
 
 app.get('/api/style-profile', async (req, res) => {
@@ -1902,6 +1835,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
