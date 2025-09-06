@@ -153,6 +153,25 @@ async function setupDatabase() {
             );
         `);
 
+      await client.query(`
+  CREATE TABLE IF NOT EXISTS custom_accounts (
+    id SERIAL PRIMARY KEY,
+    dashboard_user_email VARCHAR(255) NOT NULL REFERENCES dashboard_users(email) ON DELETE CASCADE,
+    email_address VARCHAR(255) NOT NULL,
+    imap_host TEXT NOT NULL,
+    imap_port INT NOT NULL,
+    imap_secure BOOLEAN NOT NULL DEFAULT true,
+    smtp_host TEXT NOT NULL,
+    smtp_port INT NOT NULL,
+    smtp_secure BOOLEAN NOT NULL DEFAULT true,
+    enc_username TEXT NOT NULL,
+    enc_password TEXT NOT NULL,
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (dashboard_user_email, email_address)
+  );
+`);
+
 await client.query(`
   CREATE TABLE IF NOT EXISTS plans (
     code VARCHAR(50) PRIMARY KEY,
@@ -303,6 +322,154 @@ app.get('/api/gmail/sent-replies', async (req, res) => {
   } catch (e) {
     console.error('sent-replies error', e);
     return res.status(500).json({ success:false, message:'Chyba při čtení odeslané pošty' });
+  }
+});
+
+
+
+
+const ENC_RAW = process.env.CUSTOM_EMAIL_KEY || '';
+if (!ENC_RAW) {
+  console.error('Chybí CUSTOM_EMAIL_KEY');
+  process.exit(1);
+}
+const ENC_KEY = /^[0-9a-f]{64}$/i.test(ENC_RAW) ? Buffer.from(ENC_RAW, 'hex') : Buffer.from(ENC_RAW, 'base64');
+
+function encSecret(plain = '') {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ENC_KEY, iv);
+  const ct = Buffer.concat([cipher.update(String(plain), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, ct]).toString('base64');
+}
+
+function decSecret(b64 = '') {
+  const buf = Buffer.from(String(b64), 'base64');
+  const iv  = buf.subarray(0, 12);
+  const tag = buf.subarray(12, 28);
+  const ct  = buf.subarray(28);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', ENC_KEY, iv);
+  decipher.setAuthTag(tag);
+  const pt = Buffer.concat([decipher.update(ct), decipher.final()]);
+  return pt.toString('utf8');
+}
+
+const { ImapFlow } = require('imapflow');
+const nodemailer = require('nodemailer');
+
+app.post('/api/custom-email/connect', async (req, res) => {
+  const {
+    dashboardUserEmail,
+    emailAddress,
+    username,
+    password,
+    imapHost, imapPort, imapSecure,
+    smtpHost, smtpPort, smtpSecure
+  } = req.body || {};
+
+  if (!dashboardUserEmail || !emailAddress || !username || !password ||
+      !imapHost || !imapPort || smtpHost == null || smtpPort == null) {
+    return res.status(400).json({ success:false, message:'Chybí povinná pole.' });
+  }
+
+  // 1) Ověřit IMAP přihlášení
+  const imap = new ImapFlow({
+    host: imapHost, port: Number(imapPort), secure: !!imapSecure,
+    auth: { user: username, pass: password }
+  });
+  try {
+    await imap.connect();
+    await imap.logout();
+  } catch (e) {
+    return res.status(400).json({ success:false, message:'IMAP přihlášení selhalo: ' + (e?.message || e) });
+  }
+
+  // 2) Ověřit SMTP přihlášení
+  try {
+    const transporter = nodemailer.createTransport({
+      host: smtpHost, port: Number(smtpPort), secure: !!smtpSecure,
+      auth: { user: username, pass: password }
+    });
+    await transporter.verify(); // jen ověř
+  } catch (e) {
+    return res.status(400).json({ success:false, message:'SMTP ověření selhalo: ' + (e?.message || e) });
+  }
+
+  // 3) Uložit šifrovaně do DB
+  const db = await pool.connect();
+  try {
+    await db.query(`
+      INSERT INTO custom_accounts
+        (dashboard_user_email, email_address, imap_host, imap_port, imap_secure, smtp_host, smtp_port, smtp_secure, enc_username, enc_password, active)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true)
+      ON CONFLICT (dashboard_user_email, email_address) DO UPDATE
+      SET imap_host=$3, imap_port=$4, imap_secure=$5,
+          smtp_host=$6, smtp_port=$7, smtp_secure=$8,
+          enc_username=$9, enc_password=$10, active=true
+    `, [
+      dashboardUserEmail, emailAddress,
+      imapHost, Number(imapPort), !!imapSecure,
+      smtpHost, Number(smtpPort), !!smtpSecure,
+      encSecret(username), encSecret(password)
+    ]);
+
+    return res.json({ success:true, message:'Účet připojen.' });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ success:false, message:'Uložení účtu selhalo.' });
+  } finally {
+    db.release();
+  }
+});
+
+
+
+app.get('/api/custom-email/emails', async (req, res) => {
+  const { dashboardUserEmail, emailAddress, limit = 10 } = req.query || {};
+  if (!dashboardUserEmail || !emailAddress) {
+    return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail nebo emailAddress.' });
+  }
+  const db = await pool.connect();
+  try {
+    const r = await db.query(`
+      SELECT imap_host, imap_port, imap_secure, enc_username, enc_password
+      FROM custom_accounts
+      WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
+      LIMIT 1
+    `, [dashboardUserEmail, emailAddress]);
+    if (!r.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
+
+    const row = r.rows[0];
+    const user = decSecret(row.enc_username);
+    const pass = decSecret(row.enc_password);
+
+    const imap = new ImapFlow({
+      host: row.imap_host, port: Number(row.imap_port), secure: !!row.imap_secure,
+      auth: { user, pass }
+    });
+    await imap.connect();
+    await imap.mailboxOpen('INBOX');
+
+    const out = [];
+    // posledních N UID od konce
+    let fetched = 0;
+    for await (let msg of imap.fetch({ seen: false, changedSince: null, seq: `${Math.max(1, imap.mailbox.exists - 200)}:*` }, { uid: true, envelope: true, internalDate: true })) {
+      out.push({
+        uid: msg.uid,
+        subject: msg.envelope?.subject || '',
+        from: msg.envelope?.from?.map(a => a.address || a.name).join(', ') || '',
+        date: msg.internalDate?.toISOString()
+      });
+      if (++fetched >= Number(limit)) break;
+    }
+
+    await imap.logout();
+    return res.json({ success:true, emails: out, total: out.length });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ success:false, message:'Načtení selhalo.' });
+  } finally {
+    db.release();
   }
 });
 
@@ -1565,9 +1732,133 @@ app.get('/api/gmail/emails', async (req, res) => {
 });
 
 
+const { simpleParser } = require('mailparser');
+
+app.post('/api/custom-email/analyze-email', async (req, res) => {
+  try {
+    const { dashboardUserEmail, emailAddress, uid } = req.body || {};
+    if (!dashboardUserEmail || !emailAddress || !uid) {
+      return res.status(400).json({ success:false, message:'Chybí data.' });
+    }
+
+    // limity jako u Gmailu
+    const db = await pool.connect();
+    const consume = await tryConsumeAiAction(db, dashboardUserEmail);
+    if (!consume.ok) {
+      db.release();
+      return res.status(429).json({ success:false, message:`Vyčerpán měsíční limit AI akcí (${consume.limit}).` });
+    }
+
+    // načíst účet + settings
+    const rAcc = await db.query(`
+      SELECT imap_host, imap_port, imap_secure, enc_username, enc_password
+      FROM custom_accounts
+      WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
+      LIMIT 1
+    `, [dashboardUserEmail, emailAddress]);
+    const rSet = await db.query(`
+      SELECT tone, length, signature FROM settings
+      WHERE dashboard_user_email=$1 AND connected_email=$2
+      LIMIT 1
+    `, [dashboardUserEmail, emailAddress]);
+    db.release();
+
+    if (!rAcc.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
+    const st = rSet.rows[0] || { tone:'Profesionální', length:'Adaptivní', signature:'' };
+
+    const user = decSecret(rAcc.rows[0].enc_username);
+    const pass = decSecret(rAcc.rows[0].enc_password);
+
+    // stáhnout RAW a rozparsovat
+    const imap = new ImapFlow({
+      host: rAcc.rows[0].imap_host, port: Number(rAcc.rows[0].imap_port), secure: !!rAcc.rows[0].imap_secure,
+      auth: { user, pass }
+    });
+    await imap.connect();
+    await imap.mailboxOpen('INBOX');
+
+    const { content } = await imap.download(Number(uid), null, { uid: true }); // RAW stream
+    const chunks = [];
+    for await (const c of content) chunks.push(c);
+    await imap.logout();
+
+    const parsed = await simpleParser(Buffer.concat(chunks));
+    const emailBody = parsed.text || parsed.html || '';
+
+    const styleProfile = {
+      tone: st.tone, length: st.length, signature: st.signature, language: 'cs-CZ'
+    };
+
+    const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
+Piš odpovědi podle následujícího stylového profilu (JSON). Pokud něco v profilu chybí, zvol rozumný default, ale profil má přednost.
+STYLE_PROFILE:
+${JSON.stringify(styleProfile, null, 2)}
+`;
+
+    const task = `Jsi profesionální emailový asistent. Analyzuj následující email a vrať JSON { "summary": "", "sentiment": "", "suggested_reply": "" }.
+- Odpovědi piš česky.
+---
+${String(emailBody).slice(0, 3000)}
+---`;
+
+    const geminiResult = await model.generateContent(`${systemInstruction}\n${task}`);
+    const raw = geminiResult?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    let analysis = {};
+    try { analysis = JSON.parse(cleaned); }
+    catch {
+      const fix = await model.generateContent(`Oprav na validní JSON { "summary":"", "sentiment":"", "suggested_reply":"" }:\n${raw}`);
+      analysis = JSON.parse(fix.response.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim());
+    }
+
+    const debugOut = {};
+    if (req.query.debug === '1') debugOut.styleProfile = styleProfile;
+
+    return res.json({ success:true, analysis, emailBody, ...debugOut });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ success:false, message:'Analýza selhala.' });
+  }
+});
 
 
+app.post('/api/custom-email/send-reply', async (req, res) => {
+  try {
+    const { dashboardUserEmail, emailAddress, to, subject, text } = req.body || {};
+    if (!dashboardUserEmail || !emailAddress || !to || !subject || !text) {
+      return res.status(400).json({ success:false, message:'Chybí data.' });
+    }
+    const db = await pool.connect();
+    const rAcc = await db.query(`
+      SELECT smtp_host, smtp_port, smtp_secure, enc_username, enc_password
+      FROM custom_accounts
+      WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
+      LIMIT 1
+    `, [dashboardUserEmail, emailAddress]);
+    db.release();
+    if (!rAcc.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
 
+    const user = decSecret(rAcc.rows[0].enc_username);
+    const pass = decSecret(rAcc.rows[0].enc_password);
+
+    const transporter = nodemailer.createTransport({
+      host: rAcc.rows[0].smtp_host, port: Number(rAcc.rows[0].smtp_port), secure: !!rAcc.rows[0].smtp_secure,
+      auth: { user, pass }
+    });
+
+    await transporter.sendMail({
+      from: emailAddress,
+      to,
+      subject,
+      text
+    });
+
+    return res.json({ success:true, message:'Email odeslán.' });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ success:false, message:'Odeslání selhalo.' });
+  }
+});
 
 
 
@@ -1948,6 +2239,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
