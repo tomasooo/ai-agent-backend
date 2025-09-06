@@ -33,7 +33,7 @@ app.use(require('cors')({
   credentials: false,
 }));
 
-app.options('*', require('cors')()); // preflight
+app.options('/(.*)', cors());
 app.use(express.json()); // místo bodyParser.json()
 
 const PORT = process.env.PORT || 3000;
@@ -1835,6 +1835,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
