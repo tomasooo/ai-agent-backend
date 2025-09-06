@@ -1624,7 +1624,13 @@ ${emailBody.substring(0, 3000)}
       );
       analysis = JSON.parse(fix.response.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim());
     }
+const debugOut = {};
+if (req.query.debug === '1') {
+  debugOut.styleProfile = styleProfile;
+  // volitelně: debugOut.promptStart = prompt.slice(0, 800);
+}
 
+return res.json({ success: true, analysis, emailBody, ...debugOut });
     return res.json({ success: true, analysis, emailBody });
   } catch (error) {
     console.error("Chyba při analýze emailu:", error);
@@ -1903,6 +1909,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
