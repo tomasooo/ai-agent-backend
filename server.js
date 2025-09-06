@@ -180,7 +180,274 @@ await client.query(`
 }
 
 
+// ---------- Helpers pro čtení Gmail zpráv ----------
+function b64urlDecode(data = '') {
+  if (!data) return '';
+  const n = data.replace(/-/g, '+').replace(/_/g, '/');
+  return Buffer.from(n, 'base64').toString('utf-8');
+}
 
+function extractPlainText(payload) {
+  if (!payload) return '';
+  // 1) přednostně text/plain
+  if (payload.mimeType === 'text/plain' && payload.body?.data) {
+    return b64urlDecode(payload.body.data);
+  }
+  // 2) multipart? projdi části
+  if (payload.parts && Array.isArray(payload.parts)) {
+    // zkus najít nejdřív text/plain
+    for (const p of payload.parts) {
+      const t = extractPlainText(p);
+      if (t) return t;
+    }
+  }
+  // 3) fallback: text/html -> ořež tagy
+  if (payload.mimeType === 'text/html' && payload.body?.data) {
+    const html = b64urlDecode(payload.body.data);
+    return html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+  }
+  // 4) fallback na body.data bez ohledu na typ
+  if (payload.body?.data) return b64urlDecode(payload.body.data);
+  return '';
+}
+
+async function getGmailClientFor(dashboardUserEmail, email) {
+  const db = await pool.connect();
+  try {
+    const r = await db.query(
+      'SELECT refresh_token FROM connected_accounts WHERE email=$1 AND dashboard_user_email=$2',
+      [email, dashboardUserEmail]
+    );
+    const refreshToken = r.rows[0]?.refresh_token;
+    if (!refreshToken) throw new Error('Refresh token nenalezen');
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+    return google.gmail({ version: 'v1', auth: oauth2Client });
+  } finally {
+    db.release();
+  }
+}
+
+
+app.get('/api/gmail/sent-replies', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, limit = 200 } = req.query;
+    if (!dashboardUserEmail || !email) {
+      return res.status(400).json({ success:false, message:'Chybí parametry.' });
+    }
+
+    const gmail = await getGmailClientFor(dashboardUserEmail, email);
+
+    // vezmeme SENTS, můžeme dodat i filtr (třeba poslední rok): q: 'newer_than:365d'
+    const list = await gmail.users.messages.list({
+      userId: 'me',
+      labelIds: ['SENT'],
+      maxResults: Math.min(Number(limit) || 200, 500),
+    });
+
+    const ids = (list.data.messages || []).map(m => m.id);
+    const items = [];
+
+    for (const id of ids) {
+      const msg = await gmail.users.messages.get({ userId: 'me', id });
+      const payload = msg.data.payload;
+      const headers = msg.data.payload?.headers || [];
+      const subject = headers.find(h => h.name === 'Subject')?.value || '';
+      const body = extractPlainText(payload);
+      if (body) {
+        items.push({ role:'outgoing', subject, body });
+      }
+    }
+
+    return res.json({ success:true, items });
+  } catch (e) {
+    console.error('sent-replies error', e);
+    return res.status(500).json({ success:false, message:'Chyba při čtení odeslané pošty' });
+  }
+});
+
+app.get('/api/gmail/inbox-examples', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, limit = 200 } = req.query;
+    if (!dashboardUserEmail || !email) {
+      return res.status(400).json({ success:false, message:'Chybí parametry.' });
+    }
+
+    const gmail = await getGmailClientFor(dashboardUserEmail, email);
+
+    const list = await gmail.users.messages.list({
+      userId: 'me',
+      labelIds: ['INBOX'],
+      q: '-from:me -in:spam -in:trash',         // příchozí, ne spam/koš
+      maxResults: Math.min(Number(limit) || 200, 500),
+    });
+
+    const ids = (list.data.messages || []).map(m => m.id);
+    const items = [];
+
+    for (const id of ids) {
+      const msg = await gmail.users.messages.get({ userId: 'me', id });
+      const payload = msg.data.payload;
+      const headers = payload?.headers || [];
+      const subject = headers.find(h => h.name === 'Subject')?.value || '';
+      const from = headers.find(h => h.name === 'From')?.value || '';
+      const body = extractPlainText(payload);
+      if (body) {
+        items.push({ role:'incoming', subject, from, body });
+      }
+    }
+
+    return res.json({ success:true, items });
+  } catch (e) {
+    console.error('inbox-examples error', e);
+    return res.status(500).json({ success:false, message:'Chyba při čtení INBOXu' });
+  }
+});
+
+// Jednorázově si někde spusť create table (např. při startu):
+async function ensureStyleTables() {
+  const db = await pool.connect();
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS style_examples (
+        id BIGSERIAL PRIMARY KEY,
+        dashboard_user_email TEXT NOT NULL,
+        connected_email TEXT NOT NULL,
+        role TEXT CHECK (role IN ('incoming','outgoing')) NOT NULL,
+        subject TEXT,
+        body TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+    `);
+  } finally { db.release(); }
+}
+ensureStyleTables().catch(console.error);
+
+app.post('/api/style-examples/ingest', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, items } = req.body || {};
+    if (!dashboardUserEmail || !email || !Array.isArray(items)) {
+      return res.status(400).json({ success:false, message:'Chybí data.' });
+    }
+
+    const trimmed = items
+      .filter(x => x && (x.body || '').trim())
+      .slice(0, 1000); // pojistka
+
+    if (!trimmed.length) {
+      return res.json({ success:true, saved: 0 });
+    }
+
+    const db = await pool.connect();
+    try {
+      const text = `
+        INSERT INTO style_examples (dashboard_user_email, connected_email, role, subject, body)
+        VALUES ($1,$2,$3,$4,$5)
+      `;
+      for (const it of trimmed) {
+        const role = (it.role === 'incoming' ? 'incoming' : 'outgoing');
+        await db.query(text, [
+          dashboardUserEmail,
+          email,
+          role,
+          it.subject || '',
+          it.body || ''
+        ]);
+      }
+    } finally { db.release(); }
+
+    return res.json({ success:true, saved: trimmed.length });
+  } catch (e) {
+    console.error('ingest error', e);
+    return res.status(500).json({ success:false, message:'Chyba při ukládání příkladů' });
+  }
+});
+
+app.get('/api/style-profile', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, limit = 200 } = req.query;
+    if (!dashboardUserEmail || !email) {
+      return res.status(400).json({ success:false, message:'Chybí parametry.' });
+    }
+
+    const db = await pool.connect();
+    let examples;
+    let settings;
+    try {
+      const ex = await db.query(
+        `SELECT role, subject, body
+           FROM style_examples
+          WHERE dashboard_user_email=$1 AND connected_email=$2
+          ORDER BY id DESC
+          LIMIT $3`,
+        [dashboardUserEmail, email, Math.min(Number(limit) || 200, 1000)]
+      );
+      examples = ex.rows || [];
+
+      const st = await db.query(
+        `SELECT tone, length, signature
+           FROM settings
+          WHERE dashboard_user_email=$1 AND connected_email=$2
+          LIMIT 1`,
+        [dashboardUserEmail, email]
+      );
+      settings = st.rows[0] || {};
+    } finally { db.release(); }
+
+    if (!examples.length) {
+      return res.json({ success:true, profile: null, message:'Žádné příklady v databázi.' });
+    }
+
+    // Slož prompt – omez délku
+    const pack = examples.slice(0, 400); // bezpečný strop do promptu
+    const sampleText = pack.map((e, i) => {
+      const role = e.role === 'outgoing' ? 'OUT' : 'IN';
+      const subj = (e.subject || '').trim();
+      const body = (e.body || '').trim().slice(0, 1500);
+      return `#${i+1} [${role}] Subject: ${subj}\n${body}`;
+    }).join('\n\n---\n\n');
+
+    const sysInstr = `SYSTÉMOVÁ INSTRUKCE:
+Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu, zvol rozumný default, ale profil má přednost.`;
+
+    const userPrompt = `
+Na základě ukázek příchozí/odchozí korespondence vygeneruj STYLE_PROFILE v JSON.
+JSON musí být *validní* a samostatný, bez komentářů, bez dalšího textu.
+Vymysli jen to, co lze rozumně zobecnit z ukázek.
+
+Doporučená struktura:
+{
+  "formality": "formální|neformální|smíšená",
+  "tone": "stručný|přátelský|profesionální|empatický|... (kombinace povolena)",
+  "sentence_length": "krátké|střední|delší",
+  "greetings": { "incoming_pref": "Dobrý den|Ahoj|...", "outgoing_pref": "Dobrý den|..." },
+  "signoff": { "primary": "S pozdravem", "alternatives": ["Díky", "Hezký den"] },
+  "emoji_usage": "žádné|minimální|občasné|časté",
+  "paragraph_style": "jedno-odstavcové|více odstavců|odrážky",
+  "typical_phrases": ["děkuji za zprávu", "můžeme se spojit", "..."],
+  "politeness": "nízká|střední|vysoká",
+  "response_length_pref": "Krátká (1-2 věty)|Střední (1 odstavec)|Dlouhá (více odstavců)|Adaptivní",
+  "signature_hint": "používaný podpis, pokud je patrný",
+  "language": "cs-CZ"
+}
+
+Pokud máš záznam o podpisu v nastavení, preferuj jej: ${JSON.stringify(settings || {})}
+
+UKÁZKY (zkrácené):
+${sampleText}
+`;
+
+    const prompt = `${sysInstr}\n\n${userPrompt}`.slice(0, 24000); // pojistka
+
+    const ai = await model.generateContent(prompt);
+    const raw = ai?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const json = JSON.parse(raw.replace(/```json|```/g, '').trim() || '{}');
+
+    return res.json({ success:true, profile: json });
+  } catch (e) {
+    console.error('style-profile error', e);
+    return res.status(500).json({ success:false, message:'Chyba při čtení profilu' });
+  }
+});
 
 
 // Nastavení CORS
@@ -1678,6 +1945,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
