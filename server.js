@@ -462,6 +462,65 @@ app.get('/api/style/get', async (req,res) => {
 });
 
 
+// === LEARNING ENDPOINT (pro starý FE, co volá /api/style/learn) ===
+app.post('/api/style/learn', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, limit = 200 } = req.body || req.query || {};
+    if (!dashboardUserEmail || !email) {
+      return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail nebo email.' });
+    }
+
+    const gmail = await getGmailClientFor(dashboardUserEmail, email);
+    const max = Math.min(Number(limit) || 200, 500);
+
+    // načti seznamy zpráv
+    const [sentList, inboxList] = await Promise.all([
+      gmail.users.messages.list({ userId: 'me', labelIds: ['SENT'],  maxResults: max }),
+      gmail.users.messages.list({ userId: 'me', labelIds: ['INBOX'], q: '-from:me -in:spam -in:trash', maxResults: max }),
+    ]);
+
+    // helper na stažení obsahu jednotlivých zpráv
+    const loadItems = async (msgs = [], role = 'incoming') => {
+      const out = [];
+      for (const m of (msgs || [])) {
+        const msg = await gmail.users.messages.get({ userId: 'me', id: m.id });
+        const payload = msg.data.payload;
+        const headers = payload?.headers || [];
+        const subject = headers.find(h => h.name === 'Subject')?.value || '';
+        const body = extractPlainText(payload);
+        if (body) out.push({ role, subject, body });
+      }
+      return out;
+    };
+
+    const sentItems  = await loadItems(sentList.data.messages,  'outgoing');
+    const inboxItems = await loadItems(inboxList.data.messages, 'incoming');
+    const items = [...sentItems, ...inboxItems];
+
+    // ulož do DB
+    if (!items.length) return res.json({ success:true, saved: 0 });
+
+    const db = await pool.connect();
+    try {
+      const sql = `
+        INSERT INTO style_examples (dashboard_user_email, connected_email, role, subject, body)
+        VALUES ($1,$2,$3,$4,$5)
+      `;
+      for (const it of items) {
+        await db.query(sql, [dashboardUserEmail, email, it.role, it.subject || '', it.body || '']);
+      }
+    } finally {
+      db.release();
+    }
+
+    return res.json({ success:true, saved: items.length });
+  } catch (e) {
+    console.error('[/api/style/learn] error', e);
+    return res.status(500).json({ success:false, message:'Učení z historie selhalo.' });
+  }
+});
+
+
 app.get('/api/auth/has-password', async (req, res) => {
   const email = req.query.email;
   if (!email) return res.status(400).json({ success: false, message: 'Chybí email.' });
@@ -1844,6 +1903,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
