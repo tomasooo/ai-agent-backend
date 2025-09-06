@@ -2,7 +2,7 @@
 const express = require('express');
 const cors = require('cors');
 const { OAuth2Client } = require('google-auth-library');
-const bodyParser = require('body-parser');
+
 const { Pool } = require('pg'); // Ovladač pro PostgreSQL
 const { google } = require('googleapis'); // PŘIDÁNO: Knihovna pro Google API
 const { VertexAI } = require('@google-cloud/vertexai');
@@ -38,7 +38,7 @@ app.use(express.json()); // místo bodyParser.json()
 
 const PORT = process.env.PORT || 3000;
 
-// Načtení proměnných prostředíconst cors = require('cors');
+// Načtení proměnných prostředíconst 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL;
@@ -153,6 +153,14 @@ async function setupDatabase() {
     monthly_ai_actions INT NOT NULL   -- měsíční limit na AI akce (analyzuj + odeslání odpovědi)
   );
 `);
+
+      CREATE TABLE IF NOT EXISTS style_profiles (
+  dashboard_user_email TEXT NOT NULL,
+  connected_email TEXT,
+  profile_json JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (dashboard_user_email, connected_email)
+);
 
 // 5) Seed základních plánů (lze kdykoli změnit v DB)
 await client.query(`
@@ -472,43 +480,11 @@ ${sampleText}
 });
 
 
-// Nastavení CORS
 
 
-const DEFAULT_ALLOWED = [
-  'https://ai-agent-frontend-9nrf.onrender.com', // Render frontend
-  'http://localhost:5500',                        // local dev
-  'http://127.0.0.1:5500',                        // local dev
-];
 
-// možnost doplnit další origins přes ENV (ALLOWED_ORIGINS="url1,url2")
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean);
 
-if (process.env.FRONTEND_URL) ALLOWED_ORIGINS.push(process.env.FRONTEND_URL);
 
-const ORIGINS = Array.from(new Set([...DEFAULT_ALLOWED, ...ALLOWED_ORIGINS]));
-
-console.log('CORS allowed origins:', ORIGINS);
-
-const corsOptions = {
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // např. curl nebo server-side request
-    return ORIGINS.includes(origin)
-      ? cb(null, true)
-      : cb(new Error('Not allowed by CORS: ' + origin));
-  },
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: false, // dej true jen pokud používáš cookies
-  optionsSuccessStatus: 204,
-};
-
-app.use(cors(corsOptions));
-
-app.use(bodyParser.json());
 // Klient pro ověření PŘIHLAŠOVACÍHO tokenu (zůstává)
 const loginClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
@@ -516,11 +492,6 @@ const loginClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 // Tento klient potřebuje i Client Secret a Redirect URI
 const oauth2Client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, REDIRECT_URI);
 // ==========================================================
-
-
-
-
-
 
 
 
@@ -556,43 +527,7 @@ app.post('/api/auth/google', async (req, res) => {
 
 
 
-app.post('/api/style/learn', async (req,res) => {
-  const { dashboardUserEmail, email, sampleCount=200 } = req.body;
-  try {
-    // 1) načíst zprávy z Gmailu (odeslané)
-    const samples = await fetchSentReplies({ dashboardUserEmail, email, limit: sampleCount });
 
-    // 2) vybrat reprezentativní (např. clustering / náhodný stratifikovaný výběr)
-    const picked = pickRepresentative(samples, 20); // 20 ukázek stačí
-
-    // 3) vyrobit stylový profil přes LLM
-    const prompt = `
-Analyzuj následující e-mailové odpovědi a vytvoř konsolidovaný STYLOVÝ PROFIL ve formátu JSON.
-Zaměř se na:
-- tone ("formální", "neformální", "přátelský-profesionální"…)
-- vykání/tykání
-- délka (krátká/střední/dlouhá), hustota informací
-- struktura (odstavce, odrážky, shrnutí nahoře apod.)
-- typické pozdravy a oslovení (greeting), sign-off (podpis, „S pozdravem…“)
-- používání emoji/odrážek/tučné zvýraznění
-- typické fráze/do & don't
-- jazykové preference (čeština, diakritika, formality)
-Vrať čistý JSON (bez komentářů), klíč "style_profile".
-
-PŘÍKLADY ODPOVĚDÍ:
-${picked.map((t,i)=>`[${i+1}] ${t}`).join('\n\n')}
-    `.trim();
-
-    const styleJson = await callLLMForStyle(prompt);   // tvá utilita pro LLM
-    const style_profile = JSON.parse(styleJson).style_profile;
-
-    await saveStyleProfile({ dashboardUserEmail, email, style_profile });
-
-    res.json({ success:true, style_profile });
-  } catch (e) {
-    res.json({ success:false, message: e.message || 'Learning failed' });
-  }
-});
 
 
 app.get('/api/style/get', async (req,res) => {
@@ -1967,6 +1902,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
