@@ -1557,55 +1557,88 @@ app.get('/api/accounts/list', listConnectedAccountsHandler); // kvůli fallbacku
 
 
 app.post('/api/oauth/google/revoke', async (req, res) => {
-  const { email, dashboardUserEmail } = req.body || {};
-  if (!email || !dashboardUserEmail) {
-    return res.status(400).json({ success: false, message: 'Chybí email nebo dashboardUserEmail.' });
-  }
-
-  const client = await pool.connect();
+  let client;
   try {
-    await client.query('BEGIN');
+    const { email, dashboardUserEmail } = req.body;
+    if (!email || !dashboardUserEmail) {
+      return res.status(400).json({ success: false, message: 'Chybí email nebo dashboardUserEmail.' });
+    }
 
-    const result = await client.query(
+    client = await pool.connect();
+
+    // 1) Zkus Gmail účet
+    const rG = await client.query(
       'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
       [email, dashboardUserEmail]
     );
 
-    if (result.rowCount === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ success: false, message: 'Účet nenalezen.' });
-    }
+    if (rG.rowCount > 0) {
+      const refreshToken = rG.rows[0].refresh_token;
 
-    const refreshToken = result.rows[0]?.refresh_token;
-    if (refreshToken) {
-      try {
-        await oauth2Client.revokeToken(refreshToken);
-        console.log(`Token pro ${email} zneplatněn u Googlu.`);
-      } catch (e) {
-        console.warn('Revokace tokenu selhala (pokračuji):', e?.message || e);
+      // a) Revoke u Googlu (best-effort)
+      if (refreshToken) {
+        try {
+          await oauth2Client.revokeToken(refreshToken);
+          console.log(`Token pro ${email} zneplatněn u Googlu.`);
+        } catch (e) {
+          console.warn('Revoke token failed (pokračuji):', e?.message || e);
+        }
       }
+
+      // b) Smazat účet + přidružená data
+      await client.query(
+        'DELETE FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
+        [email, dashboardUserEmail]
+      );
+      await client.query(
+        'DELETE FROM settings WHERE dashboard_user_email=$1 AND connected_email=$2',
+        [dashboardUserEmail, email]
+      );
+      await client.query(
+        'DELETE FROM style_profiles WHERE dashboard_user_email=$1 AND connected_email=$2',
+        [dashboardUserEmail, email]
+      );
+      await client.query(
+        'DELETE FROM style_examples WHERE dashboard_user_email=$1 AND connected_email=$2',
+        [dashboardUserEmail, email]
+      );
+
+      return res.status(200).json({ success: true, type: 'gmail', message: 'Účet byl úspěšně odpojen.' });
     }
 
-    // 1) smaž propojený účet
-    await client.query(
-      'DELETE FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
-      [email, dashboardUserEmail]
-    );
-
-    // 2) a také jeho settings (už tu nemáš FK -> ON DELETE CASCADE)
-    await client.query(
-      'DELETE FROM settings WHERE dashboard_user_email = $1 AND connected_email = $2',
+    // 2) Jinak zkus Custom účet
+    const rC = await client.query(
+      'SELECT id FROM custom_accounts WHERE dashboard_user_email = $1 AND email_address = $2',
       [dashboardUserEmail, email]
     );
 
-    await client.query('COMMIT');
-    return res.status(200).json({ success: true, message: 'Účet byl úspěšně odpojen a nastavení odstraněno.' });
+    if (rC.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Účet nenalezen.' });
+    }
+
+    await client.query(
+      'DELETE FROM custom_accounts WHERE dashboard_user_email = $1 AND email_address = $2',
+      [dashboardUserEmail, email]
+    );
+    await client.query(
+      'DELETE FROM settings WHERE dashboard_user_email=$1 AND connected_email=$2',
+      [dashboardUserEmail, email]
+    );
+    await client.query(
+      'DELETE FROM style_profiles WHERE dashboard_user_email=$1 AND connected_email=$2',
+      [dashboardUserEmail, email]
+    );
+    await client.query(
+      'DELETE FROM style_examples WHERE dashboard_user_email=$1 AND connected_email=$2',
+      [dashboardUserEmail, email]
+    );
+
+    return res.status(200).json({ success: true, type: 'custom', message: 'Účet byl úspěšně odpojen.' });
   } catch (error) {
-    try { await client.query('ROLLBACK'); } catch {}
     console.error('Chyba při odpojení účtu:', error);
     return res.status(500).json({ success: false, message: 'Nepodařilo se odpojit účet.' });
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
 
@@ -2365,6 +2398,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
