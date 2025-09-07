@@ -1688,6 +1688,7 @@ const consume = await tryConsumeAiAction(db, dashboardUserEmail);
 
 app.get('/api/gmail/emails', async (req, res) => {
   let db;
+  let imap; // kvůli finally
   try {
     const { email, dashboardUserEmail, status, period, searchQuery } = req.query;
     if (!email || !dashboardUserEmail) {
@@ -1696,13 +1697,13 @@ app.get('/api/gmail/emails', async (req, res) => {
 
     db = await pool.connect();
 
-    // 1) Zkusíme Gmail účet
+    // 1) Zkus Gmail účet
     const acc = await db.query(
       'SELECT refresh_token, active FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
       [email, dashboardUserEmail]
     );
 
-    // 2) Pokud není v Gmail tabulce, zkusíme custom IMAP
+    // 2) Pokud není v Gmail tabulce, zkus custom IMAP
     let isCustom = false;
     let customRow = null;
 
@@ -1715,7 +1716,6 @@ app.get('/api/gmail/emails', async (req, res) => {
       `, [dashboardUserEmail, email]);
 
       if (r.rowCount === 0) {
-        db.release();
         return res.status(404).json({ success: false, message: "Účet nenalezen." });
       }
       isCustom = true;
@@ -1724,23 +1724,21 @@ app.get('/api/gmail/emails', async (req, res) => {
 
     // 3) Kontrola "active"
     if (!isCustom && acc.rows[0].active === false) {
-      db.release();
       return res.status(403).json({ success: false, message: "Tento účet je neaktivní." });
     }
     if (isCustom && customRow.active === false) {
-      db.release();
       return res.status(403).json({ success: false, message: "Tento účet je neaktivní." });
     }
 
     // === Gmail větev ===
     if (!isCustom) {
+      console.log(`[emails] Gmail account: ${email}`);
       const refreshToken = acc.rows[0].refresh_token;
       if (!refreshToken) {
-        db.release();
         return res.status(404).json({ success: false, message: "Pro tento email u tohoto uživatele nebyl nalezen token." });
       }
 
-      db.release();
+      db.release(); db = null; // DB už netřeba
 
       oauth2Client.setCredentials({ refresh_token: refreshToken });
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
@@ -1786,11 +1784,12 @@ app.get('/api/gmail/emails', async (req, res) => {
     }
 
     // === Custom IMAP větev ===
+    console.log(`[emails] CUSTOM account: ${email}`);
     try {
       const user = decSecret(customRow.enc_username);
       const pass = decSecret(customRow.enc_password);
 
-      const imap = new ImapFlow({
+      imap = new ImapFlow({
         host: customRow.imap_host,
         port: Number(customRow.imap_port),
         secure: !!customRow.imap_secure,
@@ -1803,21 +1802,20 @@ app.get('/api/gmail/emails', async (req, res) => {
       const out = [];
       let fetched = 0;
 
-      // Připravíme si datumové filtry pro "today" a "week"
+      // datumové filtry pro "today" a "week"
       const now = new Date();
       const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
       const oneWeekAgo = new Date(now); oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-      // Načti posledních ~500 zpráv a filtruj v JS (jednoduché a spolehlivé)
-      const startSeq = Math.max(1, imap.mailbox.exists - 500);
+      const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 500);
       for await (let msg of imap.fetch(
         { seq: `${startSeq}:*` },
         { uid: true, envelope: true, internalDate: true, flags: true }
       )) {
-        // Filtrování: unread
+        // unread
         if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
 
-        // Filtrování: period
+        // period
         const d = msg.internalDate;
         if (period === 'today' && (!d || d < startOfToday)) continue;
         if (period === 'week' && (!d || d < oneWeekAgo)) continue;
@@ -1825,35 +1823,36 @@ app.get('/api/gmail/emails', async (req, res) => {
         const subj = msg.envelope?.subject || '';
         const from = msg.envelope?.from?.map(a => a.address || a.name).join(', ') || '';
 
-        // Filtrování: searchQuery (na subject + from)
+        // searchQuery (subject + from)
         if (searchQuery) {
           const q = String(searchQuery).toLowerCase();
           if (!subj.toLowerCase().includes(q) && !from.toLowerCase().includes(q)) continue;
         }
 
         out.push({
-          id: String(msg.uid),        // sjednocené jméno pole jako u Gmailu
-          snippet: '',                // (volitelně lze doplnit přes body peek)
+          id: String(msg.uid),
+          snippet: '',
           sender: from,
           subject: subj,
           date: d ? d.toISOString() : null
         });
 
-        if (++fetched >= 10) break;   // stejné „maxResults“ jako u Gmailu
+        if (++fetched >= 10) break;
       }
 
-      await imap.logout();
-      db.release();
       return res.json({ success: true, emails: out, total: out.length });
     } catch (e) {
-      db.release();
       console.error("Chyba IMAP:", e);
       return res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily (custom)." });
+    } finally {
+      try { if (imap?.connected) await imap.logout(); } catch {}
+      if (db) { db.release(); db = null; }
     }
 
   } catch (error) {
-    if (db) db.release();
-    console.error("Chyba při načítání emailů:", error.message);
+    if (imap?.connected) { try { await imap.logout(); } catch {} }
+    if (db) { try { db.release(); } catch {} }
+    console.error("Chyba při načítání emailů:", error?.message || error);
     return res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily." });
   }
 });
@@ -2366,6 +2365,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
