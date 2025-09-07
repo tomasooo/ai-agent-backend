@@ -1,14 +1,16 @@
 // server.js
-const express = require('express');
-const cors = require('cors');
-const { OAuth2Client } = require('google-auth-library');
-
-const { Pool } = require('pg'); // Ovladač pro PostgreSQL
-const { google } = require('googleapis'); // PŘIDÁNO: Knihovna pro Google API
-const { VertexAI } = require('@google-cloud/vertexai');
-const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
-const jwt = require('jsonwebtoken'); // pokud chceš tokeny; není nutné pro toto minimum
+import express from 'express';
+import cors from 'cors';
+import { OAuth2Client } from 'google-auth-library';
+import { Pool } from 'pg';
+import { google } from 'googleapis';
+import { VertexAI } from '@google-cloud/vertexai';
+import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
+import jwt from 'jsonwebtoken';
+import { ImapFlow } from 'imapflow';
+import nodemailer from 'nodemailer';
+import { simpleParser } from 'mailparser';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 
 
@@ -23,15 +25,7 @@ const ORIGINS = [
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
 ];
 
-app.use(require('cors')({
-  origin: function(origin, cb) {
-    if (!origin) return cb(null, true); // curl / server-side
-    cb(null, ORIGINS.includes(origin));
-  },
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization'],
-  credentials: false,
-}));
+
 
 
 app.use(express.json()); // místo bodyParser.json()
@@ -345,8 +339,7 @@ app.get('/api/gmail/sent-replies', async (req, res) => {
 
 
 
-const { ImapFlow } = require('imapflow');
-const nodemailer = require('nodemailer');
+
 
 app.post('/api/custom-email/connect', async (req, res) => {
   const {
@@ -562,7 +555,7 @@ app.post('/api/style-examples/ingest', async (req, res) => {
 });
 
 
-const cryptoNode = require('crypto');
+
 
 function parseEncKey() {
   const raw = process.env.CUSTOM_EMAIL_KEY || '';
@@ -586,11 +579,11 @@ const ENC_KEY = parseEncKey(); // Buffer o délce 32
 
 function encSecret(plain='') {
   if (!plain) return '';
-  const iv = cryptoNode.randomBytes(12); // GCM
-  const cipher = cryptoNode.createCipheriv('aes-256-gcm', ENC_KEY, iv);
+  const iv = crypto.randomBytes(12); // GCM
+  const cipher = crypto.createCipheriv('aes-256-gcm', ENC_KEY, iv);
   const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, enc]).toString('base64'); // [12B IV][16B TAG][data]
+  return Buffer.concat([iv, tag, enc]).toString('base64');
 }
 function decSecret(b64='') {
   if (!b64) return '';
@@ -598,7 +591,7 @@ function decSecret(b64='') {
   const iv = raw.subarray(0,12);
   const tag = raw.subarray(12,28);
   const data = raw.subarray(28);
-  const decipher = cryptoNode.createDecipheriv('aes-256-gcm', ENC_KEY, iv);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', ENC_KEY, iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
 }
@@ -1280,7 +1273,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (r.rowCount === 0 || !r.rows[0].password_hash) {
       return res.status(401).json({ success: false, message: 'Nesprávný email nebo heslo.' });
     }
-    const ok = await require('bcryptjs').compare(password, r.rows[0].password_hash);
+    const ok = await bcrypt.compare(password, r.rows[0].password_hash);
     if (!ok) return res.status(401).json({ success: false, message: 'Nesprávný email nebo heslo.' });
 
     return res.json({ success: true, user: { email: r.rows[0].email, name: r.rows[0].name }});
@@ -1563,47 +1556,61 @@ app.get('/api/accounts/list', listConnectedAccountsHandler); // kvůli fallbacku
 
 
 
-// ENDPOINT PRO ODPOJENÍ ÚČTU
 app.post('/api/oauth/google/revoke', async (req, res) => {
-    let client;
-  try {
-    const { email, dashboardUserEmail } = req.body;
-    if (!email || !dashboardUserEmail) {
-      return res.status(400).json({ success: false, message: 'Chybí email nebo dashboardUserEmail.' });
-    }
+  const { email, dashboardUserEmail } = req.body || {};
+  if (!email || !dashboardUserEmail) {
+    return res.status(400).json({ success: false, message: 'Chybí email nebo dashboardUserEmail.' });
+  }
 
-    client = await pool.connect();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
     const result = await client.query(
       'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
       [email, dashboardUserEmail]
     );
-    const refreshToken = result.rows[0]?.refresh_token;
 
-    if (refreshToken) {
-      await oauth2Client.revokeToken(refreshToken);
-      console.log(`Token pro ${email} zneplatněn u Googlu.`);
+    if (result.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'Účet nenalezen.' });
     }
 
-    // Smazáním z connected_accounts (FK v settings je ON DELETE CASCADE)
+    const refreshToken = result.rows[0]?.refresh_token;
+    if (refreshToken) {
+      try {
+        await oauth2Client.revokeToken(refreshToken);
+        console.log(`Token pro ${email} zneplatněn u Googlu.`);
+      } catch (e) {
+        console.warn('Revokace tokenu selhala (pokračuji):', e?.message || e);
+      }
+    }
+
+    // 1) smaž propojený účet
     await client.query(
       'DELETE FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
       [email, dashboardUserEmail]
     );
 
-    return res.status(200).json({ success: true, message: 'Účet byl úspěšně odpojen.' });
+    // 2) a také jeho settings (už tu nemáš FK -> ON DELETE CASCADE)
+    await client.query(
+      'DELETE FROM settings WHERE dashboard_user_email = $1 AND connected_email = $2',
+      [dashboardUserEmail, email]
+    );
+
+    await client.query('COMMIT');
+    return res.status(200).json({ success: true, message: 'Účet byl úspěšně odpojen a nastavení odstraněno.' });
   } catch (error) {
+    try { await client.query('ROLLBACK'); } catch {}
     console.error('Chyba při odpojení účtu:', error);
     return res.status(500).json({ success: false, message: 'Nepodařilo se odpojit účet.' });
   } finally {
-    if (client) client.release();
+    client.release();
   }
 });
 
 
-await client.query(
-  'DELETE FROM settings WHERE dashboard_user_email=$1 AND connected_email=$2',
-  [dashboardUserEmail, email]
-);
+
 
 
 // === NOVÝ ENDPOINT PRO ODESLÁNÍ ODPOVĚDI ===
@@ -1852,7 +1859,7 @@ app.get('/api/gmail/emails', async (req, res) => {
 });
 
 
-const { simpleParser } = require('mailparser');
+
 
 app.post('/api/custom-email/analyze-email', async (req, res) => {
   try {
@@ -2359,6 +2366,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
