@@ -2097,9 +2097,17 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
 
 
 
-// === NOVÝ ENDPOINT PRO ANALÝZU EMAILU POMOCÍ GEMINI ===
+
+// === UNIFIED ENDPOINT: zvládne Gmail i Custom na stejné URL ===
 app.post('/api/gmail/analyze-email', async (req, res) => {
-    try {
+  // Pokud FE poslal parametry custom účtu, rovnou použij náš custom handler
+  const { dashboardUserEmail, emailAddress, uid, messageId } = req.body || {};
+  if (!messageId && emailAddress && uid) {
+    // FE poslal custom data omylem na /api/gmail/analyze-email -> obsloužíme
+    return handleCustomAnalyzeEmail(req, res);
+  }
+
+  try {
     const { dashboardUserEmail, email, messageId } = req.body;
     if (!dashboardUserEmail || !email || !messageId) {
       return res.status(400).json({ success: false, message: "Chybí data." });
@@ -2144,22 +2152,19 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
       emailBody = Buffer.from(msgResponse.data.payload.body.data, 'base64').toString('utf-8');
     }
 
-    // NEW: poskládej STYLE_PROFILE z tvých nastavení (můžeš ho později rozšířit o „učení z historie“)
     const styleProfile = {
-      tone: settings.tone,           // např. "Formální" | "Přátelský"…
-      length: settings.length,       // "Krátká" | "Střední" | "Dlouhá" | "Adaptivní"
-      signature: settings.signature, // tvůj podpis
-      language: "cs-CZ"              // volitelné: vynutí češtinu
+      tone: settings.tone,
+      length: settings.length,
+      signature: settings.signature,
+      language: "cs-CZ"
     };
 
-    // NEW: systémová instrukce + profil -> musí být úplně na začátku promptu
     const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
 Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu, použij rozumný default, ale profil má přednost.
 STYLE_PROFILE:
 ${JSON.stringify(styleProfile, null, 2)}
 `;
 
-    // PŮVODNÍ ÚKOL – necháš za systémovou částí
     const task = `Jsi profesionální emailový asistent. Analyzuj následující email a vrať JSON s klíči "summary", "sentiment", "suggested_reply".
 - Dodržuj STYLE_PROFILE výše.
 - Odpovědi piš česky.
@@ -2169,12 +2174,9 @@ Email:
 ${emailBody.substring(0, 3000)}
 ---`;
 
-    // NEW: finální prompt = systémová instrukce + úkol
     const prompt = `${systemInstruction}\n${task}`;
-
     const geminiResult = await model.generateContent(prompt);
 
-    // Bezpečnější parsování JSONu z modelu
     const raw = geminiResult?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const cleaned = raw.replace(/```json|```/g, '').trim();
 
@@ -2182,20 +2184,21 @@ ${emailBody.substring(0, 3000)}
     try {
       analysis = JSON.parse(cleaned);
     } catch {
-      // fallback: když model nevrátí čistý JSON, zkus to znovu „vynutit“ rychlým opravným krokem
       const fix = await model.generateContent(
         `Oprav tento text na validní JSON se strukturou { "summary": "", "sentiment": "", "suggested_reply": "" }:\n${raw}`
       );
-      analysis = JSON.parse(fix.response.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim());
+      analysis = JSON.parse(
+        fix.response.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim()
+      );
     }
-const debugOut = {};
-if (req.query.debug === '1') {
-  debugOut.styleProfile = styleProfile;
-  // volitelně: debugOut.promptStart = prompt.slice(0, 800);
-}
 
-return res.json({ success: true, analysis, emailBody, ...debugOut });
-    
+    const debugOut = {};
+    if (req.query?.debug === '1') {
+      debugOut.styleProfile = styleProfile;
+    }
+
+    return res.json({ success: true, analysis, emailBody, ...debugOut });
+
   } catch (error) {
     console.error("Chyba při analýze emailu:", error);
     return res.status(500).json({ success: false, message: "Nepodařilo se analyzovat email." });
@@ -2473,6 +2476,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
