@@ -1938,14 +1938,18 @@ await imap.mailboxOpen('INBOX');
 
 
 
-app.post('/api/custom-email/analyze-email', async (req, res) => {
+async function handleCustomAnalyzeEmail(req, res) {
   try {
-    const { dashboardUserEmail, emailAddress, uid } = req.body || {};
+    // podpora POST (body) i GET (query)
+    const src = req.method === 'GET' ? (req.query || {}) : (req.body || {});
+    const { dashboardUserEmail, emailAddress, uid } = src;
+
     if (!dashboardUserEmail || !emailAddress || !uid) {
-      return res.status(400).json({ success:false, message:'Chybí data.' });
+      return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, emailAddress, uid).' });
     }
 
-    // limity jako u Gmailu
+    // !!! ZBYTEK JE PŘESNĚ TO, CO UŽ MÁŠ V POST HANDLERU !!!
+    // načíst limity
     const db = await pool.connect();
     const consume = await tryConsumeAiAction(db, dashboardUserEmail);
     if (!consume.ok) {
@@ -1973,25 +1977,21 @@ app.post('/api/custom-email/analyze-email', async (req, res) => {
     const user = decSecret(rAcc.rows[0].enc_username);
     const pass = decSecret(rAcc.rows[0].enc_password);
 
-    // stáhnout RAW a rozparsovat
+    // IMAP připojení – použij helper, ať to nepadá na timeout
+    const imap = createImapClient({
+      host: rAcc.rows[0].imap_host,
+      port: rAcc.rows[0].imap_port,
+      secure: rAcc.rows[0].imap_secure,
+      auth: { user, pass }
+    });
 
-const imap = createImapClient({
-  host: rAcc.rows[0].imap_host,
-  port: rAcc.rows[0].imap_port,
-  secure: rAcc.rows[0].imap_secure,
-  auth: { user, pass }
-});
+    await imap.connect();
+    await imap.mailboxOpen('INBOX');
 
-await imap.connect();
-await imap.mailboxOpen('INBOX');
-
-const { content } = await imap.download(Number(uid), null, { uid: true }); // RAW stream
-const chunks = [];
-for await (const c of content) chunks.push(c);
-
-try { await imap.logout(); } catch {}
-
-    
+    const { content } = await imap.download(Number(uid), null, { uid: true });
+    const chunks = [];
+    for await (const c of content) chunks.push(c);
+    try { await imap.logout(); } catch {}
 
     const parsed = await simpleParser(Buffer.concat(chunks));
     const emailBody = parsed.text || parsed.html || '';
@@ -2015,6 +2015,7 @@ ${String(emailBody).slice(0, 3000)}
     const geminiResult = await model.generateContent(`${systemInstruction}\n${task}`);
     const raw = geminiResult?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     const cleaned = raw.replace(/```json|```/g, '').trim();
+
     let analysis = {};
     try { analysis = JSON.parse(cleaned); }
     catch {
@@ -2023,14 +2024,30 @@ ${String(emailBody).slice(0, 3000)}
     }
 
     const debugOut = {};
-    if (req.query.debug === '1') debugOut.styleProfile = styleProfile;
+    if ((req.query && req.query.debug === '1') || (req.body && req.body.debug === '1')) {
+      debugOut.styleProfile = styleProfile;
+    }
 
     return res.json({ success:true, analysis, emailBody, ...debugOut });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ success:false, message:'Analýza selhala.' });
   }
-});
+}
+
+
+
+
+
+// POST (původní cesta)
+app.post('/api/custom-email/analyze-email', handleCustomAnalyzeEmail);
+
+// GET alias (když FE posílá query parametry)
+app.get('/api/custom-email/analyze-email', handleCustomAnalyzeEmail);
+
+// Volitelně kompatibilní aliasy, kdyby FE trefoval jinou URL:
+app.post('/api/custom-email/analyze', handleCustomAnalyzeEmail);
+app.get('/api/custom-email/analyze', handleCustomAnalyzeEmail);
 
 
 
@@ -2456,6 +2473,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
