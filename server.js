@@ -1995,32 +1995,38 @@ async function handleCustomAnalyzeEmail(req, res) {
 
     const parsed = await simpleParser(Buffer.concat(chunks));
     const emailBody = parsed.text || parsed.html || '';
+const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
+Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu,
+použij rozumný default, ale profil má přednost.
 
-    const styleProfile = {
-      tone: st.tone, length: st.length, signature: st.signature, language: 'cs-CZ'
-    };
-
-    const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
-Piš odpovědi podle následujícího stylového profilu (JSON). Pokud něco v profilu chybí, zvol rozumný default, ale profil má přednost.
 STYLE_PROFILE:
 ${JSON.stringify(styleProfile, null, 2)}
-Pravidla pro tvorbu "suggested_reply":
- - Dodrž tón (tone) a délku (length) ze STYLE_PROFILE.
- - Pokud STYLE_PROFILE.signature není prázdný:
-   - Připoj podpis NA KONEC odpovědi.
-   - Před podpis vlož dvě nové řádky.
-   - Nepřidávej podpis, pokud už v textu odpovědi je (porovnej jako substring).
-`;
 
-    const task = `Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať VALIDNÍ JSON:
- {
-   "summary": "stručné shrnutí",
-   "sentiment": "pozitivní|neutrální|negativní",
-   "suggested_reply": "plný text odpovědi včetně podpisu dle pravidel výše"
- }
- Odpovědi piš česky.
+Pravidla pro tvorbu "suggested_reply":
+- Dodrž tón (tone) ze STYLE_PROFILE:
+  - "Formální" = spisovný, zdvořilý, bez slangových výrazů.
+  - "Neformální" = přátelský, uvolněný tón.
+- Dodrž délku (length) ze STYLE_PROFILE:
+  - "Krátká" = 1–2 věty.
+  - "Střední" = 1 odstavec (cca 3–6 vět).
+  - "Dlouhá" = více odstavců, podrobnější.
+- Pokud STYLE_PROFILE.signature není prázdný:
+  - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
+  - Podpis neduplikuj, pokud už v textu je.
+    
+`;
+const task = `Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+{
+  "summary": "stručné shrnutí",
+  "sentiment": "pozitivní|neutrální|negativní",
+  "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše"
+}
+Bez jakéhokoli dalšího textu mimo JSON. Odpovědi piš česky.
+
+Text e-mailu:
 ---
 ${String(emailBody).slice(0, 3000)}
+    
 ---`;
 
     const geminiResult = await model.generateContent(`${systemInstruction}\n${task}`);
@@ -2163,26 +2169,37 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
       emailBody = Buffer.from(msgResponse.data.payload.body.data, 'base64').toString('utf-8');
     }
 
-    const styleProfile = {
-      tone: settings.tone,
-      length: settings.length,
-      signature: settings.signature,
-      language: "cs-CZ"
-    };
+const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
+Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu,
+použij rozumný default, ale profil má přednost.
 
-    const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
-Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu, použij rozumný default, ale profil má přednost.
 STYLE_PROFILE:
 ${JSON.stringify(styleProfile, null, 2)}
+
+Pravidla pro tvorbu "suggested_reply":
+- Dodrž tón (tone) ze STYLE_PROFILE:
+  - "Formální" = spisovný, zdvořilý, bez slangových výrazů.
+  - "Neformální" = přátelský, uvolněný tón.
+- Dodrž délku (length) ze STYLE_PROFILE:
+  - "Krátká" = 1–2 věty.
+  - "Střední" = 1 odstavec (cca 3–6 vět).
+  - "Dlouhá" = více odstavců, podrobnější.
+- Pokud STYLE_PROFILE.signature není prázdný:
+  - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
+  - Podpis neduplikuj, pokud už v textu je.
 `;
 
-    const task = `Jsi profesionální emailový asistent. Analyzuj následující email a vrať JSON s klíči "summary", "sentiment", "suggested_reply".
-- Dodržuj STYLE_PROFILE výše.
-- Odpovědi piš česky.
+    const task = `Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+{
+  "summary": "stručné shrnutí",
+  "sentiment": "pozitivní|neutrální|negativní",
+  "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše"
+}
+Bez jakéhokoli dalšího textu mimo JSON. Odpovědi piš česky.
 
-Email:
+Text e-mailu:
 ---
-${emailBody.substring(0, 3000)}
+${String(emailBody).slice(0, 3000)}
 ---`;
 
     const prompt = `${systemInstruction}\n${task}`;
@@ -2487,6 +2504,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
