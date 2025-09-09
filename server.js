@@ -1,4 +1,5 @@
 // server.js
+// server.js
 import express from 'express';
 import cors from 'cors';
 import { OAuth2Client } from 'google-auth-library';
@@ -2521,6 +2522,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
