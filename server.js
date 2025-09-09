@@ -2004,10 +2004,21 @@ async function handleCustomAnalyzeEmail(req, res) {
 Piš odpovědi podle následujícího stylového profilu (JSON). Pokud něco v profilu chybí, zvol rozumný default, ale profil má přednost.
 STYLE_PROFILE:
 ${JSON.stringify(styleProfile, null, 2)}
+Pravidla pro tvorbu "suggested_reply":
+ - Dodrž tón (tone) a délku (length) ze STYLE_PROFILE.
+ - Pokud STYLE_PROFILE.signature není prázdný:
+   - Připoj podpis NA KONEC odpovědi.
+   - Před podpis vlož dvě nové řádky.
+   - Nepřidávej podpis, pokud už v textu odpovědi je (porovnej jako substring).
 `;
 
-    const task = `Jsi profesionální emailový asistent. Analyzuj následující email a vrať JSON { "summary": "", "sentiment": "", "suggested_reply": "" }.
-- Odpovědi piš česky.
+    const task = `Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať VALIDNÍ JSON:
+ {
+   "summary": "stručné shrnutí",
+   "sentiment": "pozitivní|neutrální|negativní",
+   "suggested_reply": "plný text odpovědi včetně podpisu dle pravidel výše"
+ }
+ Odpovědi piš česky.
 ---
 ${String(emailBody).slice(0, 3000)}
 ---`;
@@ -2476,6 +2487,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
