@@ -44,6 +44,44 @@ console.log("DEBUG: Načtená DATABASE_URL je:", DATABASE_URL);
 const SERVER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 const REDIRECT_URI = `${SERVER_URL}/api/oauth/google/callback`;
 
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// --- [NEW] globální handlery, aby proces nespadl na neodchycenou chybu ---
+process.on('unhandledRejection', (reason) => {
+  console.error('[UNHANDLED REJECTION]', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]', err);
+});
+
+
+// --- IMAP helper: keepalive + delší timeout + bezpečné logování ---
+function createImapClient({ host, port = 993, secure = true, auth }) {
+  const client = new ImapFlow({
+    host,
+    port: Number(port),
+    secure: !!secure,
+    auth,
+    keepalive: {
+      interval: 3 * 60 * 1000, // 3 min (klidně 120*1000, pokud server rád timeoutuje)
+      idle: true,
+      forceNoop: true,
+      timeout: 20 * 1000
+    },
+    socketTimeout: 10 * 60 * 1000 // 10 minut
+  });
+
+  client.on('error', (err) => {
+    console.error('[IMAP] client error:', err?.code || err?.message || err);
+  });
+
+  return client;
+}
+
+
+
 app.use(cors({
   origin(origin, cb) {
     if (!origin) return cb(null, true);
@@ -280,6 +318,10 @@ function extractPlainText(payload) {
   return '';
 }
 
+
+
+
+
 async function getGmailClientFor(dashboardUserEmail, email) {
   const db = await pool.connect();
   try {
@@ -357,16 +399,19 @@ app.post('/api/custom-email/connect', async (req, res) => {
   }
 
   // 1) Ověřit IMAP přihlášení
-  const imap = new ImapFlow({
-    host: imapHost, port: Number(imapPort), secure: !!imapSecure,
-    auth: { user: username, pass: password }
-  });
-  try {
-    await imap.connect();
-    await imap.logout();
-  } catch (e) {
-    return res.status(400).json({ success:false, message:'IMAP přihlášení selhalo: ' + (e?.message || e) });
-  }
+ const imap = createImapClient({
+  host: imapHost,
+  port: imapPort,
+  secure: imapSecure,
+  auth: { user: username, pass: password }
+});
+try {
+  await imap.connect();
+} catch (e) {
+  return res.status(400).json({ success:false, message:'IMAP přihlášení selhalo: ' + (e?.message || e) });
+} finally {
+  try { await imap.logout(); } catch {}
+}
 
   // 2) Ověřit SMTP přihlášení
   try {
@@ -1822,15 +1867,15 @@ app.get('/api/gmail/emails', async (req, res) => {
       const user = decSecret(customRow.enc_username);
       const pass = decSecret(customRow.enc_password);
 
-      imap = new ImapFlow({
-        host: customRow.imap_host,
-        port: Number(customRow.imap_port),
-        secure: !!customRow.imap_secure,
-        auth: { user, pass }
-      });
+      imap = createImapClient({
+  host: customRow.imap_host,
+  port: customRow.imap_port,
+  secure: customRow.imap_secure,
+  auth: { user, pass }
+});
 
-      await imap.connect();
-      await imap.mailboxOpen('INBOX');
+await imap.connect();
+await imap.mailboxOpen('INBOX');
 
       const out = [];
       let fetched = 0;
@@ -1929,17 +1974,24 @@ app.post('/api/custom-email/analyze-email', async (req, res) => {
     const pass = decSecret(rAcc.rows[0].enc_password);
 
     // stáhnout RAW a rozparsovat
-    const imap = new ImapFlow({
-      host: rAcc.rows[0].imap_host, port: Number(rAcc.rows[0].imap_port), secure: !!rAcc.rows[0].imap_secure,
-      auth: { user, pass }
-    });
-    await imap.connect();
-    await imap.mailboxOpen('INBOX');
 
-    const { content } = await imap.download(Number(uid), null, { uid: true }); // RAW stream
-    const chunks = [];
-    for await (const c of content) chunks.push(c);
-    await imap.logout();
+const imap = createImapClient({
+  host: rAcc.rows[0].imap_host,
+  port: rAcc.rows[0].imap_port,
+  secure: rAcc.rows[0].imap_secure,
+  auth: { user, pass }
+});
+
+await imap.connect();
+await imap.mailboxOpen('INBOX');
+
+const { content } = await imap.download(Number(uid), null, { uid: true }); // RAW stream
+const chunks = [];
+for await (const c of content) chunks.push(c);
+
+try { await imap.logout(); } catch {}
+
+    
 
     const parsed = await simpleParser(Buffer.concat(chunks));
     const emailBody = parsed.text || parsed.html || '';
@@ -1979,6 +2031,12 @@ ${String(emailBody).slice(0, 3000)}
     return res.status(500).json({ success:false, message:'Analýza selhala.' });
   }
 });
+
+
+
+
+
+
 
 
 app.post('/api/custom-email/send-reply', async (req, res) => {
@@ -2120,7 +2178,7 @@ if (req.query.debug === '1') {
 }
 
 return res.json({ success: true, analysis, emailBody, ...debugOut });
-    return res.json({ success: true, analysis, emailBody });
+    
   } catch (error) {
     console.error("Chyba při analýze emailu:", error);
     return res.status(500).json({ success: false, message: "Nepodařilo se analyzovat email." });
@@ -2398,6 +2456,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
