@@ -1995,6 +1995,13 @@ async function handleCustomAnalyzeEmail(req, res) {
 
     const parsed = await simpleParser(Buffer.concat(chunks));
     const emailBody = parsed.text || parsed.html || '';
+
+    const styleProfile = {
+  tone: st?.tone || 'Formální',
+  length: st?.length || 'Střední (1 odstavec)',
+  signature: st?.signature || '',
+  language: 'cs-CZ'
+};
 const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
 Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu,
 použij rozumný default, ale profil má přednost.
@@ -2042,8 +2049,8 @@ ${String(emailBody).slice(0, 3000)}
 
     const debugOut = {};
     if ((req.query && req.query.debug === '1') || (req.body && req.body.debug === '1')) {
-      debugOut.styleProfile = styleProfile;
-    }
+   debugOut.styleProfile = styleProfile;
+ }
 
     return res.json({ success:true, analysis, emailBody, ...debugOut });
   } catch (e) {
@@ -2169,6 +2176,16 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
       emailBody = Buffer.from(msgResponse.data.payload.body.data, 'base64').toString('utf-8');
     }
 
+const styleProfile = {
+  tone: settings?.tone || 'Formální',
+  length: settings?.length || 'Střední (1 odstavec)',
+  signature: settings?.signature || '',
+  language: 'cs-CZ'
+};
+
+
+
+    
 const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
 Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu,
 použij rozumný default, ale profil má přednost.
