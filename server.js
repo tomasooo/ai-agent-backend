@@ -1,4 +1,4 @@
-// server.js
+
 // server.js
 import express from 'express';
 import cors from 'cors';
@@ -411,7 +411,7 @@ try {
 } catch (e) {
   return res.status(400).json({ success:false, message:'IMAP přihlášení selhalo: ' + (e?.message || e) });
 } finally {
-  try { await imap.logout(); } catch {}
+  try { if (imap?.connected) await imap.logout(); } catch {}
 }
 
   // 2) Ověřit SMTP přihlášení
@@ -473,10 +473,14 @@ app.get('/api/custom-email/emails', async (req, res) => {
     const user = decSecret(row.enc_username);
     const pass = decSecret(row.enc_password);
 
-    const imap = new ImapFlow({
-      host: row.imap_host, port: Number(row.imap_port), secure: !!row.imap_secure,
-      auth: { user, pass }
-    });
+const imap = createImapClient({
+   host: row.imap_host,
+   port: Number(row.imap_port),
+   secure: !!row.imap_secure,
+   auth: { user, pass }
+ });
+
+    
     await imap.connect();
     await imap.mailboxOpen('INBOX');
 
@@ -1992,7 +1996,7 @@ async function handleCustomAnalyzeEmail(req, res) {
     const { content } = await imap.download(Number(uid), null, { uid: true });
     const chunks = [];
     for await (const c of content) chunks.push(c);
-    try { await imap.logout(); } catch {}
+    try { if (imap?.connected) await imap.logout(); } catch {}
 
     const parsed = await simpleParser(Buffer.concat(chunks));
     const emailBody = parsed.text || parsed.html || '';
@@ -2522,6 +2526,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
