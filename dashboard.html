@@ -16,6 +16,10 @@
     align-items: center; justify-content: center; z-index: 2000;
     opacity: 0; transition: opacity 0.3s ease;
 }
+
+#analysisModal { z-index: 2000; }
+#templatePicker { z-index: 2100; }
+
 .modal-overlay.show { opacity: 1; display: flex; }
 .modal {
     background: white; border-radius: 20px; width: 90%; max-width: 900px;
@@ -94,6 +98,21 @@
             display: flex;
             min-height: 100vh;
         }
+
+        .tpl-help { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:1.25rem; margin-bottom: var(--section-gap);  }
+
+.tpl-help h3 { margin:0 0 .75rem 0; font-size:1.15rem; color:#1e293b; }
+.tpl-help .muted { color:#64748b; font-size:.92rem; }
+.tpl-help .chip-grid { display:flex; flex-wrap:wrap; gap:.5rem; margin:.75rem 0 1rem 0; }
+.tpl-help .chip { border:1px solid #e5e7eb; background:#f8fafc; border-radius:999px; padding:.35rem .65rem; font-size:.85rem; cursor:pointer; }
+.tpl-help .chip:hover { background:#eef2ff; border-color:#c7d2fe; }
+.tpl-help .code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px; padding:.75rem; font-size:.9rem; }
+.tpl-help .row { display:grid; grid-template-columns: 1.2fr .8fr; gap:1rem; }
+@media (max-width: 900px){ .tpl-help .row{ grid-template-columns: 1fr; } }
+.tpl-help .warn { margin-top:.6rem; color:#b45309; background:#fffbeb; border:1px solid #f59e0b33; padding:.6rem .75rem; border-radius:8px; font-size:.9rem; }
+.tpl-help .ok { margin-top:.6rem; color:#065f46; background:#ecfdf5; border:1px solid #10b98133; padding:.6rem .75rem; border-radius:8px; font-size:.9rem; }
+.tpl-help .btn-mini { display:inline-flex; align-items:center; gap:.4rem; border:none; border-radius:8px; padding:.5rem .7rem; background:#f1f5f9; cursor:pointer; }
+.tpl-help .btn-mini:hover { background:#e2e8f0; }
 
         .empty-state {
     text-align: center;
@@ -216,6 +235,61 @@
         .sidebar.collapsed .logo span {
             display: none;
         }
+
+
+
+        /* --- Oddělení bloků a hlavička seznamu šablon --- */
+
+
+.section-divider::before,
+.section-divider::after {
+  content: "";
+  height: 1px;
+  background: #e5e7eb;
+  flex: 1;
+}
+
+:root { --section-gap: 1.5rem; } 
+
+
+
+/* „karta“ kolem seznamu šablon, aby byl vizuálně samostatně */
+.templates-section {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 1rem 1rem 1.25rem ;
+  margin-top: 0;
+}
+
+.templates-title{
+  margin: 0 0 .75rem 0;
+  font-weight: 700;
+  color: #111827;
+}
+
+.templates-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .75rem;
+}
+.templates-header .left {
+ font-weight: 700;
+  color: #111827;
+}
+.templates-header .left .sub {
+  margin-left: .6rem;
+  font-weight: 500;
+  color: #6b7280;
+  font-size: .95rem;
+}
+.templates-header .meta {
+  color: #6b7280;
+  font-size: .92rem;
+}
+
 
         /* Main Content */
         .main-content {
@@ -822,6 +896,7 @@
                 border-radius: 8px;
                 cursor: pointer;
             }
+             
 
             .stats-grid {
                 grid-template-columns: 1fr;
@@ -1297,6 +1372,25 @@
     color: #94a3b8;
     font-size: 1.1rem;
 }
+
+/* Hint pro význam proměnných */
+.tpl-var-hint{
+  display:none;
+  margin-top:.5rem;
+  font-size:.9rem;
+  color:#334155;
+  background:#eef2ff;
+  border:1px solid #c7d2fe;
+  padding:.5rem .75rem;
+  border-radius:10px;
+}
+.tpl-var-hint strong{ color:#1f2937; }
+
+/* schovej text „Vaše šablony“ v headeru karty */
+.templates-header .left { display: none; }
+/* ať zůstane jen pravá část s počtem */
+.templates-header { justify-content: flex-end; }
+
     </style>
 </head>
 <body>
@@ -1515,7 +1609,41 @@
         </div>
     </div>
 </div>
-                    
+                    <div class="modal-overlay" id="templatePicker">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">📚 Vyberte šablonu</h2>
+      <button class="modal-close" id="closeTemplatePicker">&times;</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="form-grid" style="margin-bottom:1rem;">
+        <div class="form-group">
+          <label class="form-label">Hledat</label>
+          <input id="tplSearch" class="form-control" placeholder="Název nebo text šablony...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Kategorie</label>
+          <select id="tplCategory" class="form-control">
+            <option>Vše</option>
+            <option>Obecné</option>
+            <option>Obchodní</option>
+            <option>Podpora</option>
+            <option>Schůzky</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="tplPickerList" class="template-grid">
+        <!-- sem se renderují šablony (refreshPickerList) -->
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="cancelTplPicker">Zavřít</button>
+    </div>
+  </div>
+</div>
 
 
 
@@ -1529,11 +1657,11 @@
                         <div class="form-grid">
                             <div class="form-group">
                                 <label class="form-label">Název šablony</label>
-                                <input type="text" class="form-control" placeholder="např. Odpověď na dotaz">
+                                <input type="text" id="tpl-name" class="form-control" placeholder="např. Odpověď na dotaz">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Kategorie</label>
-                                <select class="form-control">
+                                <select id="tpl-category" class="form-control">
                                     <option>Obecné</option>
                                     <option>Obchodní</option>
                                     <option>Podpora</option>
@@ -1543,66 +1671,55 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">Obsah šablony</label>
-                            <textarea class="form-control" placeholder="Napište obsah vaší šablony... Můžete použít proměnné jako {{jméno}}, {{datum}}, {{společnost}}"></textarea>
+                            <textarea id="tpl-content" class="form-control" placeholder="Text šablony…"></textarea>
                         </div>
-                        <button class="btn btn-primary">
-                            <span>💾</span>
-                            Uložit šablonu
-                        </button>
+                        <button id="tpl-save-btn" class="btn btn-primary"><span>💾</span> Uložit šablonu</button>
                     </div>
 
-                    <div class="template-grid">
-                        <div class="template-card">
-                            <div class="template-header">
-                                <div class="template-name">Odpověď na dotaz</div>
-                                <div class="template-actions">
-                                    <button class="action-btn">✏️</button>
-                                    <button class="action-btn">🗑️</button>
-                                </div>
-                            </div>
-                            <div class="template-preview">
-                                Děkuji za váš dotaz. Rád vám pomohu s {{předmět_dotazu}}. Podle vašich požadavků...
-                            </div>
-                            <div class="template-stats">
-                                <span>Použito: 47x</span>
-                                <span>Úspěšnost: 92%</span>
-                            </div>
-                        </div>
 
-                        <div class="template-card">
-                            <div class="template-header">
-                                <div class="template-name">Pozvánka na schůzku</div>
-                                <div class="template-actions">
-                                    <button class="action-btn">✏️</button>
-                                    <button class="action-btn">🗑️</button>
-                                </div>
-                            </div>
-                            <div class="template-preview">
-                                Dobrý den {{jméno}}, rád bych vás pozval na schůzku ohledně {{téma}}. Vyhovoval by vám termín...
-                            </div>
-                            <div class="template-stats">
-                                <span>Použito: 23x</span>
-                                <span>Úspěšnost: 89%</span>
-                            </div>
-                        </div>
+<div class="tpl-help" id="tpl-help">
+  <h3>🧩 Nápověda k šablonám</h3>
+  <div class="muted">
+    Do textu vkládej proměnné ve tvaru <code>{{nazev}}</code>. Při vložení do emailu se pokusíme chybějící údaje doplnit z analyzovaného emailu.
+  </div>
 
-                        <div class="template-card">
-                            <div class="template-header">
-                                <div class="template-name">Potvrzení objednávky</div>
-                                <div class="template-actions">
-                                    <button class="action-btn">✏️</button>
-                                    <button class="action-btn">🗑️</button>
-                                </div>
-                            </div>
-                            <div class="template-preview">
-                                Děkujeme za vaši objednávku číslo {{číslo_objednávky}}. Vaše objednávka byla přijata...
-                            </div>
-                            <div class="template-stats">
-                                <span>Použito: 156x</span>
-                                <span>Úspěšnost: 96%</span>
-                            </div>
-                        </div>
-                    </div>
+  <div class="row" style="margin-top:.75rem;">
+    <div>
+      <div class="muted">Dostupné proměnné (kliknutím vložíš na kurzor do pole „Obsah šablony“):</div>
+      <div class="chip-grid" id="tpl-chip-grid"></div>
+
+      <div class="muted" style="margin-top:.75rem;">AI slot (generativní úsek v hranatých závorkách):</div>
+      <div class="code">[[AI: Napiš stručný odstavec shrnující důvod reklamace a další postup.]]</div>
+      <div style="margin-top:.5rem;">
+        <button class="btn-mini" id="btn-insert-ai">➕ Vložit AI slot</button>
+        <button class="btn-mini" id="btn-insert-example">📋 Vložit ukázkovou šablonu</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="muted">Kontrola šablony</div>
+      <div id="tpl-validator" class="ok">Žádné neznámé proměnné.</div>
+      <div class="muted" style="margin-top:.75rem;">
+        Tipy:
+        <ul style="margin:.35rem 0 0 1rem;">
+          <li>Použij <b>{{recipientName}}</b> pro zdvořilé oslovení („paní Nováková“ / „pane Dvořáku“).</li>
+          <li>Neznámé hodnoty necháváme prázdné; můžeš je dopsat ručně.</li>
+          <li>AI sloty piš česky a konkrétně, bez „vyplň si sám“ instrukcí.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+<div class="templates-section">
+  <h3 class="templates-title">📁 Vaše šablony</h3>
+  <div class="template-grid" id="tpl-list"></div>
+</div>
+                    
+
+
                 </div>
 
                 <!-- Settings Page -->
@@ -1620,6 +1737,11 @@
     <form id="settings-form">
         <div class="form-section">
             <h3>Styl odpovědí</h3>
+
+            <div class="form-group" style="display:flex;gap:.75rem;align-items:center;">
+  <button id="learn-style-btn" class="btn btn-secondary">🧠 Naučit se z historie</button>
+  <span id="learn-style-status" class="muted" style="color:#64748b;"></span>
+</div>
             
             <div class="form-grid">
                 <div class="form-group">
@@ -1862,15 +1984,15 @@
                             <h3>Zabezpečení</h3>
                             <div class="form-group">
                                 <label class="form-label">Změna hesla</label>
-                                <input type="password" class="form-control" placeholder="Současné heslo">
+                                <input type="password" id="cur-pass" class="form-control" placeholder="Současné heslo">
                             </div>
                             <div class="form-group">
-                                <input type="password" class="form-control" placeholder="Nové heslo">
+                                <input type="password" id="new-pass" class="form-control" placeholder="Nové heslo">
                             </div>
                             <div class="form-group">
-                                <input type="password" class="form-control" placeholder="Potvrzení nového hesla">
+                                <input type="password" id="new-pass2" class="form-control" placeholder="Potvrzení nového hesla">
                             </div>
-                            <button class="btn btn-primary">Změnit heslo</button>
+                            <button class="btn btn-primary" id="btn-change-pass">Změnit heslo</button>
                         </div>
 
                         <div class="form-section">
@@ -2041,18 +2163,18 @@
 
 </div>
 
-<div class="modal-footer">
-    <div id="view-mode-buttons">
-        <button class="btn btn-secondary" id="edit-reply-btn"><span>📝</span> Upravit odpověď</button>
-        <button class="btn btn-success"><span>📤</span> Odeslat nyní</button>
-    </div>
-    <div id="edit-mode-buttons" style="display: none;">
-        <button class="btn btn-secondary" id="cancel-edit-btn">Zrušit</button>
-        <button class="btn btn-primary" id="save-edit-btn"><span>💾</span> Uložit změny</button>
-    </div>
+<div class="modal-footer" id="analysis-footer">
+  <button class="btn btn-secondary" id="edit-reply-btn"><span>📝</span> Upravit odpověď</button>
+  <button class="btn btn-primary"  id="save-edit-btn"   style="display:none;"><span>💾</span> Uložit změny</button>
+  <button class="btn btn-link"     id="cancel-edit-btn" style="display:none;">Zrušit úpravy</button>
+
+  <button class="btn btn-success"  id="send-now-btn"><span>📤</span> Odeslat nyní</button>
+  <button class="btn btn-secondary" id="pick-template-btn">📚 Vybrat šablonu</button>
 </div>
     </div>
 </div>
+
+
 
 
     <script>
@@ -2090,6 +2212,13 @@ function setConnectedAccounts(arr) { connectedAccounts = Array.isArray(arr) ? ar
 
 let allEmails = [];
 let currentMessageId = null;
+
+
+window.__lastUsedTemplateId = null;
+
+
+
+
 const dashboardUserEmail = localStorage.getItem('userEmail'); // majitel dashboardu (přihlášený)
 let primaryEmail = localStorage.getItem('primaryEmail') || '';
 // =============== SYNC PŘIPOJENÝCH ÚČTŮ S BACKENDEM (PŘIDEJ) ===============
@@ -2123,6 +2252,84 @@ function setConnectedEmailsLS(emails) {
   localStorage.setItem('connectedEmails', JSON.stringify(emails || []));
 }
 
+
+// ==== LEARNING FROM HISTORY (front-end) =====================================
+
+// změň, pokud máš jinou base URL backendu
+// === BACKEND BASE (změň pokud máš jinou URL) ===
+
+// === BACKEND BASE ===
+  window.BACKEND = 'https://ai-email-server-stejdesign.onrender.com';
+
+  // === Helpery na window ===
+  window.fetchSentReplies = async function(dashboardUserEmail, email, limit = 200) {
+    const url = `${window.BACKEND}/api/gmail/sent-replies?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(email)}&limit=${limit}`;
+    const r = await fetch(url, { cache: 'no-store' });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.message || 'fetchSentReplies: backend vrátil chybu');
+    return Array.isArray(j.items) ? j.items : [];
+  };
+
+  window.fetchInboxExamples = async function(dashboardUserEmail, email, limit = 200) {
+    const url = `${window.BACKEND}/api/gmail/inbox-examples?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(email)}&limit=${limit}`;
+    const r = await fetch(url, { cache: 'no-store' });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.message || 'fetchInboxExamples: backend vrátil chybu');
+    return Array.isArray(j.items) ? j.items : [];
+  };
+
+  window.saveStyleExamples = async function(dashboardUserEmail, email, items) {
+    const r = await fetch(`${window.BACKEND}/api/style-examples/ingest`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ dashboardUserEmail, email, items })
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.message || 'saveStyleExamples: backend vrátil chybu');
+    return { saved: j.saved || 0 };
+  };
+
+  window.fetchStyleProfile = async function(dashboardUserEmail, email) {
+    const url = `${window.BACKEND}/api/style-profile?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(email)}`;
+    const r = await fetch(url, { cache: 'no-store' });
+    return await r.json();
+  };
+
+  // === Klik handler ===
+  window.learnFromHistory = async function() {
+    const dashboardUserEmail = localStorage.getItem('userEmail') || 'tomas.lipuvka@gmail.com';
+    const email = localStorage.getItem('primaryEmail') || 'tomas.lipuvka@gmail.com';
+
+    const btn = document.getElementById('btn-learn-style');
+    const old = btn?.textContent;
+    try {
+      if (btn) { btn.disabled = true; btn.textContent = 'Učím se z historie…'; }
+
+      const sent  = await window.fetchSentReplies(dashboardUserEmail, email, 200);
+      const inbox = await window.fetchInboxExamples(dashboardUserEmail, email, 200);
+      const saved = await window.saveStyleExamples(dashboardUserEmail, email, [...sent, ...inbox]);
+
+      (window.showToast || alert)(`Hotovo: uloženo ${saved.saved} příkladů.`);
+      const prof = await window.fetchStyleProfile(dashboardUserEmail, email);
+      console.log('STYLE PROFILE', prof);
+    } catch (e) {
+      console.error(e);
+      (window.showToast || alert)(e.message || 'Učení z historie selhalo.');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = old || 'Naučit se z historie'; }
+    }
+  };
+
+  // připojit listener po načtení DOM
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('btn-learn-style')
+      ?.addEventListener('click', window.learnFromHistory);
+  });
+
+
+
+
+
 /**
  * Stáhne připojené účty z backendu a uloží je do localStorage.
  * Vrací pole e-mailů. Použij v initializeDashboard().
@@ -2141,6 +2348,35 @@ function setPrimaryEmail(email) {
   localStorage.setItem('primaryEmail', email);
 }
 
+
+
+window.CURRENT_EMAIL = { id:'', subject:'', from:'', date:'', bodyText:'', analysis:{}, account:'' };
+window.CURRENT_SETTINGS = null;
+
+// Pomocná funkce: aktuálně vybraný připojený účet (přepiš, pokud už něco máš)
+function getSelectedAccountEmail() {
+  // zkus element select/input; pokud nemáš, ulož si při výběru účtu do localStorage
+  return document.querySelector('#accountSelect')?.value
+      || localStorage.getItem('connectedEmail')
+      || CURRENT_EMAIL.account
+      || '';
+}
+
+// Načti (jednou) nastavení pro daný účet
+async function ensureSettingsLoaded() {
+  if (CURRENT_SETTINGS && CURRENT_SETTINGS.connected_email === getSelectedAccountEmail()) return;
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  const connectedEmail     = getSelectedAccountEmail();
+  if (!dashboardUserEmail || !connectedEmail) return;
+
+  const r = await fetch(`${API_BASE}/api/settings?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(connectedEmail)}`).then(x=>x.json());
+  if (r.success) {
+    CURRENT_SETTINGS = r.settings;
+  }
+}
+
+
+
 // Po návratu z OAuth: vezmeme new-email z URL a nastavíme jako primary
 (function pickNewlyLinkedEmailFromUrl() {
   const params = new URLSearchParams(location.search);
@@ -2153,6 +2389,188 @@ function setPrimaryEmail(email) {
     history.replaceState({}, '', clean.toString());
   }
 })();
+
+
+// === Nápověda k šablonám ===
+const TPL_VARS = [
+  'recipientName','product','price','deliveryTime','senderName',
+  'ourNextStep','ourDeadline','theirNextStep','theirDeadline','meetingDate',
+  'orderNumber','issue','solutionOptionA','solutionOptionB','company',
+  'painPoint','kpi','kpiValue','timeframe','slot1','slot2',
+  'step1','step2','step3','deadline'
+];
+
+const TPL_DESCRIPTIONS = {
+  recipientName: 'Jméno příjemce (např. „paní Nováková“).',
+  product: 'Produkt/služba, kterých se email týká.',
+  price: 'Cena (ideálně včetně měny).',
+  deliveryTime: 'Termín dodání / doručení.',
+  senderName: 'Jméno a příjmení odesílatele emailu (osoby, která vám psala).',
+  ourNextStep: 'Náš další krok (co uděláme my).',
+  ourDeadline: 'Náš termín/uzávěrka.',
+  theirNextStep: 'Další krok protistrany (co má udělat příjemce).',
+  theirDeadline: 'Termín/uzávěrka pro příjemce.',
+  meetingDate: 'Datum/čas schůzky.',
+  orderNumber: 'Číslo objednávky.',
+  issue: 'Stručný popis problému/požadavku.',
+  solutionOptionA: 'Varianta řešení A.',
+  solutionOptionB: 'Varianta řešení B.',
+  company: 'Název firmy příjemce.',
+  painPoint: 'Hlavní „bolest“/problém zákazníka.',
+  kpi: 'Cíl/KPI, který sledujete.',
+  kpiValue: 'Aktuální hodnota KPI.',
+  timeframe: 'Horizont/dobu plnění (např. „Q3 2025“).',
+  slot1: 'Navržený časový slot č. 1 na call/schůzku.',
+  slot2: 'Navržený časový slot č. 2 na call/schůzku.',
+  step1: 'Krok postupu č. 1.',
+  step2: 'Krok postupu č. 2.',
+  step3: 'Krok postupu č. 3.',
+  deadline: 'Konečný termín/uzávěrka.'
+};
+
+function insertAtCursor(textarea, text) {
+  const el = typeof textarea === 'string' ? document.getElementById(textarea) : textarea;
+  if (!el) return;
+  const start = el.selectionStart ?? el.value.length;
+  const end   = el.selectionEnd   ?? el.value.length;
+  const before = el.value.slice(0, start);
+  const after  = el.value.slice(end);
+  el.value = before + text + after;
+  const cursor = start + text.length;
+  el.focus();
+  el.setSelectionRange(cursor, cursor);
+  // po každém vložení rovnou validuj
+  validateTemplateVariables();
+}
+
+async function learnStyleFromHistory() {
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  const primaryEmail = localStorage.getItem('primaryEmail');
+  if (!dashboardUserEmail || !primaryEmail) {
+    showToast('Vyber prosím primární účet v Nastavení → Email účty.', 'warning');
+    return;
+  }
+  const statusEl = document.getElementById('learn-style-status');
+  statusEl.textContent = 'Analyzuji odpovědi… může to chvíli trvat.';
+  try {
+    const r = await fetch('https://ai-email-server-stejdesign.onrender.com/api/style/learn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dashboardUserEmail, email: primaryEmail, sampleCount: 200 })
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.message || 'Učení stylu selhalo.');
+    // ulož styl do paměti klientu, ať ho máme hned k dispozici
+    window.CURRENT_SETTINGS = { ...(window.CURRENT_SETTINGS||{}), style_profile: j.style_profile };
+    showToast('Styl naučen. Budu ho používat ve všech odpovědích.', 'success');
+    statusEl.textContent = 'Hotovo.';
+  } catch (e) {
+    showToast(e.message || 'Nepodařilo se naučit styl.', 'error');
+    statusEl.textContent = '';
+  }
+}
+
+document.getElementById('learn-style-btn')?.addEventListener('click', learnStyleFromHistory);
+
+
+
+function renderTplHelp() {
+  const grid = document.getElementById('tpl-chip-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  // Hint box (vytvoříme jednou)
+  let hintBox = document.getElementById('tpl-var-hint');
+  if (!hintBox) {
+    hintBox = document.createElement('div');
+    hintBox.id = 'tpl-var-hint';
+    hintBox.className = 'tpl-var-hint';
+    // vlož hned pod grid s chipy
+    grid.parentElement.insertBefore(hintBox, grid.nextSibling);
+  }
+
+  const showVarHint = (name) => {
+    const desc = TPL_DESCRIPTIONS[name];
+    if (!desc) { hintBox.style.display = 'none'; return; }
+    hintBox.innerHTML = `<strong>{{${name}}}</strong> — ${desc}`;
+    hintBox.style.display = 'block';
+  };
+  const hideVarHint = () => { hintBox.style.display = 'none'; };
+
+  // CHIPS s tooltippy
+  TPL_VARS.forEach(v => {
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.type = 'button';
+    btn.textContent = `{{${v}}}`;
+    btn.title = TPL_DESCRIPTIONS[v] || ''; // nativní tooltip
+    btn.setAttribute('aria-label', TPL_DESCRIPTIONS[v] || `{{${v}}}`);
+
+    btn.addEventListener('click', () => insertAtCursor('tpl-content', `{{${v}}}`));
+    btn.addEventListener('mouseenter', () => showVarHint(v));
+    btn.addEventListener('focus', () => showVarHint(v));
+    btn.addEventListener('mouseleave', hideVarHint);
+    btn.addEventListener('blur', hideVarHint);
+
+    grid.appendChild(btn);
+  });
+
+  // AI slot tlačítka
+  document.getElementById('btn-insert-ai')?.addEventListener('click', () => {
+    insertAtCursor('tpl-content', '[[AI: Napiš dvě věty empatického uznání problému a navrhni další konkrétní krok.]]');
+  });
+  document.getElementById('btn-insert-example')?.addEventListener('click', () => { /* ... zůstává tvoje ... */ });
+
+  // === Hint podle kurzoru v textarea ===
+  const ta = document.getElementById('tpl-content');
+  const checkCaretVar = () => {
+    if (!ta) return hideVarHint();
+    const i = ta.selectionStart ?? 0;
+    const text = ta.value || '';
+    const re = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
+    let m, found = null;
+    while ((m = re.exec(text))) {
+      const start = m.index;
+      const end = re.lastIndex;
+      if (i >= start && i <= end) { found = m[1]; break; }
+    }
+    if (found && TPL_DESCRIPTIONS[found]) showVarHint(found);
+    else hideVarHint();
+  };
+  ta?.addEventListener('keyup', checkCaretVar);
+  ta?.addEventListener('click', checkCaretVar);
+  ta?.addEventListener('focus', checkCaretVar);
+
+  // validuj průběžně
+  document.getElementById('tpl-content')?.addEventListener('input', validateTemplateVariables);
+  validateTemplateVariables();
+}
+
+
+
+
+function validateTemplateVariables() {
+  const ta = document.getElementById('tpl-content');
+  const box = document.getElementById('tpl-validator');
+  if (!ta || !box) return;
+
+  const txt = ta.value || '';
+  const used = Array.from(txt.matchAll(/{{\s*([a-zA-Z0-9_]+)\s*}}/g)).map(m => m[1]);
+  const aiSlots = Array.from(txt.matchAll(/\[\[\s*AI\s*:(.*?)\]\]/gs)).length;
+
+  const unknown = [...new Set(used.filter(k => !TPL_VARS.includes(k)))];
+  if (unknown.length) {
+    box.className = 'warn';
+    box.innerHTML = `Neznámé proměnné: <b>${unknown.join(', ')}</b>.<br>
+      Použij některou z dostupných výše nebo oprav překlep.`;
+  } else {
+    box.className = 'ok';
+    box.innerHTML = `Žádné neznámé proměnné. AI slotů: <b>${aiSlots}</b>.`;
+  }
+}
+
+// po načtení stránky/otevření záložky Šablony
+document.addEventListener('DOMContentLoaded', renderTplHelp);
 
 
 // ZMĚNA: Odebrali jsme proměnné pro správu účtů odsud, budeme je spravovat v rámci funkcí a localStorage.
@@ -2248,62 +2666,584 @@ function connectGoogleAccount() {
     window.location.href = `${oauth2Endpoint}?${new URLSearchParams(params)}`;
 }
 
+// === CUSTOM EMAIL: otevřít modal s formulářem a zavolat /api/custom-email/connect ===
+function openCustomConnect() {
+  const overlay = document.getElementById('modal-overlay');
+  const box = document.getElementById('modal-content');
+  const body = box?.querySelector('.modal-body');
+  if (!overlay || !body) return;
+
+  body.innerHTML = `
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Email adresa</label><input id="ce-emailAddress" class="form-control" type="email" placeholder="jan@firma.cz" required></div>
+      <div class="form-group"><label class="form-label">Uživatelské jméno</label><input id="ce-username" class="form-control" type="text" placeholder="(většinou stejný jako email)"></div>
+      <div class="form-group"><label class="form-label">Heslo</label><input id="ce-password" class="form-control" type="password" placeholder="••••••••" required></div>
+    </div>
+
+    <div class="form-grid" style="margin-top:1rem;">
+      <div class="form-group"><label class="form-label">IMAP host</label><input id="ce-imapHost" class="form-control" placeholder="imap.firma.cz" required></div>
+      <div class="form-group"><label class="form-label">IMAP port</label><input id="ce-imapPort" class="form-control" type="number" value="993" required></div>
+      <div class="form-group"><label class="form-label">IMAP zabezpečení</label>
+        <select id="ce-imapSecure" class="form-control"><option value="1" selected>SSL/TLS</option><option value="0">Nezabezpečené</option></select>
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">SMTP host</label><input id="ce-smtpHost" class="form-control" placeholder="smtp.firma.cz" required></div>
+      <div class="form-group"><label class="form-label">SMTP port</label><input id="ce-smtpPort" class="form-control" type="number" value="465" required></div>
+      <div class="form-group"><label class="form-label">SMTP zabezpečení</label>
+        <select id="ce-smtpSecure" class="form-control"><option value="1" selected>SSL/TLS</option><option value="0">Nezabezpečené</option></select>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:.5rem; margin-top:1rem;">
+      <button id="ce-connect-btn" class="btn btn-primary">Ověřit & uložit</button>
+      <button id="ce-cancel-btn" class="btn btn-secondary">Zrušit</button>
+    </div>
+    <div id="ce-connect-msg" style="margin-top:.5rem; color:#64748b;"></div>
+  `;
+  overlay.style.display = 'flex';
+
+  document.getElementById('ce-cancel-btn')?.addEventListener('click', () => { overlay.style.display = 'none'; });
+  document.getElementById('ce-connect-btn')?.addEventListener('click', async () => {
+    const dashboardUserEmail = localStorage.getItem('userEmail');
+    const emailAddress = document.getElementById('ce-emailAddress').value.trim();
+    const username = document.getElementById('ce-username').value.trim() || emailAddress;
+    const password = document.getElementById('ce-password').value;
+    const imapHost = document.getElementById('ce-imapHost').value.trim();
+    const imapPort = Number(document.getElementById('ce-imapPort').value);
+    const imapSecure = document.getElementById('ce-imapSecure').value === '1';
+    const smtpHost = document.getElementById('ce-smtpHost').value.trim();
+    const smtpPort = Number(document.getElementById('ce-smtpPort').value);
+    const smtpSecure = document.getElementById('ce-smtpSecure').value === '1';
+    const msgEl = document.getElementById('ce-connect-msg');
+
+    msgEl.textContent = 'Ověřuji přihlášení…';
+    try {
+      const resp = await fetch(`${window.BACKEND}/api/custom-email/connect`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ dashboardUserEmail, emailAddress, username, password,
+          imapHost, imapPort, imapSecure, smtpHost, smtpPort, smtpSecure })
+      });
+      const j = await resp.json();
+      if (!resp.ok || !j.success) throw new Error(j.message || 'Připojení selhalo.');
+      msgEl.textContent = '✅ Účet připojen. Načítám…';
+
+      // založ výchozí settings pro tento účet (aby AI měla styl)
+      await fetch(`${window.BACKEND}/api/settings`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          dashboardUserEmail, email: emailAddress,
+          tone:'Formální', length:'Střední (1 odstavec)', signature:'Společnost Senzoor',
+          auto_reply:true, approval_required:true, spam_filter:true
+        })
+      });
+
+      // refresh účtů + nastav jako primární
+      await syncConnectedEmails();
+      localStorage.setItem('primaryEmail', emailAddress);
+      renderConnectedAccounts();
+      await loadSettings();
+      overlay.style.display = 'none';
+      showToast('Účet přidán a připraven.', 'success');
+    } catch (e) {
+      msgEl.textContent = '❌ ' + (e.message || e);
+    }
+  });
+}
+
+// zapni tlačítko v modalu „Připojit přes Custom Email“
+document.getElementById('connect-custom-btn')?.addEventListener('click', openCustomConnect);
+
+
+function parseSenderName(s='') {
+  const m = String(s).match(/"?(.*?)"?\s*<.+?>/);
+  return (m?.[1] || s).trim();
+}
+function extractEmailAddress(s='') {
+  const m = String(s).match(/<([^>]+)>/);
+  if (m) return m[1].trim();
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim())) return s.trim();
+  return s.trim();
+}
+
+async function tryGmailEmails(primaryEmail, status, period, searchQuery) {
+  const url = `${window.BACKEND}/api/gmail/emails?email=${encodeURIComponent(primaryEmail)}&dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}`;
+  const r = await fetch(url, { cache:'no-store' });
+  const j = await r.json();
+  if (!j.success) return null;
+  const normalized = (j.emails || []).map(e => ({
+    id: e.id,                       // Gmail messageId
+    uid: null,
+    sender: e.sender,
+    subject: e.subject,
+    snippet: e.snippet || '',
+    date: e.date,
+    _src: 'gmail'
+  }));
+  return { src:'gmail', total:j.total || normalized.length, emails: normalized };
+}
+
+async function tryCustomEmails(primaryEmail) {
+  const url = `${window.BACKEND}/api/custom-email/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&limit=50`;
+  const r = await fetch(url, { cache:'no-store' });
+  const j = await r.json();
+  if (!j.success) return null;
+  const normalized = (j.emails || []).map(e => {
+    // backend vrací { id: "...", sender: "...", subject, date, ... }
+    const uid = e.uid ?? e.id; // podpora obou variant
+   return {
+      id: String(uid),
+      uid: Number(uid),
+      sender: e.sender || e.from || '',
+      subject: e.subject || '',
+      snippet: e.snippet || '',
+      date: e.date || e.internalDate || Date.now(),
+      _src: 'custom'
+    };
+  });
+  return { src:'custom', total: normalized.length, emails: normalized };
+}
+
+
 // ZMĚNA: Funkce nyní načítá emaily pro primární účet z localStorage
 async function fetchEmails() {
-    // NOVÉ: Získání primárního emailu z paměti prohlížeče
     const primaryEmail = localStorage.getItem('primaryEmail');
+  if (!primaryEmail) {
+    if (emailListContainer) emailListContainer.innerHTML = `<div class="empty-state"><h3>Vyberte hlavní emailový účet</h3></div>`;
+    if (emailCountHeader) emailCountHeader.textContent = 'Emaily';
+    return;
+  }
 
-    if (!primaryEmail) {
-        if (emailListContainer) emailListContainer.innerHTML = `<div class="empty-state"><h3>Vyberte hlavní emailový účet</h3><p>V nastavení si zvolte, pro který účet chcete emaily zobrazit.</p></div>`;
-        if (emailCountHeader) emailCountHeader.textContent = 'Emaily (0)';
-        return;
-    }
-
-
-    const accs = getConnectedAccounts().length ? getConnectedAccounts() : await syncConnectedEmails();
+  const accs = getConnectedAccounts().length ? getConnectedAccounts() : await syncConnectedEmails();
   const prim = accs.find(a => a.email === primaryEmail);
   if (!prim || !prim.active) {
-    if (emailListContainer) {
-      emailListContainer.innerHTML = `<div class="empty-state"><h3>Primární účet je neaktivní</h3><p>Aktivujte ho v Nastavení → Email účty.</p></div>`;
-    }
+    if (emailListContainer) emailListContainer.innerHTML = `<div class="empty-state"><h3>Primární účet je neaktivní</h3></div>`;
     if (emailCountHeader) emailCountHeader.textContent = `Emaily pro: ${primaryEmail} (neaktivní)`;
     return;
   }
 
+  const status = statusFilter ? statusFilter.value : 'all';
+  const period = periodFilter ? periodFilter.value : 'all';
+  const searchQuery = searchBar ? searchBar.value : '';
 
-    const status = statusFilter ? statusFilter.value : 'all';
-    const period = periodFilter ? periodFilter.value : 'all';
-    const searchQuery = searchBar ? searchBar.value : '';
+  emailListContainer.innerHTML = `<div class="empty-state"><span>📧</span><p>Načítám emaily pro ${primaryEmail}…</p></div>`;
 
-    if (!emailListContainer) return;
-    emailListContainer.innerHTML = `<div class="empty-state"><span>📧</span><p>Načítám emaily pro ${primaryEmail}...</p></div>`;
-
-    // NOVÉ: Aktualizace nadpisu
-    if (emailCountHeader) emailCountHeader.textContent = `Emaily pro: ${primaryEmail}`;
-
-    try {
-        // ZMĚNA: Do API volání se posílá správný primární email
-        const response = await fetch(
-  `https://ai-email-server-stejdesign.onrender.com/api/gmail/emails` +
-  `?email=${encodeURIComponent(primaryEmail)}` +
-  `&dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}` +
-  `&status=${encodeURIComponent(status)}` +
-  `&period=${encodeURIComponent(period)}` +
-  `&searchQuery=${encodeURIComponent(searchQuery)}`
-);
-        const data = await response.json();
-        if (data.success) {
-            allEmails = data.emails;
-            // ZMĚNA: Aktualizujeme nadpis i s celkovým počtem emailů
-            if (emailCountHeader) emailCountHeader.textContent = `Emaily pro: ${primaryEmail} (${data.total || 0})`;
-            renderEmailList(allEmails, data.total);
-        } else {
-            emailListContainer.innerHTML = `<div class="empty-state"><h3>Chyba: ${data.message}</h3><p>Zkontrolujte, zda je účet ${primaryEmail} stále aktivní.</p></div>`;
-        }
-    } catch (error) {
-        emailListContainer.innerHTML = `<div class="empty-state"><h3>Nepodařilo se připojit k serveru.</h3></div>`;
+  try {
+    // 1) zkus Gmail
+    let res = await tryGmailEmails(primaryEmail, status, period, searchQuery);
+    // 2) pokud nic/slepé, zkus Custom
+    if (!res || !Array.isArray(res.emails)) {
+      res = await tryCustomEmails(primaryEmail);
+    } else if (!res.emails.length) {
+      // Gmail bez výsledků → zkus si pro jistotu custom (užitečné, když primární je custom)
+      const fallback = await tryCustomEmails(primaryEmail);
+      if (fallback && fallback.emails.length) res = fallback;
     }
+
+    if (!res) throw new Error('Nepodařilo se načíst emaily.');
+
+    // ulož pro render
+    allEmails = res.emails;
+
+    // header + render
+    if (emailCountHeader) {
+  const total = (res.total ?? res.emails.length) || 0;
+  const countStr = total > 0 ? ` (${total})` : '';
+  emailCountHeader.textContent = `Emaily pro: ${primaryEmail}${countStr}`;
 }
+    // vykreslení (doplníme data-src)
+    emailListContainer.innerHTML = '';
+    if (!allEmails.length) {
+      emailListContainer.innerHTML = `<div class="empty-state"><h3>Nebyly nalezeny žádné emaily</h3></div>`;
+      return;
+    }
+    allEmails.forEach(email => {
+      const senderName = parseSenderName(email.sender || '');
+      const html = `
+   <div class="email-item"
+     data-id="${email.id}"
+     data-src="${email._src || 'custom'}"
+     data-from="${escapeHtml(email.sender || '')}">
+          <div class="email-content" style="flex-grow:1;">
+            <div class="email-sender">${senderName || '(bez jména)'}</div>
+            <div class="email-subject">${email.subject || '(bez předmětu)'}</div>
+            <div class="email-preview">${email.snippet || ''}</div>
+          </div>
+          <div class="email-meta" style="text-align:right; flex-shrink:0;">
+            <div>${new Date(email.date).toLocaleDateString('cs-CZ')}</div>
+            <button class="btn btn-primary analyze-btn" data-message-id="${email.id}">Analyzovat 🤖</button>
+          </div>
+        </div>`;
+      emailListContainer.insertAdjacentHTML('beforeend', html);
+    });
+  } catch (e) {
+    emailListContainer.innerHTML = `<div class="empty-state"><h3>${e.message || 'Chyba načítání'}</h3></div>`;
+  }
+}
+
+
+
+
+
+async function hydrateSecurityTab() {
+  const email = localStorage.getItem('userEmail');
+  if (!email) return;
+
+  // Zjistí, jestli má uživatel heslo
+  try {
+    const r = await fetch(`https://ai-email-server-stejdesign.onrender.com/api/auth/has-password?email=${encodeURIComponent(email)}`);
+    const j = await r.json();
+    const hasPass = !!j?.hasPassword;
+
+    const curEl = document.getElementById('cur-pass');
+    if (curEl) {
+      // Pokud heslo nemá (Google-only), pole pro současné heslo skryj
+      curEl.parentElement.style.display = hasPass ? '' : 'none';
+    }
+  } catch (e) {
+    // Když se check nepovede, nic hrozného – nech vše viditelné
+  }
+}
+
+
+
+async function loadTemplates() {
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  const list = document.getElementById('tpl-list');
+  if (!list || !dashboardUserEmail) return;
+
+  list.innerHTML = '<div style="color:#94a3b8;text-align:center;">Načítám šablony…</div>';
+
+  try {
+    const r = await fetch(`https://ai-email-server-stejdesign.onrender.com/api/templates?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`);
+    const j = await r.json();
+    if (!j.success) throw new Error(j.message || 'Chyba načítání');
+    renderTemplateList(j.templates || []);
+  } catch (e) {
+    list.innerHTML = `<div style="color:#dc2626;text-align:center;">${e.message || 'Nepodařilo se načíst šablony.'}</div>`;
+  }
+}
+
+
+function renderTemplateList(templates = []) {
+    const countEl = document.getElementById('tpl-count');
+if (countEl) countEl.textContent = templates.length;
+    const list = document.getElementById('tpl-list');
+    if (!list) return;
+
+    if (!templates.length) {
+        list.innerHTML = '<div style="color:#94a3b8; text-align:center; padding: 2rem;">Zatím nemáte vytvořené žádné šablony.</div>';
+        return;
+    }
+
+    list.innerHTML = ''; // Vyčistíme starý obsah
+    templates.forEach(tpl => {
+        const uses = Number(tpl.uses ?? 0);
+        const success = Number(tpl.success_rate ?? 0);
+        const content = String(tpl.content ?? '');
+
+        const card = document.createElement('div');
+        card.className = 'template-card';
+        card.innerHTML = `
+            <div class="template-header">
+                <div class="template-name">${escapeHtml(tpl.name || 'Bez názvu')}</div>
+                <div class="template-actions">
+                    <button class="action-btn" data-act="edit">✏️ Upravit</button>
+                    <button class="action-btn reject" data-act="delete" style="background: #fef2f2; color: #dc2626;">🗑️ Smazat</button>
+                </div>
+            </div>
+            <div class="template-preview">${escapeHtml(content).slice(0, 150)}${content.length > 150 ? '…' : ''}</div>
+            <div class="template-stats">
+                <span>Použito: ${uses}×</span>
+                <span>Úspěšnost: ${success.toFixed(0)}%</span>
+            </div>
+        `;
+        // Přidáme listener na celou kartu, který bude delegovat kliknutí na tlačítka
+        card.addEventListener('click', (evt) => onTemplateCardClick(evt, tpl));
+        list.appendChild(card);
+    });
+}
+
+
+function extractEmailAddress(s='') {
+  const m = String(s).match(/<([^>]+)>/);
+  return (m ? m[1] : String(s)).trim();
+}
+
+
+
+function escapeHtml(s=''){return s.replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+let __analysisWasOpen = false;
+
+
+// --- Template Picker modal (ponechat jen jednu verzi) ---
+function openTemplatePicker() {
+   const el = document.getElementById('templatePicker');
+  if (!el) return;
+
+  const a = document.getElementById('analysisModal');
+  __analysisWasOpen = a?.classList.contains('show');
+  if (__analysisWasOpen) a.classList.remove('show');  // dočasně schovej analýzu
+
+  el.classList.add('show');
+  document.body.style.overflow = 'hidden';
+  refreshPickerList();
+}
+
+function closeTemplatePicker() {
+  const el = document.getElementById('templatePicker');
+  if (!el) return;
+
+  el.classList.remove('show');
+  document.body.style.overflow = '';
+
+  if (__analysisWasOpen) {
+    document.getElementById('analysisModal')?.classList.add('show'); // vrať analýzu
+    __analysisWasOpen = false;
+  }
+}
+
+async function refreshPickerList() {
+  const list = document.getElementById('tplPickerList');
+  const q = (document.getElementById('tplSearch')?.value || '').trim().toLowerCase();
+  const cat = document.getElementById('tplCategory')?.value || 'Vše';
+  list.innerHTML = 'Načítám…';
+
+  try {
+    const dashboardUserEmail = localStorage.getItem('userEmail');
+    const url = new URL('https://ai-email-server-stejdesign.onrender.com/api/templates');
+    url.searchParams.set('dashboardUserEmail', dashboardUserEmail);
+
+    const r = await fetch(url.toString());
+    const j = await r.json();
+    if (!j.success) throw new Error(j.message || 'Chyba při načítání.');
+
+    let items = j.templates || [];
+    if (cat && cat !== 'Vše') items = items.filter(t => (t.category || 'Obecné') === cat);
+    if (q) items = items.filter(t =>
+      String(t.name||'').toLowerCase().includes(q) ||
+      String(t.content||'').toLowerCase().includes(q)
+    );
+
+    if (!items.length) { list.innerHTML = '<div style="color:#94a3b8;">Žádné šablony</div>'; return; }
+
+    list.innerHTML = '';
+    for (const t of items) {
+      const uses = Number(t.uses ?? 0);
+      const success = Number(t.success_rate ?? 0);
+      const content = String(t.content ?? '');
+      const card = document.createElement('div');
+      card.className = 'template-card';
+      card.innerHTML = `
+        <div class="template-header">
+          <div class="template-name">${escapeHtml(String(t.name ?? 'Bez názvu'))}</div>
+          <div class="template-actions">
+            <button class="action-btn" data-use="${t.id}">📋 Použít</button>
+          </div>
+        </div>
+        <div class="template-preview">${escapeHtml(content).slice(0,220)}${content.length>220?'…':''}</div>
+        <div class="template-stats">
+          <span>Použito: ${Number.isFinite(uses)?uses:0}×</span>
+          <span>Úspěšnost: ${Number.isFinite(success)?success.toFixed(0):'0'}%</span>
+        </div>`;
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('[data-use]')) { useTemplate(t); closeTemplatePicker(); }
+      });
+      list.appendChild(card);
+    }
+  } catch (e) {
+    list.innerHTML = `<div style="color:#dc2626;">${e.message || 'Nepodařilo se načíst šablony.'}</div>`;
+  }
+}
+
+
+
+
+
+
+
+function onTemplateCardClick(evt, tpl) {
+  
+  const btn = evt.target.closest('[data-act]');
+  if (!btn) return;
+  const act = btn.dataset.act;
+
+  if (act === 'delete') return deleteTemplate(tpl.id);
+  if (act === 'edit')   return startEditTemplate(tpl);
+  if (act === 'use')    return useTemplate(tpl);
+}
+
+async function createTemplate() {
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  const name = document.getElementById('tpl-name').value.trim();
+  const category = document.getElementById('tpl-category').value.trim();
+  const content = document.getElementById('tpl-content').value.trim();
+  if (!name || !content) { showToast('Vyplň jméno a obsah šablony.', 'warning'); return; }
+
+  try {
+    const r = await fetch('https://ai-email-server-stejdesign.onrender.com/api/templates', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dashboardUserEmail, name, category, content })
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.message || 'Nepodařilo se uložit');
+    showToast('Šablona uložena.', 'success');
+    document.getElementById('tpl-name').value = '';
+    document.getElementById('tpl-content').value = '';
+    loadTemplates();
+  } catch (e) { showToast(e.message || 'Chyba při ukládání', 'error'); }
+}
+
+function startEditTemplate(tpl) {
+  document.getElementById('tpl-name').value = tpl.name;
+  document.getElementById('tpl-category').value = tpl.category || 'Obecné';
+  document.getElementById('tpl-content').value = tpl.content;
+
+  const btn = document.getElementById('tpl-save-btn');
+  btn.textContent = '💾 Uložit změny';
+  btn.dataset.editingId = tpl.id;
+}
+
+async function saveEditedTemplate(id) {
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  const name = document.getElementById('tpl-name').value.trim();
+  const category = document.getElementById('tpl-category').value.trim();
+  const content = document.getElementById('tpl-content').value.trim();
+  if (!name || !content) { showToast('Vyplň jméno a obsah šablony.', 'warning'); return; }
+
+  try {
+    const r = await fetch(`https://ai-email-server-stejdesign.onrender.com/api/templates/${id}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dashboardUserEmail, name, category, content })
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.message || 'Nepodařilo se upravit');
+    showToast('Šablona upravena.', 'success');
+    const btn = document.getElementById('tpl-save-btn');
+    btn.textContent = '💾 Uložit šablonu';
+    delete btn.dataset.editingId;
+    document.getElementById('tpl-name').value = '';
+    document.getElementById('tpl-content').value = '';
+    loadTemplates();
+  } catch (e) { showToast(e.message || 'Chyba při úpravě', 'error'); }
+}
+
+async function deleteTemplate(id) {
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  if (!confirm('Opravdu smazat šablonu?')) return;
+  try {
+    const r = await fetch(`https://ai-email-server-stejdesign.onrender.com/api/templates/${id}?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`, { method:'DELETE' });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.message || 'Nepodařilo se smazat');
+    showToast('Šablona smazána.', 'success');
+    loadTemplates();
+  } catch (e) { showToast(e.message || 'Chyba při mazání', 'error'); }
+}
+
+
+
+
+async function changePasswordSubmit() {
+  const email = localStorage.getItem('userEmail');
+  if (!email) { showToast('Nejste přihlášen.', 'error'); return; }
+
+  const curPass = document.getElementById('cur-pass')?.value || '';
+  const newPass = document.getElementById('new-pass')?.value || '';
+  const newPass2 = document.getElementById('new-pass2')?.value || '';
+
+  if (!newPass || !newPass2) {
+    showToast('Vyplňte nové heslo a potvrzení.', 'warning');
+    return;
+  }
+  if (newPass !== newPass2) {
+    showToast('Nová hesla se neshodují.', 'error');
+    return;
+  }
+
+  try {
+    const r = await fetch('https://ai-email-server-stejdesign.onrender.com/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        currentPassword: curPass,         // u Google-only bude prázdný – backend to zvládá
+        newPassword: newPass,
+        newPasswordConfirm: newPass2
+      })
+    });
+    const j = await r.json();
+    if (!j.success) {
+      showToast(j.message || 'Změna hesla selhala.', 'error');
+      return;
+    }
+    showToast(j.message || 'Heslo změněno. Přihlaste se znovu.', 'success');
+    // pro jistotu odhlásit a nechat znovu přihlásit
+    setTimeout(() => {
+      localStorage.clear();
+      window.location.href = 'login.html';
+    }, 1200);
+  } catch (e) {
+    showToast('Nepodařilo se komunikovat se serverem.', 'error');
+  }
+}
+
+
+
+
+// --- Helpers pro šablony ---
+function escapeHtml(s=''){return s.replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+
+
+// --- Grid šablon na stránce /Templates (pokud ho používáš) ---
+
+function onTemplateCardClick(evt, tpl) {
+  const btn = evt.target.closest('[data-act]');
+  if (!btn) return;
+  const act = btn.dataset.act;
+  if (act === 'delete') return deleteTemplate(tpl.id);
+  if (act === 'edit')   return startEditTemplate(tpl);
+  if (act === 'use')    return useTemplate(tpl);
+}
+
+
+
+
+
+// napojení handlerů (v tvém DOMContentLoaded):
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('btn-change-pass');
+  if (btn) btn.addEventListener('click', changePasswordSubmit);
+
+  // Když uživatel otevře záložku „Zabezpečení“, načti stav:
+  const securityTab = document.querySelector('.settings-tab[data-tab="security"]');
+  if (securityTab) {
+    securityTab.addEventListener('click', () => {
+      setTimeout(hydrateSecurityTab, 0);
+    });
+  }
+  // Nebo rovnou při loadu:
+  hydrateSecurityTab();
+
+const pickTplBtn = document.getElementById('pick-template-btn');
+if (pickTplBtn) pickTplBtn.addEventListener('click', openTemplatePicker);
+
+const tplPicker = document.getElementById('templatePicker');
+tplPicker?.addEventListener('click', (e) => {
+  if (e.target === tplPicker) closeTemplatePicker();
+});
+document.getElementById('closeTemplatePicker')?.addEventListener('click', closeTemplatePicker);
+document.getElementById('cancelTplPicker')?.addEventListener('click', closeTemplatePicker);
+document.getElementById('tplSearch')?.addEventListener('input', refreshPickerList);
+document.getElementById('tplCategory')?.addEventListener('change', refreshPickerList);
+});
+
+
+
+
+
 
 function renderEmailList(emails, total) {
     if (!emailListContainer) return;
@@ -2316,7 +3256,7 @@ function renderEmailList(emails, total) {
     emails.forEach(email => {
         const sender = email.sender.split('<')[0].trim().replace(/"/g, '');
         const emailHTML = `
-            <div class="email-item" data-id="${email.id}">
+  <div class="email-item" data-id="${email.id}" data-src="${email._src || 'gmail'}">
                 <div class="email-content" style="flex-grow: 1;">
                     <div class="email-sender">${sender}</div>
                     <div class="email-subject">${email.subject}</div>
@@ -2358,6 +3298,7 @@ async function loadSettings() {
             approvalSwitch.checked = approval_required;
             spamFilterSwitch.checked = spam_filter;
             showToast(`Nastavení pro ${primaryEmail} bylo načteno.`, 'success');
+            window.CURRENT_SETTINGS = data.settings;
         } else {
              // Pokud pro daný email nastavení neexistuje, resetujeme formulář do výchozího stavu
             settingsForm.reset();
@@ -2497,47 +3438,33 @@ async function getConnectedAccountsCount(dashboardUserEmail) {
 
 
 function enterEditMode() {
-    const responseDisplay = document.getElementById('response-display');
-    const responseEditor = document.getElementById('response-editor');
-    const viewModeButtons = document.getElementById('view-mode-buttons');
-    const editModeButtons = document.getElementById('edit-mode-buttons');
-    
-    // PŘIDÁNO: Získání modálního okna a přidání třídy pro rozšíření
-    const modal = document.querySelector('#analysisModal .modal');
-    if (modal) {
-        modal.classList.add('modal-full-width');
-    }
-    
-    if (responseDisplay) responseDisplay.style.display = 'none';
-    if (responseEditor) {
-        responseEditor.style.display = 'block';
-        responseEditor.value = responseDisplay.innerText;
-        responseEditor.focus();
-    }
-    if (viewModeButtons) viewModeButtons.style.display = 'none';
-    if (editModeButtons) editModeButtons.style.display = 'flex';
+    const view = document.getElementById('response-display');
+  const edit = document.getElementById('response-editor');
+  if (view && edit) {
+    edit.value = (view.innerText || '').trim();
+    view.style.display = 'none';
+    edit.style.display = 'block';
+    edit.focus();
+  }
+  document.getElementById('edit-reply-btn') ?.style.setProperty('display','none');
+  document.getElementById('save-edit-btn') ?.style.setProperty('display','inline-flex');
+  document.getElementById('cancel-edit-btn')?.style.setProperty('display','inline-flex');
 }
 
 function exitEditMode(saveChanges) {
-    const responseDisplay = document.getElementById('response-display');
-    const responseEditor = document.getElementById('response-editor');
-    const viewModeButtons = document.getElementById('view-mode-buttons');
-    const editModeButtons = document.getElementById('edit-mode-buttons');
-    
-    // PŘIDÁNO: Odebrání třídy pro rozšíření při ukončení editace
-    const modal = document.querySelector('#analysisModal .modal');
-    if (modal) {
-        modal.classList.remove('modal-full-width');
-    }
-    
-    if (saveChanges && responseDisplay && responseEditor) {
-        responseDisplay.innerHTML = responseEditor.value.replace(/\n/g, '<br>');
-        showToast('Odpověď byla upravena.', 'success');
-    }
-    if (responseDisplay) responseDisplay.style.display = 'block';
-    if (responseEditor) responseEditor.style.display = 'none';
-    if (viewModeButtons) viewModeButtons.style.display = 'flex';
-    if (editModeButtons) editModeButtons.style.display = 'none';
+    const view = document.getElementById('response-display');
+  const edit = document.getElementById('response-editor');
+  if (saveChanges && view && edit) {
+    view.innerText = edit.value;
+    showToast('Odpověď byla upravena.', 'success');
+  }
+  if (view && edit) {
+    view.style.display = 'block';
+    edit.style.display = 'none';
+  }
+  document.getElementById('edit-reply-btn') ?.style.setProperty('display','inline-flex');
+  document.getElementById('save-edit-btn') ?.style.setProperty('display','none');
+  document.getElementById('cancel-edit-btn')?.style.setProperty('display','none');
 }
 
 
@@ -2562,7 +3489,7 @@ function renderConnectedAccounts() {
     return;
   }
 
-  accs.forEach(({ email, active }) => {
+  accs.forEach(({ email, active, type }) => {
     let providerName = 'Vlastní', providerIconClass = 'gmail-icon';
     const e = email.toLowerCase();
     if (e.includes('gmail')) providerName = 'Gmail';
@@ -2572,7 +3499,7 @@ function renderConnectedAccounts() {
     const isSelectedForConfig = (email === primary);
 
     const html = `
-      <div class="email-item ${active ? 'active' : ''}" data-email="${email}">
+      <div class="email-item ${active ? 'active' : ''}" data-email="${email}" data-type="${type || ''}">
         <div class="checkbox-wrapper" onclick="toggleAccount(this,'${email}',${!!active})">
           <input type="checkbox" class="checkbox-input" ${active ? 'checked' : ''}>
           <div class="checkbox-custom"></div>
@@ -2591,7 +3518,7 @@ function renderConnectedAccounts() {
             <div class="radio-custom"></div>
             <span class="radio-label">Nastavit</span>
           </div>
-          <button class="disconnect-btn" onclick="disconnectAccount('${email}')" title="Odpojit účet">
+          <button class="disconnect-btn" onclick="disconnectAccount('${email}', '${type || ''}' )" title="Odpojit účet">
             <span class="disconnect-icon">×</span>
           </button>
         </div>
@@ -2644,7 +3571,7 @@ async function toggleAccount(wrapper, email, currentActive) {
     if (!primObj || !primObj.active) {
       if (emailListContainer) {
         emailListContainer.innerHTML = `<div class="empty-state"><h3>Primární účet je neaktivní</h3><p>Pro načtení emailů ho aktivujte v Nastavení → Email účty.</p></div>`;
-        if (emailCountHeader) emailCountHeader.textContent = 'Emaily (0)';
+        if (emailCountHeader) emailCountHeader.textContent = 'Emaily';
       }
     } else {
       // pokud je stránka „Emaily“ otevřená, načti je znovu
@@ -2738,53 +3665,173 @@ async function addAccount() {
 }
 
 // ZMĚNA: Funkce zkontroluje, zda nebyl odpojen primární účet
-async function disconnectAccount(email) {
-    if (!confirm(`Opravdu chcete odpojit účet ${email}?`)) return;
+async function disconnectAccount(email, accType) {
+  if (!confirm(`Opravdu chcete odpojit účet ${email}?`)) return;
 
   const dashboardUserEmail = localStorage.getItem('userEmail');
   if (!dashboardUserEmail) { showToast('Nejste přihlášen.', 'error'); return; }
 
+  // 1) vyber endpoint podle typu
+  //    - pokud accType není k dispozici, zkusíme nejdřív custom, pak gmail (fallback)
+  const tries = accType === 'custom' ? [
+    { url: `${window.BACKEND}/api/custom-email/disconnect`, body: { dashboardUserEmail, emailAddress: email } }
+  ] : accType === 'gmail' ? [
+    { url: `${window.BACKEND}/api/oauth/google/revoke`, body: { dashboardUserEmail, email } }
+  ] : [
+    // neznámý typ -> zkus oba
+    { url: `${window.BACKEND}/api/custom-email/disconnect`, body: { dashboardUserEmail, emailAddress: email } },
+    { url: `${window.BACKEND}/api/oauth/google/revoke`, body: { dashboardUserEmail, email } }
+  ];
+
+  let ok = false, lastMsg = 'Nepodařilo se odpojit účet.';
+  for (const t of tries) {
+    try {
+      const res = await fetch(t.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(t.body)
+      });
+      const j = await res.json();
+      if (j?.success) { ok = true; lastMsg = j.message || 'Účet odpojen.'; break; }
+      lastMsg = j?.message || lastMsg;
+    } catch (e) {
+      lastMsg = e?.message || lastMsg;
+    }
+  }
+  if (!ok) { showToast(lastMsg, 'error'); return; }
+
+  // 2) refresh účtů a UI
+  const serverAccs = await fetchConnectedEmailsFromServer();
+  setConnectedAccounts(serverAccs);
+
+  // pokud jsme odpojili primární, nahraď ho jiným / smaž
+  const currentPrimary = localStorage.getItem('primaryEmail');
+  if (currentPrimary === email) {
+    const firstEmail = serverAccs[0]?.email;
+    if (firstEmail) localStorage.setItem('primaryEmail', firstEmail);
+    else localStorage.removeItem('primaryEmail');
+  }
+
+  renderConnectedAccounts();
+
+  const newPrimaryAfter = localStorage.getItem('primaryEmail');
+  if (newPrimaryAfter) {
+    await loadSettings();
+    const emailsPageActive = document.getElementById('emails')?.classList.contains('active');
+    if (emailsPageActive) fetchEmails();
+  } else {
+    if (emailListContainer)
+      emailListContainer.innerHTML = `<div class="empty-state"><h3>Nemáte připojený žádný účet</h3><p>Přidejte si účet v Nastavení → Email účty.</p></div>`;
+  }
+
+  await loadLimits();
+  showToast(lastMsg || 'Účet byl úspěšně odpojen.', 'success');
+}
+
+
+
+// Pomocné regexy
+const VAR_RE = /{{\s*([a-zA-Z0-9_.-]+)\s*}}/g;
+const AI_RE  = /\[\[\s*AI\s*:(.*?)\]\]/gs;
+
+window.__lastUsedTemplateId = null;
+
+
+  async function useTemplate(tpl) {
+  const modalEl         = document.getElementById('analysisModal');
+  const responseDisplay = document.getElementById('response-display');
+  const responseEditor  = document.getElementById('response-editor');
+
+  if (!modalEl) { showToast('Nelze otevřít editor odpovědi.', 'error'); return; }
+
+  // otevři modal + přepni do editačního režimu
+  modalEl.classList.add('show');
+  document.body.style.overflow = 'hidden';
+  if (responseDisplay) responseDisplay.style.display = 'none';
+  if (responseEditor)  {
+    responseEditor.style.display = 'block';
+    responseEditor.value = 'Načítám šablonu…';
+  }
+  document.getElementById('view-mode-buttons')?.style.setProperty('display', 'none');
+  document.getElementById('edit-mode-buttons')?.style.setProperty('display', 'flex');
+
+  window.__lastUsedTemplateId = tpl.id;
+
   try {
-    const res = await fetch('https://ai-email-server-stejdesign.onrender.com/api/oauth/google/revoke', {
+    const dashboardUserEmail = localStorage.getItem('userEmail');
+
+    // volitelně: načti nastavení, pokud máte utilitu
+    if (typeof ensureSettingsLoaded === 'function') {
+      try { await ensureSettingsLoaded(); } catch(_) {}
+    }
+
+    // poskládej context
+    const context = {
+      emailBody: (window.CURRENT_EMAIL?.bodyText) || '',
+      analysis:  (window.CURRENT_EMAIL?.analysis) || {},
+      settings:  (window.CURRENT_SETTINGS) || {},
+      meta: {
+        subject: window.CURRENT_EMAIL?.subject || '',
+        from:    window.CURRENT_EMAIL?.from || '',
+        date:    window.CURRENT_EMAIL?.date || ''
+      }
+    };
+
+    // POZOR: žádné API_BASE, použijeme přímo URL serveru
+    const r = await fetch('https://ai-email-server-stejdesign.onrender.com/api/templates/render', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, dashboardUserEmail })
+      body: JSON.stringify({ dashboardUserEmail, templateId: tpl.id, context })
     });
-    const data = await res.json();
-    if (!data.success) { showToast(data.message || 'Nepodařilo se odpojit účet.', 'error'); return; }
+    const j = await r.json();
 
-    // ⬇⬇⬇ DŮLEŽITÉ: stáhni z DB a ulož do paměti i do LS (volitelně)
-    const serverAccs = await fetchConnectedEmailsFromServer();
-    setConnectedAccounts(serverAccs);          // <<< přepiš stav, ze kterého se renderuje
-    // setConnectedEmailsLS(serverAccs);      // pokud už LS nepoužíváš jinde, můžeš klidně zrušit
-
-    // pokud jsme odpojili primární, nastav nového
-    const currentPrimary = localStorage.getItem('primaryEmail');
-    if (currentPrimary === email) {
-      const firstEmail = serverAccs[0]?.email;
-      if (firstEmail) localStorage.setItem('primaryEmail', firstEmail);
-      else localStorage.removeItem('primaryEmail');
-    }
-
-    renderConnectedAccounts();
-
-    const newPrimaryAfter = localStorage.getItem('primaryEmail');
-    if (newPrimaryAfter) {
-      await loadSettings();
-      const emailsPageActive = document.getElementById('emails')?.classList.contains('active');
-      if (emailsPageActive) fetchEmails();
+    if (j?.success && j?.rendered) {
+      responseEditor.value = j.rendered;
+      responseEditor.focus();
+      showToast(`Šablona „${tpl.name}“ vložena do odpovědi.`, 'success');
     } else {
-      if (emailListContainer)
-        emailListContainer.innerHTML = `<div class="empty-state"><h3>Nemáte připojený žádný účet</h3><p>Přidejte si účet v Nastavení → Email účty.</p></div>`;
+      responseEditor.value = String(tpl.content || '');
+      responseEditor.focus();
+      showToast(j?.message || 'Render selhal, vložen původní obsah.', 'warning');
     }
 
-    await loadLimits();
-    showToast('Účet byl úspěšně odpojen.', 'success');
-  } catch (err) {
-    console.error(err);
-    showToast('Chyba při odpojování účtu.', 'error');
+    if (typeof closeTemplatePicker === 'function') closeTemplatePicker();
+  } catch (e) {
+    console.error(e);
+    responseEditor.value = String(tpl.content || '');
+    responseEditor.focus();
+    showToast('Nepodařilo se vyrenderovat šablonu – vložen původní obsah.', 'error');
   }
 }
+
+// inkrementace uses po úspěšném odeslání (máš event handler; jen dovnitř přidej)
+async function afterSuccessfulSend() {
+  const tplId = window.__lastUsedTemplateId;
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  if (tplId) {
+    fetch(`https://ai-email-server-stejdesign.onrender.com/api/templates/${tplId}/increment-use`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dashboardUserEmail })
+    }).finally(() => {
+      window.__lastUsedTemplateId = null;
+      loadTemplates(); // aby se hned propsal počet „Použito“
+    });
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // ZMĚNA: Hlavní inicializační funkce, která nastaví výchozí primární účet
 async function initializeDashboard() {
@@ -2892,6 +3939,22 @@ if (planTab) {
         });
     });
 
+
+
+// Šablony – načti, když uživatel otevře záložku „Šablony“
+const templatesTabLink = document.querySelector('.nav-link[data-page="templates"]');
+if (templatesTabLink) {
+  templatesTabLink.addEventListener('click', () => loadTemplates());
+}
+
+// V AI/Nastavení tab panelu – pokud chceš načítat i při kliku na „Šablony“ přes postranní menu
+document.getElementById('tpl-save-btn')?.addEventListener('click', (e) => {
+  const editingId = e.currentTarget.dataset.editingId;
+  if (editingId) return saveEditedTemplate(editingId);
+  return createTemplate();
+});
+
+
     if (settingsTabs) {
         settingsTabs.forEach(tab => {
         tab.addEventListener('click', () => {
@@ -2937,30 +4000,179 @@ if (planTab) {
                     document.body.style.overflow = 'hidden';
                 }
                 try {
-                    const response = await fetch('https://ai-email-server-stejdesign.onrender.com/api/gmail/analyze-email', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-  dashboardUserEmail,                 // ⬅️ PŘIDÁNO
+
+const modalEl = modalBody.closest('.modal');
+modalEl?.classList.add('analysis-modal');
+
+modalBody.innerHTML = `
+  <div class="analysis-loading">
+    <div class="analysis-spinner"></div>
+  </div>
+`;
+
+// jednorázově injektuj CSS pro loader
+(function injectAnalysisLoaderStyles(){
+  if (document.getElementById('analysis-loading-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'analysis-loading-styles';
+  style.textContent = `
+    .analysis-modal .analysis-loading{
+      min-height: 320px;
+      display: grid;
+      place-items: center;
+    }
+    .analysis-modal .analysis-spinner{
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 4px solid #e5e7eb;
+      border-top-color: #667eea;
+      animation: analysis-spin 1s linear infinite;
+    }
+    @keyframes analysis-spin { to { transform: rotate(360deg); } }
+  `;
+  document.head.appendChild(style);
+})();
+                    
+
+                    // z karty zprávy si vezmeme zdroj (gmail/custom)
+const item = analyzeButton.closest('.email-item');
+let src = item?.dataset?.src;
+ // 1) pokud je název listu/hlavička "Custom IMAP", ber to jako custom
+ const hdr = document.getElementById('email-count');
+ const headerText = hdr?.textContent || '';
+ if (/Custom IMAP/i.test(headerText)) src = 'custom';
+ // 2) pokud máme čistě číselné ID (UID), je to custom
+ if (src !== 'custom' && /^\d+$/.test(String(currentMessageId))) src = 'custom';
+ // 3) poslední pojistka – když máme payload pro custom (viz bodyCustom) a prázdný messageId,
+ //    tak určitě použij custom endpoint
+ // (tuhle podmínku můžeš vynechat, pokud messageId vždy máš)
+
+// připrav payloady pro oba případy
+const bodyGmail = {
+  dashboardUserEmail,
   email: primaryEmail,
-  messageId: currentMessageId
-})
-                    });
-                    const data = await response.json();
-                    if (data.success && modalBody) {
-                        modalBody.innerHTML = `
-                            <div class="analysis-section">
-                                <div class="section-header"><div class="section-icon">📊</div><div class="section-title">Shrnutí a sentiment</div></div>
-                                <div class="section-content"><strong>Shrnutí:</strong> ${data.analysis.summary}<br><strong>Sentiment:</strong> ${data.analysis.sentiment}</div>
-                            </div>
-                            <div class="response-section">
-                                <div class="response-header"><div class="response-title"><span>✨</span> Doporučená odpověď</div></div>
-                                <div class="response-content" id="response-display">${data.analysis.suggested_reply.replace(/\n/g, '<br>')}</div>
-                                <textarea class="form-control" id="response-editor" style="display: none;"></textarea>
-                            </div>`;
+  messageId: currentMessageId,
+  styleProfile: (window.CURRENT_SETTINGS && window.CURRENT_SETTINGS.style_profile) || null
+};
+const bodyCustom = {
+  dashboardUserEmail,
+  emailAddress: primaryEmail,
+  uid: Number(currentMessageId) // u customu posíláme UID jako číslo
+};
+
+// zvol správný endpoint
+const analyzeUrl = src === 'custom'
+    ? `${window.BACKEND}/api/custom-email/analyze-email`
+    : `${window.BACKEND}/api/gmail/analyze-email`;
+
+// zavolej analýzu
+const response = await fetch(analyzeUrl, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(src === 'custom' ? bodyCustom : bodyGmail)
+});
+const data = await response.json();
+if (!response.ok || !data.success) throw new Error(data.message || 'Analýza selhala.');
+
+// zapamatuj si zdroj, ať odesílání ví, kam se má poslat reply
+window.__currentEmailSource    = src;          // 'gmail' | 'custom'
+window.__currentAccountAddress = primaryEmail;
+
+if (data.success && modalBody) {
+  modalBody.innerHTML = `
+    <div class="analysis-section">
+      <div class="section-header">
+        <div class="section-icon">📊</div>
+        <div class="section-title">Shrnutí a sentiment</div>
+      </div>
+      <div class="section-content">
+        <strong>Shrnutí:</strong> ${data.analysis.summary}<br>
+        <strong>Sentiment:</strong> ${data.analysis.sentiment}
+      </div>
+    </div>
+    <div class="response-section">
+      <div class="response-header">
+        <div class="response-title"><span>✨</span> Doporučená odpověď</div>
+      </div>
+      <div class="response-content" id="response-display">${data.analysis.suggested_reply.replace(/\n/g, '<br>')}</div>
+      <textarea class="form-control" id="response-editor" style="display: none;"></textarea>
+    </div>`;
+
+  window.CURRENT_EMAIL = {
+    id: currentMessageId,
+    subject: item?.querySelector('.email-subject')?.textContent?.trim() || '',
+    from:    item?.dataset?.from || '',
+    date:    item?.querySelector('.email-meta > div')?.textContent?.trim() || '',
+    bodyText: data.emailBody || '',
+    analysis: data.analysis || {},
+    account:  primaryEmail
+  };
+
+
+// 1) Rozšířit modal + přidat scope class
+const modalEl = modalBody.closest('.modal');
+modalEl?.classList.add('analysis-modal');
+const modalEl2 = modalBody.closest('.modal');
+modalEl2?.classList.add('analysis-modal');
+// Pokud bys někdy měl .modal-dialog, tak bezpečně:
+const dlg = modalEl2?.querySelector?.('.modal-dialog');
+if (dlg) dlg.classList.add('modal-xl');
+
+// 2) Přiinjektovat CSS (jednou)
+(function injectAnalysisStyles(){
+  if (document.getElementById('analysis-modal-styles')) return;
+  const css = `
+    .analysis-modal .modal-body{ display:block; }
+    .analysis-modal .response-section{ width:100%; }
+
+    /* Zobrazená odpověď (read-only) */
+    .analysis-modal .response-content{
+      display:block;
+      width:100% !important;
+      max-width:none !important;
+      min-height:300px;
+      padding:12px 14px;
+      border:1px solid #e5e7eb;
+      border-radius:10px;
+      background:#fff;
+      box-shadow:0 1px 2px rgba(0,0,0,.04);
+      overflow:auto;
+      white-space:pre-wrap;       /* zachová odřádkování */
+      word-break:break-word;
+    }
+
+    /* Editor */
+    .analysis-modal #response-editor{
+      display:none;
+      width:100% !important;
+      max-width:none !important;
+      min-height:300px;
+      padding:12px 14px;
+      border:1px solid #e5e7eb;
+      border-radius:10px;
+      background:#fff;
+      box-shadow:0 1px 2px rgba(0,0,0,.04);
+      resize:vertical;
+      line-height:1.5;
+    }
+  `;
+  const style = document.createElement('style');
+  style.id = 'analysis-modal-styles';
+  style.textContent = css;
+  document.head.appendChild(style);
+})();
+
+                        // TENTO ŘÁDEK ZAJIŠŤUJE, ŽE NOVÉ TLAČÍTKO BUDE FUNGOVAT
+                        document.getElementById('pick-template-btn')?.addEventListener('click', openTemplatePicker);
+
                     } else if (modalBody) {
                         modalBody.innerHTML = `<p style="text-align: center; color: red;">Chyba analýzy: ${data.message}</p>`;
                     }
+
+
+
+
                 } catch (error) {
                     if(modalBody) modalBody.innerHTML = `<p style="text-align: center; color: red;">Nepodařilo se připojit k serveru pro analýzu.</p>`;
                 }
@@ -2983,29 +4195,92 @@ if (planTab) {
             if (event.target.closest('#edit-reply-btn')) enterEditMode();
             if (event.target.closest('#save-edit-btn')) exitEditMode(true);
             if (event.target.closest('#cancel-edit-btn')) exitEditMode(false);
-            if (event.target.closest('.btn-success')) {
-                const sendButton = event.target.closest('.btn-success');
-                const primaryEmail = localStorage.getItem('primaryEmail'); // ZMĚNA
-                const replyBody = document.getElementById('response-editor').value;
+            if (event.target.closest('#send-now-btn') || event.target.closest('.btn-success')) {
+  const sendButton = event.target.closest('button');
+  const primaryEmail = localStorage.getItem('primaryEmail');
+
+  const editor  = document.getElementById('response-editor');
+  const display = document.getElementById('response-display');
+  const replyBody = (editor && editor.style.display !== 'none'
+    ? editor.value
+    : (display?.innerText || '')
+  ).trim();
+
+  if (!primaryEmail || !currentMessageId || !replyBody) {
+    showToast('Chybí data pro odeslání.', 'error'); return;
+  }
+                
                 if (!primaryEmail || !currentMessageId || !replyBody) {
                     showToast('Chybí data pro odeslání.', 'error'); return;
                 }
                 sendButton.textContent = 'Odesílám...'; sendButton.disabled = true;
-                try {
-                    const response = await fetch('https://ai-email-server-stejdesign.onrender.com/api/gmail/send-reply', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-  dashboardUserEmail,                 // ⬅️ PŘIDÁNO
-  email: primaryEmail,
-  messageId: currentMessageId,
-  replyBody
-})
-                    });
-                    const data = await response.json();
-                    if (data.success) {
-                        showToast(data.message, 'success'); hideAnalysisModal();
-                    } else { showToast(`Chyba: ${data.message}`, 'error'); }
+                
+                       
+ try {
+  // zdroj a účet z analýzy (nastaveno při Analyze)
+  const src     = window.__currentEmailSource || 'gmail';      // 'gmail' | 'custom'
+  const account = window.__currentAccountAddress || primaryEmail;
+
+  // metadata pro custom odeslání
+  const subj   = (window.CURRENT_EMAIL?.subject || '').trim();
+  const fromRaw = (window.CURRENT_EMAIL?.from || '');
+  const toAddr  = extractEmailAddress(fromRaw) || '';
+
+  // připrav endpoint + payload
+  let urlPost = '', payload = {};
+  if (src === 'custom') {
+    // Custom IMAP/SMTP
+    urlPost = `${window.BACKEND}/api/custom-email/send-reply`;
+    payload = {
+      dashboardUserEmail,
+      emailAddress: account,
+      to: toAddr,
+      subject: subj ? `Re: ${subj}` : 'Re:',
+      text: replyBody
+    };
+  } else {
+    // Gmail
+    urlPost = `${window.BACKEND}/api/gmail/send-reply`;
+    payload = {
+      dashboardUserEmail,
+      email: account,
+      messageId: currentMessageId,
+      replyBody
+    };
+  }
+
+  // odeslat
+  const response = await fetch(urlPost, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+
+  if (data.success) {
+    showToast(data.message, 'success');
+    hideAnalysisModal();
+    afterSuccessfulSend(); // (nechej – inkrementuje uses u šablony)
+    const tplId = window.__lastUsedTemplateId;
+if (tplId) {
+  fetch(`https://ai-email-server-stejdesign.onrender.com/api/templates/${tplId}/increment-use`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dashboardUserEmail })
+  }).finally(() => {
+    window.__lastUsedTemplateId = null;
+    loadTemplates();
+  });
+}
+
+    // tvůj existující blok s increment-use (pokud ho máš) nechej beze změny pod tímto
+  } else {
+    showToast(`Chyba: ${data.message}`, 'error');
+  }
+
+
+                        
+                
                 } catch (error) {
                     showToast('Nepodařilo se připojit k serveru pro odeslání.', 'error');
                 } finally {
@@ -3014,6 +4289,17 @@ if (planTab) {
             }
         });
     }
+
+    document.getElementById('pick-template-btn')?.addEventListener('click', openTemplatePicker);
+const tplPicker = document.getElementById('templatePicker');
+tplPicker?.addEventListener('click', (e) => { if (e.target === tplPicker) closeTemplatePicker(); });
+document.getElementById('closeTemplatePicker')?.addEventListener('click', closeTemplatePicker);
+document.getElementById('cancelTplPicker')?.addEventListener('click', closeTemplatePicker);
+document.getElementById('tplSearch')?.addEventListener('input', refreshPickerList);
+document.getElementById('tplCategory')?.addEventListener('change', refreshPickerList);
+
+
+    
 
     checkMobile();
     window.addEventListener('resize', checkMobile);
@@ -3039,8 +4325,13 @@ if (savePlanBtn) savePlanBtn.addEventListener('click', async () => {
   await savePlan();
   loadLimits(); // refresh usage po změně tarifu
 });
+
+
 });
     
+
+
+
     
 </script>
 </body>
