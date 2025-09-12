@@ -200,21 +200,116 @@ function guessByConvention(domain) {
   };
 }
 
+
+function matchProviderByMx(mxHost = '') {
+  if (!mxHost) return null;
+
+  if (mxHost.includes('cesky-hosting')) {
+    return {
+      imap: { host: 'mail.cesky-hosting.cz', port: 993, secure: true,  starttls: false },
+      smtp: { host: 'mail.cesky-hosting.cz', port: 465, secure: true,  starttls: false }
+    };
+  }
+  if (mxHost.includes('wedos')) {
+    return {
+      imap: { host: 'imap.wedos.net', port: 993, secure: true,  starttls: false },
+      smtp: { host: 'smtp.wedos.net', port: 465, secure: true,  starttls: false }
+    };
+  }
+  if (mxHost.includes('forpsi')) {
+    return {
+      imap: { host: 'imap.forpsi.com', port: 993, secure: true,  starttls: false },
+      smtp: { host: 'smtp.forpsi.com', port: 465, secure: true,  starttls: false }
+    };
+  }
+  if (mxHost.includes('active24')) {
+    return {
+      imap: { host: 'imap.active24.com', port: 993, secure: true,  starttls: false },
+      smtp: { host: 'smtp.active24.com', port: 465, secure: true,  starttls: false }
+    };
+  }
+  if (mxHost.includes('google.com')) {
+    return {
+      imap: { host: 'imap.gmail.com', port: 993, secure: true,  starttls: false },
+      smtp: { host: 'smtp.gmail.com', port: 465, secure: true,  starttls: false }
+    };
+  }
+  if (mxHost.includes('outlook.com') || mxHost.includes('office365.com') || mxHost.includes('protection.outlook.com')) {
+    return {
+      imap: { host: 'outlook.office365.com', port: 993, secure: true,  starttls: false },
+      smtp: { host: 'smtp.office365.com',   port: 587, secure: false, starttls: true  }
+    };
+  }
+  if (mxHost.includes('seznam.cz')) {
+    return {
+      imap: { host: 'imap.seznam.cz', port: 993, secure: true,  starttls: false },
+      smtp: { host: 'smtp.seznam.cz', port: 465, secure: true,  starttls: false }
+    };
+  }
+  return null;
+}
+
+async function guessByResolution(domain) {
+  const pairs = [
+    { imap: `imap.${domain}`, smtp: `smtp.${domain}`, imapPort: 993, smtpPort: 465, imapSSL: true,  smtpSSL: true  },
+    { imap: `mail.${domain}`, smtp: `mail.${domain}`, imapPort: 993, smtpPort: 465, imapSSL: true,  smtpSSL: true  },
+    { imap: domain,           smtp: domain,           imapPort: 993, smtpPort: 465, imapSSL: true,  smtpSSL: true  },
+    { imap: `imap.${domain}`, smtp: `smtp.${domain}`, imapPort: 143, smtpPort: 587, imapSSL: false, smtpSSL: false, imapSTARTTLS: true, smtpSTARTTLS: true },
+    { imap: `mail.${domain}`, smtp: `mail.${domain}`, imapPort: 143, smtpPort: 587, imapSSL: false, smtpSSL: false, imapSTARTTLS: true, smtpSTARTTLS: true },
+  ];
+
+  for (const p of pairs) {
+    const okImap = await canResolve(p.imap);
+    const okSmtp = await canResolve(p.smtp);
+    if (okImap && okSmtp) {
+      return {
+        imap: { host: p.imap, port: p.imapPort, secure: !!p.imapSSL, starttls: !!p.imapSTARTTLS },
+        smtp: { host: p.smtp, port: p.smtpPort, secure: !!p.smtpSSL, starttls: !!p.smtpSTARTTLS }
+      };
+    }
+  }
+  return null;
+}
+
+async function canResolve(host) {
+  try { await dns.promises.lookup(host); return true; }
+  catch { return false; }
+}
+
+
+
+
+
 async function discoverMailConfig(emailAddress) {
   const domain = String(emailAddress).split('@')[1];
   if (!domain) throw new Error('Neplatný e-mail');
 
-  // 1) Mozilla autoconfig
+  // 1) Mozilla autoconfig (Thunderbird styl)
   const m = await mozillaAutoconfig(domain);
   if (m) return m;
 
-  // 2) Hardcoded známí poskytovatelé
+  // 2) Rychlý match podle domény
   const h = hardcodedProvider(domain);
   if (h) return h;
 
-  // 3) Heuristika (imap./smtp. + fallbacks)
+  // 2.5) Podle MX záznamů (poznáme poskytovatele)
+  let mxHost = '';
+  try {
+    const mx = await dns.promises.resolveMx(domain);
+    mxHost = (mx.sort((a,b)=>a.priority-b.priority)[0]?.exchange || '').toLowerCase();
+  } catch {}
+
+  const byMx = matchProviderByMx(mxHost);
+  if (byMx) return byMx;
+
+  // 3) Ověřené pokusy (DNS lookup) – imap./smtp., mail./mail., STARTTLS fallbacky
+  const resolved = await guessByResolution(domain);
+  if (resolved) return resolved;
+
+  // 4) Nouzový odhad
   return guessByConvention(domain);
 }
+
 
 
 
@@ -2241,7 +2336,7 @@ async function handleCustomAnalyzeEmail(req, res) {
     // IMAP připojení – použij helper, ať to nepadá na timeout
     const transporter = nodemailer.createTransport({
     host: smtpHost, port: Number(smtpPort), secure: !!smtpSecure,
-    auth: { user: username, pass: password }
+    auth: { user: baseUsername, pass: password }
     });
     await transporter.verify();
 
@@ -2778,5 +2873,6 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
