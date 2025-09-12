@@ -642,6 +642,19 @@ function decodeHeader(str = '') {
   }
 }
 
+
+
+async function resolveIPv4(host) {
+  try {
+    const { address } = await dns.promises.lookup(host, { family: 4 });
+    return address; // vrátíme IPv4 adresu
+  } catch {
+    return host;   // když lookup selže, necháme původní hostname
+  }
+}
+
+
+
 app.post('/api/custom-email/connect', async (req, res) => {
   const {
     dashboardUserEmail,
@@ -683,20 +696,20 @@ app.post('/api/custom-email/connect', async (req, res) => {
       return res.status(400).json({ success:false, message:'Automatické zjištění nastavení selhalo: ' + (e?.message || e) });
     }
   }
-// 1) Ověřit IMAP přihlášení (s fallbacky a lepší chybou)
+// 1) Ověřit IMAP přihlášení (vynutíme SSL/993 a IPv4)
+const hostV4 = await resolveIPv4(imapHost);
+
+// primární pokus: IPv4 + SSL 993
 const imapAttempts = [
-  // nejdřív to, co zjistila autodetekce
-  { host: imapHost, port: Number(imapPort), secure: !!imapSecure },
-  // běžné bezpečné fallbacky
-  { host: imapHost, port: 993, secure: true  }, // SSL
-  { host: imapHost, port: 143, secure: false }  // STARTTLS/plain (ImapFlow si STARTTLS vyžádá)
+  { host: hostV4,   port: 993, secure: true },
+  // záložní pokus: hostname (kdyby IPv4 lookup nevyšel) + SSL 993
+  { host: imapHost, port: 993, secure: true }
 ];
 
 let imapOk = false;
 let imapLastErr = null;
 
 for (const attempt of imapAttempts) {
-  // přeskoč duplicity stejné kombinace
   const key = `${attempt.host}|${attempt.port}|${attempt.secure}`;
   global.__imapTried = global.__imapTried || new Set();
   if (global.__imapTried.has(key)) continue;
@@ -714,14 +727,14 @@ for (const attempt of imapAttempts) {
     await imapClient.logout().catch(()=>{});
     imapOk = true;
 
-    // aktualizuj skutečně funkční parametry (uložíme je do DB níže)
-    imapHost = attempt.host;
+    // zafixuj ověřené hodnoty (uložíme do DB níže)
+    imapHost = attempt.host === hostV4 ? imapHost : attempt.host; // když jsme použili IP, ukládej hostname
     imapPort = attempt.port;
     imapSecure = attempt.secure;
     break;
   } catch (e) {
     imapLastErr = e;
-    console.warn('[IMAP verify attempt failed]', attempt, unwrapImapError(e));
+    console.warn('[IMAP verify failed]', attempt, unwrapImapError(e));
     try { if (imapClient?.connected) await imapClient.logout(); } catch {}
   }
 }
@@ -732,6 +745,7 @@ if (!imapOk) {
     message: 'IMAP přihlášení selhalo: ' + unwrapImapError(imapLastErr)
   });
 }
+
  
 
   // 2) Ověřit SMTP přihlášení
@@ -2862,6 +2876,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
