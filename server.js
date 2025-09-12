@@ -10,6 +10,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { ImapFlow } from 'imapflow';
+import fetch from 'node-fetch';
 import nodemailer from 'nodemailer';
 import { simpleParser } from 'mailparser';
 import { XMLParser } from 'fast-xml-parser';
@@ -17,6 +18,7 @@ import libmime from 'libmime';
 import dns from 'dns';
 const { decodeWords } = libmime;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+
 
 
 const app = express();
@@ -2938,6 +2940,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
