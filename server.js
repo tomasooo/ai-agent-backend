@@ -1743,17 +1743,28 @@ const consume = await tryConsumeAiAction(db, dashboardUserEmail);
         const originalMessageId = find('message-id') || '';
         const originalReferences = find('references') || '';
 
-        const replySubject = originalSubject.startsWith('Re: ') ? originalSubject : `Re: ${originalSubject}`;
-        const raw = Buffer.from([
-            `From: ${email}`,
-            `To: ${originalFrom}`,
-            `Subject: ${replySubject}`,
-            `In-Reply-To: ${originalMessageId}`,
-            `References: ${originalReferences} ${originalMessageId}`,
-            'Content-Type: text/plain; charset=utf-8',
-            '',
-            replyBody
-        ].join('\n')).toString('base64url');
+        const encodeMimeWord = (str) =>
+  /[^\x00-\x7F]/.test(str) ? `=?UTF-8?B?${Buffer.from(str, 'utf8').toString('base64')}?=` : str;
+
+// můžeš si jméno natáhnout z DB; pro zjednodušení zde natvrdo
+const displayName = 'Tomáš Stejskal';
+
+const replySubject = originalSubject.startsWith('Re: ') ? originalSubject : `Re: ${originalSubject}`;
+const encodedFrom = `${encodeMimeWord(displayName)} <${email}>`;
+const encodedSubject = encodeMimeWord(replySubject);
+
+const raw = Buffer.from([
+  `From: ${encodedFrom}`,
+  `To: ${originalFrom}`,
+  `Subject: ${encodedSubject}`,
+  `In-Reply-To: ${originalMessageId}`,
+  `References: ${`${originalReferences} ${originalMessageId}`.trim()}`,
+  'MIME-Version: 1.0',
+  'Content-Type: text/plain; charset=utf-8',
+  'Content-Transfer-Encoding: 8bit',
+  '',
+  replyBody
+].join('\n')).toString('base64url');
 
         await gmail.users.messages.send({
             userId: 'me',
@@ -2112,12 +2123,15 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
       auth: { user, pass }
     });
 
-    await transporter.sendMail({
-      from: emailAddress,
-      to,
-      subject,
-      text
-    });
+   // (volitelně) můžeš si jméno vytáhnout z DB; tady stačí natvrdo
+const displayName = 'Tomáš Stejskal';
+
+await transporter.sendMail({
+  from: { name: displayName, address: emailAddress }, // ⬅️ klíčová změna
+  to,
+  subject,
+  text
+});
 
     return res.json({ success:true, message:'Email odeslán.' });
   } catch (e) {
@@ -2529,6 +2543,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
