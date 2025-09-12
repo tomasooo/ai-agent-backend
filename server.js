@@ -825,6 +825,36 @@ if (!imapOk) {
 
 
 
+app.post('/api/custom-email/disconnect', async (req, res) => {
+  const { dashboardUserEmail, emailAddress } = req.body || {};
+
+  if (!dashboardUserEmail || !emailAddress) {
+    return res.status(400).json({ success:false, message:'Chybí e-mail uživatele nebo účet.' });
+  }
+
+  const db = await pool.connect();
+  try {
+    const result = await db.query(
+      `DELETE FROM custom_accounts WHERE dashboard_user_email=$1 AND email_address=$2`,
+      [dashboardUserEmail, emailAddress]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success:false, message:'Účet nenalezen.' });
+    }
+
+    return res.json({ success:true, message:'Účet byl odstraněn.' });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ success:false, message:'Mazání účtu selhalo.' });
+  } finally {
+    db.release();
+  }
+});
+
+
+
+
 
 
 
@@ -2908,6 +2938,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
