@@ -1746,11 +1746,11 @@ const consume = await tryConsumeAiAction(db, dashboardUserEmail);
         const encodeMimeWord = (str) =>
   /[^\x00-\x7F]/.test(str) ? `=?UTF-8?B?${Buffer.from(str, 'utf8').toString('base64')}?=` : str;
 
-// můžeš si jméno natáhnout z DB; pro zjednodušení zde natvrdo
-const displayName = 'Tomáš Stejskal';
+
 
 const replySubject = originalSubject.startsWith('Re: ') ? originalSubject : `Re: ${originalSubject}`;
-const encodedFrom = `${encodeMimeWord(displayName)} <${email}>`;
+// ZMĚNA: žádné jméno, jen adresa
+const encodedFrom = `<${email}>`;
 const encodedSubject = encodeMimeWord(replySubject);
 
 const raw = Buffer.from([
@@ -1766,12 +1766,12 @@ const raw = Buffer.from([
   replyBody
 ].join('\n')).toString('base64url');
 
-        await gmail.users.messages.send({
-            userId: 'me',
-            requestBody: { raw, threadId: msgResponse.data.threadId }
-        });
+await gmail.users.messages.send({
+  userId: 'me',
+  requestBody: { raw, threadId: msgResponse.data.threadId }
+});
 
-        res.json({ success: true, message: "Email byl úspěšně odeslán." });
+res.json({ success: true, message: "Email byl úspěšně odeslán." });
     } catch (error) {
         console.error("Chyba při odesílání emailu:", error);
         res.status(500).json({ success: false, message: "Nepodařilo se odeslat email." });
@@ -2537,6 +2537,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
