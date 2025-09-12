@@ -380,7 +380,11 @@ app.get('/api/gmail/sent-replies', async (req, res) => {
 
 
 
-
+function extractEmail(s = '') {
+  const m = String(s).match(/<([^>]+)>/);   // "Jméno <mail@domena>" -> "mail@domena"
+  const raw = m ? m[1] : String(s);
+  return raw.trim().replace(/^mailto:/i, '');
+}
 
 
 
@@ -491,7 +495,7 @@ const imap = createImapClient({
       out.push({
         uid: msg.uid,
         subject: msg.envelope?.subject || '',
-        from: msg.envelope?.from?.map(a => a.address || a.name).join(', ') || '',
+        from: (msg.envelope?.from?.[0]?.address || '').trim(),
         date: msg.internalDate?.toISOString()
       });
       if (++fetched >= Number(limit)) break;
@@ -531,7 +535,8 @@ app.get('/api/gmail/inbox-examples', async (req, res) => {
       const payload = msg.data.payload;
       const headers = payload?.headers || [];
       const subject = headers.find(h => h.name === 'Subject')?.value || '';
-      const from = headers.find(h => h.name === 'From')?.value || '';
+      const fromHdr = headers.find(h => h.name === 'From')?.value || '';
+      const from = (fromHdr.match(/<([^>]+)>/)?.[1] || fromHdr).trim().replace(/^mailto:/i, '');
       const body = extractPlainText(payload);
       if (body) {
         items.push({ role:'incoming', subject, from, body });
@@ -1767,8 +1772,6 @@ const consume = await tryConsumeAiAction(db, dashboardUserEmail);
 
 
 
-
-
 app.get('/api/gmail/emails', async (req, res) => {
   let db;
   let imap; // kvůli finally
@@ -1857,7 +1860,7 @@ app.get('/api/gmail/emails', async (req, res) => {
         return {
           id: m.id,
           snippet: mr.data.snippet,
-          sender: getHeader('From'),
+          sender: (getHeader('From').match(/<([^>]+)>/)?.[1] || getHeader('From')).trim().replace(/^mailto:/i, ''),
           subject: getHeader('Subject'),
           date: getHeader('Date')
         };
@@ -1904,7 +1907,7 @@ await imap.mailboxOpen('INBOX');
         if (period === 'week' && (!d || d < oneWeekAgo)) continue;
 
         const subj = msg.envelope?.subject || '';
-        const from = msg.envelope?.from?.map(a => a.address || a.name).join(', ') || '';
+        const from = (msg.envelope?.from?.[0]?.address || '').trim();
 
         // searchQuery (subject + from)
         if (searchQuery) {
@@ -2526,6 +2529,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
