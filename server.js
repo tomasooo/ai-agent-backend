@@ -64,16 +64,15 @@ process.on('uncaughtException', (err) => {
 
 // --- IMAP helper: keepalive + delší timeout + bezpečné logování ---
 
-function createImapClient({ host, port = 993, secure = true, auth, starttls = false }) {
+function createImapClient({ host, port = 993, secure = true, auth, servername }) {
   const client = new ImapFlow({
-    host,
+    host,                           // sem může jít IPv4 adresa
     port: Number(port),
-    secure: !!secure,                 // true = přímé SSL (993)
+    secure: !!secure,               // true = přímé SSL (993)
     auth,
-    // pokud je třeba STARTTLS, necháme secure=false a dáme tls volby
     tls: {
-      servername: host,
-      rejectUnauthorized: false       // některé hostingy mají mezidoménové certy
+      servername: servername || host,  // SNI = původní hostname (kvůli certifikátu)
+      rejectUnauthorized: false
     },
     keepalive: {
       interval: 3 * 60 * 1000,
@@ -81,7 +80,7 @@ function createImapClient({ host, port = 993, secure = true, auth, starttls = fa
       forceNoop: true,
       timeout: 20 * 1000
     },
-    socketTimeout: 10 * 60 * 1000
+    socketTimeout: 60 * 1000         // 60 s na handshake (můžeš snížit na 20 s)
   });
 
   client.on('error', (err) => {
@@ -113,6 +112,17 @@ function unwrapImapError(e) {
     return parts.filter(Boolean).join(' – ') || '(bez detailu)';
   } catch {
     return '(bez detailu)';
+  }
+}
+
+async function resolveAWithSNI(hostname) {
+  try {
+    // vem čistě IPv4 (A) – žádné AAAA
+    const { address } = await dns.promises.lookup(hostname, { family: 4 });
+    return { connectHost: address, servername: hostname };
+  } catch {
+    // když lookup selže, vrať hostname (pojede klasicky)
+    return { connectHost: hostname, servername: hostname };
   }
 }
 
@@ -709,32 +719,31 @@ app.post('/api/custom-email/connect', async (req, res) => {
       return res.status(400).json({ success:false, message:'Automatické zjištění nastavení selhalo: ' + (e?.message || e) });
     }
   }
-// 1) Ověřit IMAP přihlášení (vynutíme SSL/993 a IPv4)
-const hostV4 = await resolveIPv4(imapHost);
+// 1) Ověřit IMAP přihlášení – připoj se na IPv4, ale SNI nech na hostname
+const { connectHost, servername } = await resolveAWithSNI(imapHost);
 
-// primární pokus: IPv4 + SSL 993
 const imapAttempts = [
-  { host: hostV4,   port: 993, secure: true },
-  // záložní pokus: hostname (kdyby IPv4 lookup nevyšel) + SSL 993
-  { host: imapHost, port: 993, secure: true }
+  // primárně: IPv4 + SSL na 993 (co máš v TB)
+  { host: connectHost, port: 993, secure: true, servername },
+  // záloha: hostname (pro případ, že A-lookup selže) + SSL na 993
+  { host: imapHost,    port: 993, secure: true, servername }
+  // (pokud chceš i STARTTLS fallback, přidej další pokus 143/secure:false)
 ];
 
 let imapOk = false;
 let imapLastErr = null;
-
 const tried = new Set();
-for (const attempt of imapAttempts) {
-  
 
-// a TÍMTO nahraď uvnitř for:
-const key = `${attempt.host}|${attempt.port}|${attempt.secure}`;
-if (tried.has(key)) continue;
-tried.add(key);
+for (const a of imapAttempts) {
+  const key = `${a.host}|${a.port}|${a.secure}`;
+  if (tried.has(key)) continue;
+  tried.add(key);
 
   const imapClient = createImapClient({
-    host: attempt.host,
-    port: attempt.port,
-    secure: attempt.secure,
+    host: a.host,
+    port: a.port,
+    secure: a.secure,
+    servername: a.servername,
     auth: { user: baseUsername, pass: password }
   });
 
@@ -743,14 +752,13 @@ tried.add(key);
     await imapClient.logout().catch(()=>{});
     imapOk = true;
 
-    // zafixuj ověřené hodnoty (uložíme do DB níže)
-    imapHost = attempt.host === hostV4 ? imapHost : attempt.host; // když jsme použili IP, ukládej hostname
-    imapPort = attempt.port;
-    imapSecure = attempt.secure;
+    // ulož do DB hostname (ne IP)
+    imapPort = a.port;
+    imapSecure = a.secure;
     break;
   } catch (e) {
     imapLastErr = e;
-    console.warn('[IMAP verify failed]', attempt, unwrapImapError(e));
+    console.warn('[IMAP verify failed]', a, unwrapImapError ? unwrapImapError(e) : (e?.message || e));
     try { if (imapClient?.connected) await imapClient.logout(); } catch {}
   }
 }
@@ -758,7 +766,7 @@ tried.add(key);
 if (!imapOk) {
   return res.status(400).json({
     success: false,
-    message: 'IMAP přihlášení selhalo: ' + unwrapImapError(imapLastErr)
+    message: 'IMAP přihlášení selhalo: ' + (unwrapImapError ? unwrapImapError(imapLastErr) : (imapLastErr?.message || imapLastErr))
   });
 }
 
@@ -2892,6 +2900,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
