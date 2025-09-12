@@ -533,66 +533,70 @@ app.post('/api/custom-email/connect', async (req, res) => {
   const {
     dashboardUserEmail,
     emailAddress,
-    username,
-    password,
-    imapHost, imapPort, imapSecure,
-    smtpHost, smtpPort, smtpSecure
+    password
   } = req.body || {};
 
   if (!dashboardUserEmail || !emailAddress || !password) {
-  return res.status(400).json({ success:false, message:'Zadej e-mail a heslo.' });
-}
+    return res.status(400).json({ success:false, message:'Zadej e-mail a heslo.' });
+  }
 
-// username defaultně = celý e-mail
-const baseUsername = (req.body?.username || emailAddress).trim();
+  // username defaultně = celý e-mail
+  const baseUsername = (req.body?.username || emailAddress).trim();
 
-// pokud nejsou IMAP/SMTP údaje, pokusíme se je zjistit
-let imapHost = req.body?.imapHost;
-let imapPort = req.body?.imapPort;
-let imapSecure = req.body?.imapSecure;
-let smtpHost = req.body?.smtpHost;
-let smtpPort = req.body?.smtpPort;
-let smtpSecure = req.body?.smtpSecure;
-let starttlsImap = false;
-let starttlsSmtp = false;
+  // pokud nejsou IMAP/SMTP údaje, pokusíme se je zjistit
+  let imapHost = req.body?.imapHost;
+  let imapPort = req.body?.imapPort;
+  let imapSecure = req.body?.imapSecure;
+  let smtpHost = req.body?.smtpHost;
+  let smtpPort = req.body?.smtpPort;
+  let smtpSecure = req.body?.smtpSecure;
+  let starttlsImap = false;
+  let starttlsSmtp = false;
 
-if (!imapHost || !smtpHost) {
-  const discovered = await discoverMailConfig(emailAddress);
+  if (!imapHost || !smtpHost) {
+    try {
+      const discovered = await discoverMailConfig(emailAddress);
 
-  // doplň nastavení
-  imapHost   = imapHost   || discovered.imap.host;
-  imapPort   = Number(imapPort ?? discovered.imap.port);
-  imapSecure = (imapSecure ?? discovered.imap.secure) ? true : false;
-  starttlsImap = !!discovered.imap.starttls;
+      imapHost   = imapHost   || discovered.imap.host;
+      imapPort   = Number(imapPort ?? discovered.imap.port);
+      imapSecure = (imapSecure ?? discovered.imap.secure) ? true : false;
+      starttlsImap = !!discovered.imap.starttls;
 
-  smtpHost   = smtpHost   || discovered.smtp.host;
-  smtpPort   = Number(smtpPort ?? discovered.smtp.port);
-  smtpSecure = (smtpSecure ?? discovered.smtp.secure) ? true : false;
-  starttlsSmtp = !!discovered.smtp.starttls;
-}
+      smtpHost   = smtpHost   || discovered.smtp.host;
+      smtpPort   = Number(smtpPort ?? discovered.smtp.port);
+      smtpSecure = (smtpSecure ?? discovered.smtp.secure) ? true : false;
+      starttlsSmtp = !!discovered.smtp.starttls;
+    } catch (e) {
+      return res.status(400).json({ success:false, message:'Automatické zjištění nastavení selhalo: ' + (e?.message || e) });
+    }
+  }
 
   // 1) Ověřit IMAP přihlášení
- const imap = createImapClient({
-  host: imapHost,
-  port: imapPort,
-  secure: imapSecure,
-  auth: { user: username, pass: password }
-});
-try {
-  await imap.connect();
-} catch (e) {
-  return res.status(400).json({ success:false, message:'IMAP přihlášení selhalo: ' + (e?.message || e) });
-} finally {
-  try { if (imap?.connected) await imap.logout(); } catch {}
-}
+  const imap = createImapClient({
+    host: imapHost,
+    port: imapPort,
+    secure: imapSecure,
+    auth: { user: baseUsername, pass: password }
+  });
+  try {
+    await imap.connect();
+  } catch (e) {
+    return res.status(400).json({ success:false, message:'IMAP přihlášení selhalo: ' + (e?.message || e) });
+  } finally {
+    try { if (imap?.connected) await imap.logout(); } catch {}
+  }
 
   // 2) Ověřit SMTP přihlášení
   try {
     const transporter = nodemailer.createTransport({
-      host: smtpHost, port: Number(smtpPort), secure: !!smtpSecure,
-      auth: { user: username, pass: password }
+      host: smtpHost,
+      port: Number(smtpPort),
+      secure: !!smtpSecure,                // SSL/TLS (465)
+      requireTLS: !!starttlsSmtp,           // STARTTLS (587)
+      tls: { rejectUnauthorized: false },   // některé servery mají vlastní cert
+      auth: { user: baseUsername, pass: password }
     });
-    await transporter.verify(); // jen ověř
+    await transporter.verify();
   } catch (e) {
     return res.status(400).json({ success:false, message:'SMTP ověření selhalo: ' + (e?.message || e) });
   }
@@ -612,7 +616,7 @@ try {
       dashboardUserEmail, emailAddress,
       imapHost, Number(imapPort), !!imapSecure,
       smtpHost, Number(smtpPort), !!smtpSecure,
-      encSecret(username), encSecret(password)
+      encSecret(baseUsername), encSecret(password)
     ]);
 
     return res.json({ success:true, message:'Účet připojen.' });
@@ -2705,58 +2709,4 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
