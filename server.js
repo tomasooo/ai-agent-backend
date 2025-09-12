@@ -719,15 +719,19 @@ app.post('/api/custom-email/connect', async (req, res) => {
       return res.status(400).json({ success:false, message:'Automatické zjištění nastavení selhalo: ' + (e?.message || e) });
     }
   }
-// 1) Ověřit IMAP přihlášení – připoj se na IPv4, ale SNI nech na hostname
+// 1) Ověřit IMAP přihlášení – preferuj IPv4 + 993/SSL, pak 143/STARTTLS
 const { connectHost, servername } = await resolveAWithSNI(imapHost);
 
 const imapAttempts = [
-  // primárně: IPv4 + SSL na 993 (co máš v TB)
-  { host: connectHost, port: 993, secure: true, servername },
-  // záloha: hostname (pro případ, že A-lookup selže) + SSL na 993
-  { host: imapHost,    port: 993, secure: true, servername }
-  // (pokud chceš i STARTTLS fallback, přidej další pokus 143/secure:false)
+  // 993/SSL (přes IPv4)
+  { host: connectHost, port: 993, secure: true,  servername },
+  // 993/SSL (přes hostname, kdyby A-lookup selhal)
+  { host: imapHost,    port: 993, secure: true,  servername },
+
+  // 143/STARTTLS (přes IPv4)
+  { host: connectHost, port: 143, secure: false, servername },
+  // 143/STARTTLS (přes hostname)
+  { host: imapHost,    port: 143, secure: false, servername },
 ];
 
 let imapOk = false;
@@ -747,12 +751,15 @@ for (const a of imapAttempts) {
     auth: { user: baseUsername, pass: password }
   });
 
+  // zkraťme handshake timeout, ať to nečeká věčnost
+  imapClient.socketTimeout = 20000; // 20 s
+
   try {
     await imapClient.connect();
     await imapClient.logout().catch(()=>{});
     imapOk = true;
 
-    // ulož do DB hostname (ne IP)
+    // ulož do DB hostname (ne IP), jen port/zabezpečení aktualizuj
     imapPort = a.port;
     imapSecure = a.secure;
     break;
@@ -769,6 +776,7 @@ if (!imapOk) {
     message: 'IMAP přihlášení selhalo: ' + (unwrapImapError ? unwrapImapError(imapLastErr) : (imapLastErr?.message || imapLastErr))
   });
 }
+
 
  
 
@@ -2900,6 +2908,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
