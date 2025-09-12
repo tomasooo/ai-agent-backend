@@ -725,72 +725,9 @@ app.post('/api/custom-email/connect', async (req, res) => {
 });
 
 
-async function discoverMailConfig(email) {
-  const domain = email.split('@')[1];
 
-  // 1) Zjistit MX záznamy
-  let mxRecords = [];
-  try {
-    mxRecords = await dns.promises.resolveMx(domain);
-  } catch (e) {
-    console.warn('MX lookup failed for', domain, e);
-  }
 
-  const mxHost = mxRecords.sort((a,b)=>a.priority-b.priority)[0]?.exchange || '';
 
-  // 2) Podle MX zjistit poskytovatele
-  if (mxHost.includes('cesky-hosting')) {
-    return {
-      imap: { host: 'mail.cesky-hosting.cz', port: 993, secure: true, starttls: false },
-      smtp: { host: 'mail.cesky-hosting.cz', port: 465, secure: true, starttls: false }
-    };
-  }
-  if (mxHost.includes('google.com')) {
-    return {
-      imap: { host: 'imap.gmail.com', port: 993, secure: true, starttls: false },
-      smtp: { host: 'smtp.gmail.com', port: 465, secure: true, starttls: false }
-    };
-  }
-  if (mxHost.includes('seznam.cz')) {
-    return {
-      imap: { host: 'imap.seznam.cz', port: 993, secure: true, starttls: false },
-      smtp: { host: 'smtp.seznam.cz', port: 465, secure: true, starttls: false }
-    };
-  }
-  if (mxHost.includes('outlook.com') || mxHost.includes('office365.com')) {
-    return {
-      imap: { host: 'outlook.office365.com', port: 993, secure: true, starttls: false },
-      smtp: { host: 'smtp.office365.com', port: 587, secure: false, starttls: true }
-    };
-  }
-
-  // 3) fallback: zkusíme běžné tvary
-  const guesses = [
-    { imap: `imap.${domain}`, smtp: `smtp.${domain}` },
-    { imap: `mail.${domain}`, smtp: `mail.${domain}` },
-    { imap: domain, smtp: domain }
-  ];
-
-  for (const g of guesses) {
-    if (await canResolve(g.imap) && await canResolve(g.smtp)) {
-      return {
-        imap: { host: g.imap, port: 993, secure: true, starttls: false },
-        smtp: { host: g.smtp, port: 465, secure: true, starttls: false }
-      };
-    }
-  }
-
-  throw new Error('Nepodařilo se zjistit IMAP/SMTP servery pro ' + domain);
-}
-
-async function canResolve(host) {
-  try {
-    await dns.promises.lookup(host);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 
 
@@ -2873,6 +2810,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
