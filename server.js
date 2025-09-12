@@ -12,6 +12,7 @@ import jwt from 'jsonwebtoken';
 import { ImapFlow } from 'imapflow';
 import nodemailer from 'nodemailer';
 import { simpleParser } from 'mailparser';
+import { XMLParser } from 'fast-xml-parser';
 import libmime from 'libmime';
 const { decodeWords } = libmime;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
@@ -82,6 +83,138 @@ function createImapClient({ host, port = 993, secure = true, auth }) {
 
   return client;
 }
+
+
+
+const xmlParser = new XMLParser({ ignoreAttributes: false });
+
+async function tryFetch(url) {
+  try {
+    const r = await fetch(url, { method: 'GET' });
+    if (!r.ok) return null;
+    const txt = await r.text();
+    return txt;
+  } catch { return null; }
+}
+
+function parseMozillaConfig(xmlText) {
+  // Podle formátu https://wiki.mozilla.org/Thunderbird:Autoconfiguration:ConfigFileFormat
+  const xml = xmlParser.parse(xmlText);
+  const cfg = xml?.clientConfig?.emailProvider;
+  if (!cfg) return null;
+
+  const incoming = Array.isArray(cfg?.incomingServer) ? cfg.incomingServer : [cfg.incomingServer];
+  const outgoing = Array.isArray(cfg?.outgoingServer) ? cfg.outgoingServer : [cfg.outgoingServer];
+
+  const imap = incoming.find(s => s?.['@_type']?.toLowerCase() === 'imap');
+  const smtp = outgoing.find(s => s?.['@_type']?.toLowerCase() === 'smtp');
+
+  const mapSocket = (t='SSL') => {
+    t = String(t).toUpperCase();
+    // Thunderbird používá "SSL", "STARTTLS", "plain"
+    if (t.includes('START')) return { secure: false, starttls: true };
+    if (t.includes('SSL'))   return { secure: true,  starttls: false };
+    return { secure: false, starttls: false };
+  };
+
+  const imapSock = mapSocket(imap?.socketType);
+  const smtpSock = mapSocket(smtp?.socketType);
+
+  return {
+    imap: {
+      host: imap?.hostname,
+      port: Number(imap?.port || (imapSock.secure ? 993 : 143)),
+      secure: !!imapSock.secure,
+      starttls: !!imapSock.starttls,
+      username: imap?.username || '%EMAILADDRESS%'
+    },
+    smtp: {
+      host: smtp?.hostname,
+      port: Number(smtp?.port || (smtpSock.secure ? 465 : 587)),
+      secure: !!smtpSock.secure,
+      starttls: !!smtpSock.starttls,
+      username: smtp?.username || '%EMAILADDRESS%'
+    }
+  };
+}
+
+async function mozillaAutoconfig(domain) {
+  // 1) https://autoconfig.<domain>/mail/config-v1.1.xml
+  // 2) http://autoconfig.<domain>/mail/config-v1.1.xml
+  // 3) https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml
+  const urls = [
+    `https://autoconfig.${domain}/mail/config-v1.1.xml`,
+    `http://autoconfig.${domain}/mail/config-v1.1.xml`,
+    `https://${domain}/.well-known/autoconfig/mail/config-v1.1.xml`,
+  ];
+  for (const u of urls) {
+    const txt = await tryFetch(u);
+    if (!txt) continue;
+    const parsed = parseMozillaConfig(txt);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function hardcodedProvider(domain) {
+  const d = domain.toLowerCase();
+  // ⚠️ doplň si, co používáš nejčastěji
+  if (d === 'gmail.com' || d.endsWith('.gmail.com')) {
+    return {
+      imap: { host: 'imap.gmail.com', port: 993, secure: true, starttls: false, username: '%EMAILADDRESS%' },
+      smtp: { host: 'smtp.gmail.com', port: 465, secure: true, starttls: false, username: '%EMAILADDRESS%' }
+    };
+  }
+  if (d === 'outlook.com' || d === 'hotmail.com' || d === 'live.com' || d === 'office365.com' || d === 'microsoft.com') {
+    return {
+      imap: { host: 'outlook.office365.com', port: 993, secure: true,  starttls: false, username: '%EMAILADDRESS%' },
+      smtp: { host: 'smtp.office365.com',   port: 587, secure: false, starttls: true,  username: '%EMAILADDRESS%' }
+    };
+  }
+  if (d === 'seznam.cz' || d.endsWith('.seznam.cz')) {
+    return {
+      imap: { host: 'imap.seznam.cz', port: 993, secure: true, starttls: false, username: '%EMAILADDRESS%' },
+      smtp: { host: 'smtp.seznam.cz', port: 465, secure: true, starttls: false, username: '%EMAILADDRESS%' }
+    };
+  }
+  if (d === 'centrum.cz' || d === 'volny.cz' || d === 'atlas.cz') {
+    return {
+      imap: { host: `imap.${d}`, port: 993, secure: true, starttls: false, username: '%EMAILADDRESS%' },
+      smtp: { host: `smtp.${d}`, port: 465, secure: true, starttls: false, username: '%EMAILADDRESS%' }
+    };
+  }
+  return null;
+}
+
+function guessByConvention(domain) {
+  return {
+    imap: { host: `imap.${domain}`, port: 993, secure: true,  starttls: false, username: '%EMAILADDRESS%' },
+    smtp: { host: `smtp.${domain}`, port: 465, secure: true,  starttls: false, username: '%EMAILADDRESS%' },
+    fallback: [
+      { imap: { host: `mail.${domain}`, port: 993, secure: true,  starttls: false },
+        smtp: { host: `mail.${domain}`, port: 465, secure: true,  starttls: false } },
+      { imap: { host: `imap.${domain}`, port: 143, secure: false, starttls: true  },
+        smtp: { host: `smtp.${domain}`, port: 587, secure: false, starttls: true  } }
+    ]
+  };
+}
+
+async function discoverMailConfig(emailAddress) {
+  const domain = String(emailAddress).split('@')[1];
+  if (!domain) throw new Error('Neplatný e-mail');
+
+  // 1) Mozilla autoconfig
+  const m = await mozillaAutoconfig(domain);
+  if (m) return m;
+
+  // 2) Hardcoded známí poskytovatelé
+  const h = hardcodedProvider(domain);
+  if (h) return h;
+
+  // 3) Heuristika (imap./smtp. + fallbacks)
+  return guessByConvention(domain);
+}
+
 
 
 
@@ -406,10 +539,37 @@ app.post('/api/custom-email/connect', async (req, res) => {
     smtpHost, smtpPort, smtpSecure
   } = req.body || {};
 
-  if (!dashboardUserEmail || !emailAddress || !username || !password ||
-      !imapHost || !imapPort || smtpHost == null || smtpPort == null) {
-    return res.status(400).json({ success:false, message:'Chybí povinná pole.' });
-  }
+  if (!dashboardUserEmail || !emailAddress || !password) {
+  return res.status(400).json({ success:false, message:'Zadej e-mail a heslo.' });
+}
+
+// username defaultně = celý e-mail
+const baseUsername = (req.body?.username || emailAddress).trim();
+
+// pokud nejsou IMAP/SMTP údaje, pokusíme se je zjistit
+let imapHost = req.body?.imapHost;
+let imapPort = req.body?.imapPort;
+let imapSecure = req.body?.imapSecure;
+let smtpHost = req.body?.smtpHost;
+let smtpPort = req.body?.smtpPort;
+let smtpSecure = req.body?.smtpSecure;
+let starttlsImap = false;
+let starttlsSmtp = false;
+
+if (!imapHost || !smtpHost) {
+  const discovered = await discoverMailConfig(emailAddress);
+
+  // doplň nastavení
+  imapHost   = imapHost   || discovered.imap.host;
+  imapPort   = Number(imapPort ?? discovered.imap.port);
+  imapSecure = (imapSecure ?? discovered.imap.secure) ? true : false;
+  starttlsImap = !!discovered.imap.starttls;
+
+  smtpHost   = smtpHost   || discovered.smtp.host;
+  smtpPort   = Number(smtpPort ?? discovered.smtp.port);
+  smtpSecure = (smtpSecure ?? discovered.smtp.secure) ? true : false;
+  starttlsSmtp = !!discovered.smtp.starttls;
+}
 
   // 1) Ověřit IMAP přihlášení
  const imap = createImapClient({
@@ -2006,12 +2166,11 @@ async function handleCustomAnalyzeEmail(req, res) {
     const pass = decSecret(rAcc.rows[0].enc_password);
 
     // IMAP připojení – použij helper, ať to nepadá na timeout
-    const imap = createImapClient({
-      host: rAcc.rows[0].imap_host,
-      port: rAcc.rows[0].imap_port,
-      secure: rAcc.rows[0].imap_secure,
-      auth: { user, pass }
+    const transporter = nodemailer.createTransport({
+    host: smtpHost, port: Number(smtpPort), secure: !!smtpSecure,
+    auth: { user: username, pass: password }
     });
+    await transporter.verify();
 
     await imap.connect();
     await imap.mailboxOpen('INBOX');
@@ -2546,6 +2705,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
