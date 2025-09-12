@@ -96,11 +96,24 @@ function createImapClient({ host, port = 993, secure = true, auth, starttls = fa
 
 
 function unwrapImapError(e) {
-  if (!e) return 'Neznámá chyba';
-  if (e.name === 'AggregateError' && Array.isArray(e.errors)) {
-    return e.errors.map(x => x?.message || String(x)).join(' | ');
+  try {
+    if (!e) return '(bez detailu)';
+    // AggregateError
+    if (e.name === 'AggregateError' && Array.isArray(e.errors)) {
+      return e.errors.map(x => unwrapImapError(x)).filter(Boolean).join(' | ');
+    }
+    // Node chyby: code/cause
+    const parts = [];
+    if (e.code) parts.push(String(e.code));
+    if (e.message) parts.push(String(e.message));
+    if (!e.message && typeof e.toString === 'function') parts.push(String(e));
+    if (e.cause && (e.cause.message || e.cause.code)) {
+      parts.push(unwrapImapError(e.cause));
+    }
+    return parts.filter(Boolean).join(' – ') || '(bez detailu)';
+  } catch {
+    return '(bez detailu)';
   }
-  return e?.message || String(e);
 }
 
 
@@ -709,11 +722,14 @@ const imapAttempts = [
 let imapOk = false;
 let imapLastErr = null;
 
+const tried = new Set();
 for (const attempt of imapAttempts) {
-  const key = `${attempt.host}|${attempt.port}|${attempt.secure}`;
-  global.__imapTried = global.__imapTried || new Set();
-  if (global.__imapTried.has(key)) continue;
-  global.__imapTried.add(key);
+  
+
+// a TÍMTO nahraď uvnitř for:
+const key = `${attempt.host}|${attempt.port}|${attempt.secure}`;
+if (tried.has(key)) continue;
+tried.add(key);
 
   const imapClient = createImapClient({
     host: attempt.host,
@@ -2876,6 +2892,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
