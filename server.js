@@ -12,7 +12,8 @@ import jwt from 'jsonwebtoken';
 import { ImapFlow } from 'imapflow';
 import nodemailer from 'nodemailer';
 import { simpleParser } from 'mailparser';
-import { decodeWords } from 'libmime';
+import libmime from 'libmime';
+const { decodeWords } = libmime;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 
 
@@ -2545,6 +2546,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
