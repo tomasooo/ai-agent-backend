@@ -63,19 +63,25 @@ process.on('uncaughtException', (err) => {
 
 
 // --- IMAP helper: keepalive + delší timeout + bezpečné logování ---
-function createImapClient({ host, port = 993, secure = true, auth }) {
+
+function createImapClient({ host, port = 993, secure = true, auth, starttls = false }) {
   const client = new ImapFlow({
     host,
     port: Number(port),
-    secure: !!secure,
+    secure: !!secure,                 // true = přímé SSL (993)
     auth,
+    // pokud je třeba STARTTLS, necháme secure=false a dáme tls volby
+    tls: {
+      servername: host,
+      rejectUnauthorized: false       // některé hostingy mají mezidoménové certy
+    },
     keepalive: {
-      interval: 3 * 60 * 1000, // 3 min (klidně 120*1000, pokud server rád timeoutuje)
+      interval: 3 * 60 * 1000,
       idle: true,
       forceNoop: true,
       timeout: 20 * 1000
     },
-    socketTimeout: 10 * 60 * 1000 // 10 minut
+    socketTimeout: 10 * 60 * 1000
   });
 
   client.on('error', (err) => {
@@ -85,6 +91,13 @@ function createImapClient({ host, port = 993, secure = true, auth }) {
   return client;
 }
 
+function unwrapImapError(e) {
+  if (!e) return 'Neznámá chyba';
+  if (e.name === 'AggregateError' && Array.isArray(e.errors)) {
+    return e.errors.map(x => x?.message || String(x)).join(' | ');
+  }
+  return e?.message || String(e);
+}
 
 
 const xmlParser = new XMLParser({ ignoreAttributes: false });
@@ -2810,6 +2823,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
