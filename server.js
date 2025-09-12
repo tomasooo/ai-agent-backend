@@ -2124,15 +2124,12 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     });
 
    // (volitelně) můžeš si jméno vytáhnout z DB; tady stačí natvrdo
-const displayName = 'Tomáš Stejskal';
-
 await transporter.sendMail({
-  from: { name: displayName, address: emailAddress }, // ⬅️ klíčová změna
+  from: emailAddress,
   to,
   subject,
   text
 });
-
     return res.json({ success:true, message:'Email odeslán.' });
   } catch (e) {
     console.error(e);
@@ -2543,6 +2540,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
