@@ -12,6 +12,7 @@ import jwt from 'jsonwebtoken';
 import { ImapFlow } from 'imapflow';
 import nodemailer from 'nodemailer';
 import { simpleParser } from 'mailparser';
+import { decodeWords } from 'libmime';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 
 
@@ -386,7 +387,13 @@ function extractEmail(s = '') {
   return raw.trim().replace(/^mailto:/i, '');
 }
 
-
+function decodeHeader(str = '') {
+  try {
+    return decodeWords(str);
+  } catch {
+    return str;
+  }
+}
 
 app.post('/api/custom-email/connect', async (req, res) => {
   const {
@@ -492,12 +499,13 @@ const imap = createImapClient({
     // posledních N UID od konce
     let fetched = 0;
     for await (let msg of imap.fetch({ seen: false, changedSince: null, seq: `${Math.max(1, imap.mailbox.exists - 200)}:*` }, { uid: true, envelope: true, internalDate: true })) {
-      out.push({
-        uid: msg.uid,
-        subject: msg.envelope?.subject || '',
-        from: (msg.envelope?.from?.[0]?.address || '').trim(),
-        date: msg.internalDate?.toISOString()
-      });
+      const fromRaw = msg.envelope?.from?.[0] || {};
+out.push({
+  uid: msg.uid,
+  subject: decodeHeader(msg.envelope?.subject || ''),
+  from: `${decodeHeader(fromRaw.name || '')} <${fromRaw.address || ''}>`,
+  date: msg.internalDate?.toISOString()
+});
       if (++fetched >= Number(limit)) break;
     }
 
@@ -536,7 +544,7 @@ app.get('/api/gmail/inbox-examples', async (req, res) => {
       const headers = payload?.headers || [];
       const subject = headers.find(h => h.name === 'Subject')?.value || '';
       const fromHdr = headers.find(h => h.name === 'From')?.value || '';
-      const from = (fromHdr.match(/<([^>]+)>/)?.[1] || fromHdr).trim().replace(/^mailto:/i, '');
+      const from = decodeHeader(fromHdr);
       const body = extractPlainText(payload);
       if (body) {
         items.push({ role:'incoming', subject, from, body });
@@ -2537,6 +2545,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
