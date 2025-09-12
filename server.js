@@ -221,12 +221,12 @@ function guessByConvention(domain) {
 function matchProviderByMx(mxHost = '') {
   if (!mxHost) return null;
 
-  if (mxHost.includes('cesky-hosting')) {
-    return {
-      imap: { host: 'mail.cesky-hosting.cz', port: 993, secure: true,  starttls: false },
-      smtp: { host: 'mail.cesky-hosting.cz', port: 465, secure: true,  starttls: false }
-    };
-  }
+ if (mxHost.includes('cesky-hosting')) {
+  return {
+    imap: { host: 'mail.cesky-hosting.cz', port: 993, secure: true,  starttls: false },
+    smtp: { host: 'mail.cesky-hosting.cz', port: 587, secure: false, starttls: true  }
+  };
+}
   if (mxHost.includes('wedos')) {
     return {
       imap: { host: 'imap.wedos.net', port: 993, secure: true,  starttls: false },
@@ -2876,6 +2876,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
