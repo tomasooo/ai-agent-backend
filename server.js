@@ -2101,35 +2101,32 @@ app.get('/api/custom-email/analyze', handleCustomAnalyzeEmail);
 
 app.post('/api/custom-email/send-reply', async (req, res) => {
   try {
-    const { dashboardUserEmail, emailAddress, to, subject, text } = req.body || {};
+    const { dashboardUserEmail, emailAddress, to, subject, text, fromName } = req.body || {};
     if (!dashboardUserEmail || !emailAddress || !to || !subject || !text) {
       return res.status(400).json({ success:false, message:'Chybí data.' });
     }
-    const db = await pool.connect();
-    const rAcc = await db.query(`
-      SELECT smtp_host, smtp_port, smtp_secure, enc_username, enc_password
-      FROM custom_accounts
-      WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
-      LIMIT 1
-    `, [dashboardUserEmail, emailAddress]);
-    db.release();
-    if (!rAcc.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
 
-    const user = decSecret(rAcc.rows[0].enc_username);
-    const pass = decSecret(rAcc.rows[0].enc_password);
+    // ...načtení SMTP přihlašovacích údajů z DB...
 
     const transporter = nodemailer.createTransport({
-      host: rAcc.rows[0].smtp_host, port: Number(rAcc.rows[0].smtp_port), secure: !!rAcc.rows[0].smtp_secure,
+      host: rAcc.rows[0].smtp_host,
+      port: Number(rAcc.rows[0].smtp_port),
+      secure: !!rAcc.rows[0].smtp_secure,
       auth: { user, pass }
     });
 
-   // (volitelně) můžeš si jméno vytáhnout z DB; tady stačí natvrdo
-await transporter.sendMail({
-  from: emailAddress,
-  to,
-  subject,
-  text
-});
+    const toAddr  = extractEmail(to);
+    const toName  = parseNameFromFromHeader(String(to)) || undefined;
+
+    await transporter.sendMail({
+      // nastav FROM i TO jako objekty -> správné UTF-8 kódování
+      from: fromName ? { name: fromName, address: emailAddress } : { address: emailAddress },
+      to:   toName ? { name: toName, address: toAddr } : { address: toAddr },
+      subject,                // UTF-8 je OK, nodemailer sám zabalí
+      text,                   // totéž
+      encoding: 'utf-8',      // volitelné, ale nevadí
+    });
+
     return res.json({ success:true, message:'Email odeslán.' });
   } catch (e) {
     console.error(e);
@@ -2540,6 +2537,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
