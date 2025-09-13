@@ -2371,7 +2371,6 @@ async function handleCustomAnalyzeEmail(req, res) {
       return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, emailAddress, uid).' });
     }
 
-    // !!! ZBYTEK JE PŘESNĚ TO, CO UŽ MÁŠ V POST HANDLERU !!!
     // načíst limity
     const db = await pool.connect();
     const consume = await tryConsumeAiAction(db, dashboardUserEmail);
@@ -2394,37 +2393,44 @@ async function handleCustomAnalyzeEmail(req, res) {
     `, [dashboardUserEmail, emailAddress]);
     db.release();
 
-    if (!rAcc.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
+    if (!rAcc.rowCount) {
+      return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
+    }
     const st = rSet.rows[0] || { tone:'Profesionální', length:'Adaptivní', signature:'' };
 
     const user = decSecret(rAcc.rows[0].enc_username);
     const pass = decSecret(rAcc.rows[0].enc_password);
 
-    // IMAP připojení – použij helper, ať to nepadá na timeout
-    const transporter = nodemailer.createTransport({
-    host: smtpHost, port: Number(smtpPort), secure: !!smtpSecure,
-    auth: { user: baseUsername, pass: password }
+    // === OPRAVA: vytvořit IMAP klienta a připojit se ===
+    const imap = createImapClient({
+      host: rAcc.rows[0].imap_host,
+      port: Number(rAcc.rows[0].imap_port),
+      secure: !!rAcc.rows[0].imap_secure,
+      auth: { user, pass }
     });
-    await transporter.verify();
 
     await imap.connect();
     await imap.mailboxOpen('INBOX');
 
+    // stáhnout zprávu dle UID
     const { content } = await imap.download(Number(uid), null, { uid: true });
     const chunks = [];
     for await (const c of content) chunks.push(c);
+
+    // vždy se odhlásit
     try { if (imap?.connected) await imap.logout(); } catch {}
 
     const parsed = await simpleParser(Buffer.concat(chunks));
     const emailBody = parsed.text || parsed.html || '';
 
     const styleProfile = {
-  tone: st?.tone || 'Formální',
-  length: st?.length || 'Střední (1 odstavec)',
-  signature: st?.signature || '',
-  language: 'cs-CZ'
-};
-const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
+      tone: st?.tone || 'Formální',
+      length: st?.length || 'Střední (1 odstavec)',
+      signature: st?.signature || '',
+      language: 'cs-CZ'
+    };
+
+    const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
 Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu,
 použij rozumný default, ale profil má přednost.
 
@@ -2442,9 +2448,9 @@ Pravidla pro tvorbu "suggested_reply":
 - Pokud STYLE_PROFILE.signature není prázdný:
   - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
   - Podpis neduplikuj, pokud už v textu je.
-    
 `;
-const task = `Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+
+    const task = `Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
 {
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
@@ -2455,24 +2461,29 @@ Bez jakéhokoli dalšího textu mimo JSON. Odpovědi piš česky.
 Text e-mailu:
 ---
 ${String(emailBody).slice(0, 3000)}
-    
----`;
+---
+`;
 
     const geminiResult = await model.generateContent(`${systemInstruction}\n${task}`);
     const raw = geminiResult?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     const cleaned = raw.replace(/```json|```/g, '').trim();
 
     let analysis = {};
-    try { analysis = JSON.parse(cleaned); }
-    catch {
-      const fix = await model.generateContent(`Oprav na validní JSON { "summary":"", "sentiment":"", "suggested_reply":"" }:\n${raw}`);
-      analysis = JSON.parse(fix.response.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim());
+    try {
+      analysis = JSON.parse(cleaned);
+    } catch {
+      const fix = await model.generateContent(
+        `Oprav na validní JSON { "summary":"", "sentiment":"", "suggested_reply":"" }:\n${raw}`
+      );
+      analysis = JSON.parse(
+        fix.response.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim()
+      );
     }
 
     const debugOut = {};
     if ((req.query && req.query.debug === '1') || (req.body && req.body.debug === '1')) {
-   debugOut.styleProfile = styleProfile;
- }
+      debugOut.styleProfile = styleProfile;
+    }
 
     return res.json({ success:true, analysis, emailBody, ...debugOut });
   } catch (e) {
@@ -2480,6 +2491,7 @@ ${String(emailBody).slice(0, 3000)}
     return res.status(500).json({ success:false, message:'Analýza selhala.' });
   }
 }
+
 
 
 
@@ -2940,6 +2952,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
