@@ -2518,36 +2518,82 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
   try {
     const { dashboardUserEmail, emailAddress, to, subject, text, fromName } = req.body || {};
     if (!dashboardUserEmail || !emailAddress || !to || !subject || !text) {
-      return res.status(400).json({ success:false, message:'Chybí data.' });
+      return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, emailAddress, to, subject, text).' });
     }
 
-    // ...načtení SMTP přihlašovacích údajů z DB...
+    // 1) Načti SMTP údaje pro tento custom účet
+    const db = await pool.connect();
+    let row;
+    try {
+      const rAcc = await db.query(`
+        SELECT smtp_host, smtp_port, smtp_secure, enc_username, enc_password, active
+        FROM custom_accounts
+        WHERE dashboard_user_email=$1 AND email_address=$2
+        LIMIT 1
+      `, [dashboardUserEmail, emailAddress]);
 
+      if (!rAcc.rowCount) {
+        return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
+      }
+      row = rAcc.rows[0];
+      if (row.active === false) {
+        return res.status(403).json({ success:false, message:'Tento účet je neaktivní.' });
+      }
+    } finally {
+      db.release();
+    }
+
+    const user = decSecret(row.enc_username);
+    const pass = decSecret(row.enc_password);
+
+    // 2) Vytvoř SMTP transporter
+    // - 465 => secure: true (SSL/TLS)
+    // - 587 => secure: false + STARTTLS (requireTLS)
+    const isPort587 = Number(row.smtp_port) === 587;
     const transporter = nodemailer.createTransport({
-      host: rAcc.rows[0].smtp_host,
-      port: Number(rAcc.rows[0].smtp_port),
-      secure: !!rAcc.rows[0].smtp_secure,
-      auth: { user, pass }
+      host: row.smtp_host,
+      port: Number(row.smtp_port),
+      secure: !!row.smtp_secure,          // true pro 465
+      requireTLS: !row.smtp_secure && isPort587, // STARTTLS pro 587
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false }  // toleruj “vlastní” certy
     });
 
-    const toAddr  = extractEmail(to);
-    const toName  = parseNameFromFromHeader(String(to)) || undefined;
+    // volitelně: ověř připojení (pomůže s chybami dřív)
+    await transporter.verify();
 
+    // 3) Připrav příjemce a odesílatele
+    const toAddr = extractEmail(to);
+    const toName = parseNameFromFromHeader(String(to)) || undefined;
+
+    const fromObj = fromName
+      ? { name: fromName, address: emailAddress }
+      : { address: emailAddress };
+
+    const toObj = toName
+      ? { name: toName, address: toAddr }
+      : { address: toAddr };
+
+    // 4) Odeslat
     await transporter.sendMail({
-      // nastav FROM i TO jako objekty -> správné UTF-8 kódování
-      from: fromName ? { name: fromName, address: emailAddress } : { address: emailAddress },
-      to:   toName ? { name: toName, address: toAddr } : { address: toAddr },
-      subject,                // UTF-8 je OK, nodemailer sám zabalí
-      text,                   // totéž
-      encoding: 'utf-8',      // volitelné, ale nevadí
+      from: fromObj,
+      to: toObj,
+      subject,
+      text,
+      encoding: 'utf-8'
     });
 
     return res.json({ success:true, message:'Email odeslán.' });
   } catch (e) {
-    console.error(e);
-    return res.status(500).json({ success:false, message:'Odeslání selhalo.' });
+    console.error('[custom-email/send-reply] error:', e);
+    // vrať konkrétnější zprávu, když ji máme
+    const msg = e?.response?.message || e?.message || 'Odeslání selhalo.';
+    return res.status(500).json({ success:false, message: msg });
   }
 });
+
+
+
 
 
 
@@ -2952,6 +2998,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
