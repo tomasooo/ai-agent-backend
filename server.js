@@ -2516,7 +2516,12 @@ app.get('/api/custom-email/analyze', handleCustomAnalyzeEmail);
 
 app.post('/api/custom-email/send-reply', async (req, res) => {
   try {
-    const { dashboardUserEmail, emailAddress, to, subject, text, fromName, replyToUid } = req.body || {};
+    const { dashboardUserEmail, emailAddress, to, subject, text, fromName, replyToUid, origMessageId: origIdFromFE, origReferences: origRefsFromFE } = req.body || {};
+// 1) Bez reference na původní zprávu neodesílat jako "reply"
+  if (!replyToUid && !origIdFromFE) {
+    return res.status(400).json({ success:false, message:'Chybí replyToUid nebo origMessageId – bez toho nelze vláknovat.' });
+  }
+    
     if (!dashboardUserEmail || !emailAddress || !to || !subject || !text) {
       return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, emailAddress, to, subject, text).' });
     }
@@ -2574,6 +2579,20 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
       }
     }
 
+// fallback: přijde-li rovnou z FE
+ if (!origMessageId && origIdFromFE) {
+   origMessageId = String(origIdFromFE).trim();
+ }
+ if (!origReferences && origRefsFromFE) {
+   origReferences = String(origRefsFromFE).trim();
+ }
+
+ // u některých serverů MUSÍ být <...>
+ const ensureBrackets = (id) => id && /^<.*>$/.test(id) ? id : (id ? `<${id.replace(/^<|>$/g,'')}>` : null);
+ origMessageId = ensureBrackets(origMessageId);
+
+    
+
     // 3) Vytvoř SMTP transporter
     const isPort587 = Number(row.smtp_port) === 587;
     const transporter = nodemailer.createTransport({
@@ -2589,7 +2608,9 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     // 4) Adresy
     const toAddr = extractEmail(to);
     const toName = parseNameFromFromHeader(String(to)) || undefined;
-
+   const replySubject = subject?.trim()
+   ? (subject.startsWith('Re: ') ? subject : `Re: ${subject}`)
+   : 'Re: (bez předmětu)';
     const fromObj = fromName
       ? { name: fromName, address: emailAddress }
       : { address: emailAddress };
@@ -2602,16 +2623,21 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     const mailOptions = {
       from: fromObj,
       to: toObj,
-      subject,
+      subject: replySubject,
       text,
       encoding: 'utf-8',
     };
 
     if (origMessageId) {
       mailOptions.inReplyTo = origMessageId;
-      mailOptions.references = origReferences
-        ? `${origReferences} ${origMessageId}`.trim()
-        : origMessageId;
+      mailOptions.references = (
+        origReferences
+          ? `${origReferences} ${origMessageId}`.trim()
+          : origMessageId
+      );
+      } else {
+    
+   return res.status(400).json({ success:false, message:'Nepodařilo se zjistit Message-ID původní zprávy.' });
     }
 
     await transporter.sendMail(mailOptions);
@@ -3029,6 +3055,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
