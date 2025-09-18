@@ -2359,6 +2359,61 @@ await imap.mailboxOpen('INBOX');
 });
 
 
+app.get('/api/gmail/message-body', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, messageId } = req.query || {};
+    if (!dashboardUserEmail || !email || !messageId) {
+      return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, email, messageId).' });
+    }
+
+    const db = await pool.connect();
+    const rTok = await db.query(
+      'SELECT refresh_token FROM connected_accounts WHERE email=$1 AND dashboard_user_email=$2',
+      [email, dashboardUserEmail]
+    );
+    db.release();
+
+    const refreshToken = rTok.rows[0]?.refresh_token;
+    if (!refreshToken) return res.status(404).json({ success:false, message:'Token nenalezen.' });
+
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    const msg = await gmail.users.messages.get({ userId:'me', id: messageId });
+    // vytáhnout text/plain nebo převést html na text
+    const getText = (payload) => {
+      const b64 = (d) => Buffer.from(d, 'base64').toString('utf8');
+      const strip = (html) => html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+      if (payload.mimeType === 'text/plain' && payload.body?.data) return b64(payload.body.data);
+      if (payload.parts && Array.isArray(payload.parts)) {
+        // preferuj text/plain
+        const plain = payload.parts.find(p => p.mimeType === 'text/plain' && p.body?.data);
+        if (plain) return b64(plain.body.data);
+        const html = payload.parts.find(p => p.mimeType === 'text/html' && p.body?.data);
+        if (html) return strip(b64(html.body.data));
+        // rekurzivně projít části
+        for (const p of payload.parts) {
+          const t = getText(p);
+          if (t) return t;
+        }
+      }
+      if (payload.mimeType === 'text/html' && payload.body?.data) {
+        return strip(b64(payload.body.data));
+      }
+      if (payload.body?.data) return b64(payload.body.data);
+      return '';
+    };
+
+    const body = getText(msg.data.payload) || '';
+    return res.json({ success:true, body });
+  } catch (e) {
+    console.error('[gmail/message-body] error:', e);
+    return res.status(500).json({ success:false, message:'Načtení těla zprávy selhalo.' });
+  }
+});
+
+
+
 
 
 async function handleCustomAnalyzeEmail(req, res) {
@@ -2507,7 +2562,51 @@ app.get('/api/custom-email/analyze-email', handleCustomAnalyzeEmail);
 app.post('/api/custom-email/analyze', handleCustomAnalyzeEmail);
 app.get('/api/custom-email/analyze', handleCustomAnalyzeEmail);
 
+app.get('/api/custom-email/message-body', async (req, res) => {
+  try {
+    const { dashboardUserEmail, emailAddress, uid } = req.query || {};
+    if (!dashboardUserEmail || !emailAddress || !uid) {
+      return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, emailAddress, uid).' });
+    }
 
+    const db = await pool.connect();
+    const rAcc = await db.query(`
+      SELECT imap_host, imap_port, imap_secure, enc_username, enc_password, active
+      FROM custom_accounts
+      WHERE dashboard_user_email=$1 AND email_address=$2
+      LIMIT 1
+    `, [dashboardUserEmail, emailAddress]);
+    db.release();
+
+    if (!rAcc.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
+    if (rAcc.rows[0].active === false) return res.status(403).json({ success:false, message:'Tento účet je neaktivní.' });
+
+    const user = decSecret(rAcc.rows[0].enc_username);
+    const pass = decSecret(rAcc.rows[0].enc_password);
+    const imap = createImapClient({
+      host: rAcc.rows[0].imap_host,
+      port: Number(rAcc.rows[0].imap_port),
+      secure: !!rAcc.rows[0].imap_secure,
+      auth: { user, pass }
+    });
+
+    await imap.connect();
+    await imap.mailboxOpen('INBOX');
+
+    const { content } = await imap.download(Number(uid), null, { uid: true });
+    const chunks = [];
+    for await (const c of content) chunks.push(c);
+    await imap.logout().catch(()=>{});
+
+    const parsed = await simpleParser(Buffer.concat(chunks));
+    // preferuj text; když chybí, stripni html
+    const bodyText = parsed.text || (parsed.html ? parsed.html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g,'').trim() : '') || '';
+    return res.json({ success:true, body: bodyText });
+  } catch (e) {
+    console.error('[custom-email/message-body] error:', e);
+    return res.status(500).json({ success:false, message:'Načtení těla zprávy selhalo.' });
+  }
+});
 
 
 
@@ -3055,6 +3154,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
