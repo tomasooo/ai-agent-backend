@@ -2516,7 +2516,7 @@ app.get('/api/custom-email/analyze', handleCustomAnalyzeEmail);
 
 app.post('/api/custom-email/send-reply', async (req, res) => {
   try {
-    const { dashboardUserEmail, emailAddress, to, subject, text, fromName } = req.body || {};
+    const { dashboardUserEmail, emailAddress, to, subject, text, fromName, replyToUid } = req.body || {};
     if (!dashboardUserEmail || !emailAddress || !to || !subject || !text) {
       return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, emailAddress, to, subject, text).' });
     }
@@ -2526,10 +2526,11 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     let row;
     try {
       const rAcc = await db.query(`
-        SELECT smtp_host, smtp_port, smtp_secure, enc_username, enc_password, active
-        FROM custom_accounts
-        WHERE dashboard_user_email=$1 AND email_address=$2
-        LIMIT 1
+        SELECT smtp_host, smtp_port, smtp_secure, enc_username, enc_password, active,
+       imap_host, imap_port, imap_secure
+       FROM custom_accounts
+       WHERE dashboard_user_email=$1 AND email_address=$2
+       LIMIT 1
       `, [dashboardUserEmail, emailAddress]);
 
       if (!rAcc.rowCount) {
@@ -2545,6 +2546,40 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
 
     const user = decSecret(row.enc_username);
     const pass = decSecret(row.enc_password);
+
+    let origMessageId = null;
+let origReferences = null;
+
+if (replyToUid) {
+  const imap = createImapClient({
+    host: row.imap_host,
+    port: Number(row.imap_port),
+    secure: !!row.imap_secure,
+    auth: { user, pass }
+  });
+  try {
+    await imap.connect();
+    await imap.mailboxOpen('INBOX');
+
+    const { content } = await imap.download(Number(replyToUid), null, { uid: true });
+    const chunks = [];
+    for await (const c of content) chunks.push(c);
+    const parsed = await simpleParser(Buffer.concat(chunks));
+
+    // messageId např. "<abc@domena>", references může být pole nebo string
+    origMessageId = parsed.messageId || (parsed.headers?.get && parsed.headers.get('message-id'));
+    const refs = parsed.references || parsed.headers?.get?.('references');
+    if (Array.isArray(refs)) {
+      origReferences = refs.join(' ');
+    } else if (typeof refs === 'string') {
+      origReferences = refs;
+    }
+  } catch (e) {
+    console.warn('[custom-email/send-reply] Nepodařilo se načíst původní zprávu podle UID:', e?.message || e);
+  } finally {
+    try { await imap.logout(); } catch {}
+  }
+}
 
     // 2) Vytvoř SMTP transporter
     // - 465 => secure: true (SSL/TLS)
@@ -2563,35 +2598,37 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     await transporter.verify();
 
     // 3) Připrav příjemce a odesílatele
-    const toAddr = extractEmail(to);
-    const toName = parseNameFromFromHeader(String(to)) || undefined;
+   
+const toAddr = extractEmail(to);
+const toName = parseNameFromFromHeader(String(to)) || undefined;
 
-    const fromObj = fromName
-      ? { name: fromName, address: emailAddress }
-      : { address: emailAddress };
+const fromObj = fromName
+  ? { name: fromName, address: emailAddress }
+  : { address: emailAddress };
 
-    const toObj = toName
-      ? { name: toName, address: toAddr }
-      : { address: toAddr };
+const toObj = toName
+  ? { name: toName, address: toAddr }
+  : { address: toAddr };
 
-    // 4) Odeslat
-    await transporter.sendMail({
-      from: fromObj,
-      to: toObj,
-      subject,
-      text,
-      encoding: 'utf-8'
-    });
+// 4) Sestav mailOptions (včetně vlákna) a odešli
+const mailOptions = {
+  from: fromObj,
+  to: toObj,
+  subject,
+  text,
+  encoding: 'utf-8',
+};
 
-    return res.json({ success:true, message:'Email odeslán.' });
-  } catch (e) {
-    console.error('[custom-email/send-reply] error:', e);
-    // vrať konkrétnější zprávu, když ji máme
-    const msg = e?.response?.message || e?.message || 'Odeslání selhalo.';
-    return res.status(500).json({ success:false, message: msg });
-  }
-});
+if (origMessageId) {
+  mailOptions.inReplyTo = origMessageId;
+  mailOptions.references = origReferences
+    ? `${origReferences} ${origMessageId}`.trim()
+    : origMessageId;
+}
 
+await transporter.sendMail(mailOptions);
+
+return res.json({ success:true, message:'Email odeslán.' });
 
 
 
@@ -2998,6 +3035,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
