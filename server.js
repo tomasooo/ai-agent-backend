@@ -2646,7 +2646,7 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
   }
 
   try {
-    const { dashboardUserEmail, email, messageId } = req.body;
+     const { email } = req.body;
     if (!dashboardUserEmail || !email || !messageId) {
       return res.status(400).json({ success: false, message: "Chybí data." });
     }
@@ -3035,6 +3035,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
