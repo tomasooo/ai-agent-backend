@@ -2521,25 +2521,21 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
       return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, emailAddress, to, subject, text).' });
     }
 
-    // 1) Načti SMTP údaje pro tento custom účet
+    // 1) Načti SMTP + IMAP údaje
     const db = await pool.connect();
     let row;
     try {
       const rAcc = await db.query(`
         SELECT smtp_host, smtp_port, smtp_secure, enc_username, enc_password, active,
-       imap_host, imap_port, imap_secure
-       FROM custom_accounts
-       WHERE dashboard_user_email=$1 AND email_address=$2
-       LIMIT 1
+               imap_host, imap_port, imap_secure
+        FROM custom_accounts
+        WHERE dashboard_user_email=$1 AND email_address=$2
+        LIMIT 1
       `, [dashboardUserEmail, emailAddress]);
 
-      if (!rAcc.rowCount) {
-        return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
-      }
+      if (!rAcc.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
       row = rAcc.rows[0];
-      if (row.active === false) {
-        return res.status(403).json({ success:false, message:'Tento účet je neaktivní.' });
-      }
+      if (row.active === false) return res.status(403).json({ success:false, message:'Tento účet je neaktivní.' });
     } finally {
       db.release();
     }
@@ -2547,88 +2543,86 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     const user = decSecret(row.enc_username);
     const pass = decSecret(row.enc_password);
 
+    // 2) (VOLITELNĚ) načti Message-ID/References z původní zprávy podle replyToUid
     let origMessageId = null;
-let origReferences = null;
+    let origReferences = null;
 
-if (replyToUid) {
-  const imap = createImapClient({
-    host: row.imap_host,
-    port: Number(row.imap_port),
-    secure: !!row.imap_secure,
-    auth: { user, pass }
-  });
-  try {
-    await imap.connect();
-    await imap.mailboxOpen('INBOX');
+    if (replyToUid) {
+      const imap = createImapClient({
+        host: row.imap_host,
+        port: Number(row.imap_port),
+        secure: !!row.imap_secure,
+        auth: { user, pass }
+      });
+      try {
+        await imap.connect();
+        await imap.mailboxOpen('INBOX');
 
-    const { content } = await imap.download(Number(replyToUid), null, { uid: true });
-    const chunks = [];
-    for await (const c of content) chunks.push(c);
-    const parsed = await simpleParser(Buffer.concat(chunks));
+        const { content } = await imap.download(Number(replyToUid), null, { uid: true });
+        const chunks = [];
+        for await (const c of content) chunks.push(c);
+        const parsed = await simpleParser(Buffer.concat(chunks));
 
-    // messageId např. "<abc@domena>", references může být pole nebo string
-    origMessageId = parsed.messageId || (parsed.headers?.get && parsed.headers.get('message-id'));
-    const refs = parsed.references || parsed.headers?.get?.('references');
-    if (Array.isArray(refs)) {
-      origReferences = refs.join(' ');
-    } else if (typeof refs === 'string') {
-      origReferences = refs;
+        origMessageId = parsed.messageId || (parsed.headers?.get && parsed.headers.get('message-id'));
+        const refs = parsed.references || parsed.headers?.get?.('references');
+        if (Array.isArray(refs)) origReferences = refs.join(' ');
+        else if (typeof refs === 'string') origReferences = refs;
+      } catch (e) {
+        console.warn('[custom-email/send-reply] Nepodařilo se načíst původní zprávu podle UID:', e?.message || e);
+      } finally {
+        try { await imap.logout(); } catch {}
+      }
     }
-  } catch (e) {
-    console.warn('[custom-email/send-reply] Nepodařilo se načíst původní zprávu podle UID:', e?.message || e);
-  } finally {
-    try { await imap.logout(); } catch {}
-  }
-}
 
-    // 2) Vytvoř SMTP transporter
-    // - 465 => secure: true (SSL/TLS)
-    // - 587 => secure: false + STARTTLS (requireTLS)
+    // 3) Vytvoř SMTP transporter
     const isPort587 = Number(row.smtp_port) === 587;
     const transporter = nodemailer.createTransport({
       host: row.smtp_host,
       port: Number(row.smtp_port),
-      secure: !!row.smtp_secure,          // true pro 465
-      requireTLS: !row.smtp_secure && isPort587, // STARTTLS pro 587
+      secure: !!row.smtp_secure,                 // 465 => true
+      requireTLS: !row.smtp_secure && isPort587, // 587 => STARTTLS
       auth: { user, pass },
-      tls: { rejectUnauthorized: false }  // toleruj “vlastní” certy
+      tls: { rejectUnauthorized: false }
     });
-
-    // volitelně: ověř připojení (pomůže s chybami dřív)
     await transporter.verify();
 
-    // 3) Připrav příjemce a odesílatele
-   
-const toAddr = extractEmail(to);
-const toName = parseNameFromFromHeader(String(to)) || undefined;
+    // 4) Adresy
+    const toAddr = extractEmail(to);
+    const toName = parseNameFromFromHeader(String(to)) || undefined;
 
-const fromObj = fromName
-  ? { name: fromName, address: emailAddress }
-  : { address: emailAddress };
+    const fromObj = fromName
+      ? { name: fromName, address: emailAddress }
+      : { address: emailAddress };
 
-const toObj = toName
-  ? { name: toName, address: toAddr }
-  : { address: toAddr };
+    const toObj = toName
+      ? { name: toName, address: toAddr }
+      : { address: toAddr };
 
-// 4) Sestav mailOptions (včetně vlákna) a odešli
-const mailOptions = {
-  from: fromObj,
-  to: toObj,
-  subject,
-  text,
-  encoding: 'utf-8',
-};
+    // 5) Sestav a odešli
+    const mailOptions = {
+      from: fromObj,
+      to: toObj,
+      subject,
+      text,
+      encoding: 'utf-8',
+    };
 
-if (origMessageId) {
-  mailOptions.inReplyTo = origMessageId;
-  mailOptions.references = origReferences
-    ? `${origReferences} ${origMessageId}`.trim()
-    : origMessageId;
-}
+    if (origMessageId) {
+      mailOptions.inReplyTo = origMessageId;
+      mailOptions.references = origReferences
+        ? `${origReferences} ${origMessageId}`.trim()
+        : origMessageId;
+    }
 
-await transporter.sendMail(mailOptions);
+    await transporter.sendMail(mailOptions);
+    return res.json({ success:true, message:'Email odeslán.' });
 
-return res.json({ success:true, message:'Email odeslán.' });
+  } catch (e) {
+    console.error('[custom-email/send-reply] error:', e);
+    const msg = e?.response?.message || e?.message || 'Odeslání selhalo.';
+    return res.status(500).json({ success:false, message: msg });
+  }
+});
 
 
 
@@ -3035,6 +3029,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
