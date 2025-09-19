@@ -878,11 +878,13 @@ app.post('/api/custom-email/disconnect', async (req, res) => {
 
 
 app.get('/api/custom-email/emails', async (req, res) => {
-  const { dashboardUserEmail, emailAddress, limit = 10 } = req.query || {};
+  const { dashboardUserEmail, emailAddress, limit = 20 } = req.query || {};
   if (!dashboardUserEmail || !emailAddress) {
     return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail nebo emailAddress.' });
   }
+
   const db = await pool.connect();
+  let imap;
   try {
     const r = await db.query(`
       SELECT imap_host, imap_port, imap_secure, enc_username, enc_password
@@ -890,42 +892,60 @@ app.get('/api/custom-email/emails', async (req, res) => {
       WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
       LIMIT 1
     `, [dashboardUserEmail, emailAddress]);
+
     if (!r.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
 
-    const row = r.rows[0];
-    const user = decSecret(row.enc_username);
-    const pass = decSecret(row.enc_password);
+    const user = decSecret(r.rows[0].enc_username);
+    const pass = decSecret(r.rows[0].enc_password);
 
-const imap = createImapClient({
-   host: row.imap_host,
-   port: Number(row.imap_port),
-   secure: !!row.imap_secure,
-   auth: { user, pass }
- });
+    imap = createImapClient({
+      host: r.rows[0].imap_host,
+      port: Number(r.rows[0].imap_port),
+      secure: !!r.rows[0].imap_secure,
+      auth: { user, pass }
+    });
 
-    
     await imap.connect();
-    await imap.mailboxOpen('INBOX');
+
+    // otevři INBOX a při selhání zkus alternativní názvy
+    const tryOpen = async (name) => { try { await imap.mailboxOpen(name); return true; } catch { return false; } };
+    if (!(await tryOpen('INBOX'))) {
+      const fallbacks = ['Inbox', 'Doručená pošta', 'Doručená', 'Posteingang'];
+      let opened = false;
+      for (const f of fallbacks) { if (await tryOpen(f)) { opened = true; break; } }
+      if (!opened) return res.status(404).json({ success:false, message:'Nepodařilo se otevřít schránku INBOX.' });
+    }
 
     const out = [];
-    // posledních N UID od konce
-    let fetched = 0;
-    for await (let msg of imap.fetch({ seen: false, changedSince: null, seq: `${Math.max(1, imap.mailbox.exists - 200)}:*` }, { uid: true, envelope: true, internalDate: true })) {
+    const max = Math.min(Number(limit) || 20, 200);
+    const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 500);
+
+    // ⬅️ DŮLEŽITÉ: ŽÁDNÝ filtr "seen:false" – bereme i přečtené zprávy
+    for await (const msg of imap.fetch(
+      { seq: `${startSeq}:*` },
+      { uid: true, envelope: true, internalDate: true, flags: true }
+    )) {
       const fromRaw = msg.envelope?.from?.[0] || {};
-out.push({
-  uid: msg.uid,
-  subject: decodeHeader(msg.envelope?.subject || ''),
-  from: `${decodeHeader(fromRaw.name || '')} <${fromRaw.address || ''}>`,
-  date: msg.internalDate?.toISOString()
-});
-      if (++fetched >= Number(limit)) break;
+      out.push({
+        id: String(msg.uid), // sjednocený název pole
+        uid: msg.uid,
+        subject: decodeHeader(msg.envelope?.subject || ''),
+        sender: (fromRaw.address || '').trim(),
+        from: `${decodeHeader(fromRaw.name || '')} <${fromRaw.address || ''}>`,
+        date: msg.internalDate ? msg.internalDate.toISOString() : null
+      });
+      if (out.length >= max) break;
     }
+
+    // seřadit od nejnovějších (pro jistotu)
+    out.sort((a, b) => (new Date(b.date || 0)) - (new Date(a.date || 0)));
 
     await imap.logout();
     return res.json({ success:true, emails: out, total: out.length });
   } catch (e) {
-    console.error(e);
-    return res.status(500).json({ success:false, message:'Načtení selhalo.' });
+    console.error("Chyba IMAP:", e);
+    try { if (imap?.connected) await imap.logout(); } catch {}
+    return res.status(500).json({ success:false, message:'Nepodařilo se načíst emaily (custom).' });
   } finally {
     db.release();
   }
@@ -3339,6 +3359,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
