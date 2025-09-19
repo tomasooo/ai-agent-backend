@@ -511,6 +511,22 @@ await client.query(`
     PRIMARY KEY (dashboard_user_email, connected_email)
   );
 `);
+
+
+await client.query(`
+  CREATE TABLE IF NOT EXISTS faqs (
+    id BIGSERIAL PRIMARY KEY,
+    dashboard_user_email TEXT NOT NULL,
+    connected_email TEXT NOT NULL,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    source JSONB DEFAULT '[]'::jsonb, -- můžeš si sem ukládat odkazy na zprávy
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS faqs_user_account_idx
+    ON faqs(dashboard_user_email, connected_email);
+`);
+      
         
 
 // 5) Seed základních plánů (lze kdykoli změnit v DB)
@@ -2969,6 +2985,175 @@ app.post('/api/templates', async (req, res) => {
   } finally { client.release(); }
 });
 
+
+app.get('/api/faq', async (req, res) => {
+  const { dashboardUserEmail, email } = req.query || {};
+  if (!dashboardUserEmail || !email) return res.status(400).json({ success:false, message:'Chybí parametry.' });
+
+  const db = await pool.connect();
+  try {
+    const r = await db.query(
+      `SELECT id, question, answer, source, updated_at
+         FROM faqs
+        WHERE dashboard_user_email=$1 AND connected_email=$2
+        ORDER BY updated_at DESC, id DESC`,
+      [dashboardUserEmail, email]
+    );
+    res.json({ success:true, faqs:r.rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Načtení FAQ selhalo.' });
+  } finally { db.release(); }
+});
+
+
+
+app.post('/api/faq', async (req, res) => {
+  const { dashboardUserEmail, email, question, answer } = req.body || {};
+  if (!dashboardUserEmail || !email || !question || !answer) {
+    return res.status(400).json({ success:false, message:'Chybí data.' });
+  }
+  const db = await pool.connect();
+  try {
+    const r = await db.query(
+      `INSERT INTO faqs (dashboard_user_email, connected_email, question, answer)
+       VALUES ($1,$2,$3,$4)
+       RETURNING id, question, answer, source, updated_at`,
+      [dashboardUserEmail, email, question, answer]
+    );
+    res.json({ success:true, faq:r.rows[0] });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Uložení FAQ selhalo.' });
+  } finally { db.release(); }
+});
+
+
+
+app.put('/api/faq/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const { dashboardUserEmail, email, question, answer } = req.body || {};
+  if (!id || !dashboardUserEmail || !email || !question || !answer) {
+    return res.status(400).json({ success:false, message:'Chybí data.' });
+  }
+  const db = await pool.connect();
+  try {
+    const r = await db.query(
+      `UPDATE faqs
+          SET question=$1, answer=$2, updated_at=NOW()
+        WHERE id=$3 AND dashboard_user_email=$4 AND connected_email=$5
+        RETURNING id, question, answer, source, updated_at`,
+      [question, answer, id, dashboardUserEmail, email]
+    );
+    if (!r.rowCount) return res.status(404).json({ success:false, message:'FAQ položka nenalezena.' });
+    res.json({ success:true, faq:r.rows[0] });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Úprava FAQ selhala.' });
+  } finally { db.release(); }
+});
+
+
+
+app.delete('/api/faq/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const { dashboardUserEmail, email } = req.query || {};
+  if (!id || !dashboardUserEmail || !email) {
+    return res.status(400).json({ success:false, message:'Chybí data.' });
+  }
+  const db = await pool.connect();
+  try {
+    const r = await db.query(
+      `DELETE FROM faqs
+        WHERE id=$1 AND dashboard_user_email=$2 AND connected_email=$3`,
+      [id, dashboardUserEmail, email]
+    );
+    if (!r.rowCount) return res.status(404).json({ success:false, message:'FAQ položka nenalezena.' });
+    res.json({ success:true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Smazání FAQ selhalo.' });
+  } finally { db.release(); }
+});
+
+
+
+app.post('/api/faq/regenerate', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, limit = 120 } = req.body || {};
+    if (!dashboardUserEmail || !email) {
+      return res.status(400).json({ success:false, message:'Chybí parametry.' });
+    }
+
+    const db = await pool.connect();
+    const consume = await tryConsumeAiAction(db, dashboardUserEmail);
+    if (!consume.ok) {
+      db.release();
+      return res.status(429).json({ success:false, message:`Vyčerpán měsíční limit AI akcí (${consume.limit}).` });
+    }
+
+    // Vytáhni poslední N příkladů pro tento účet
+    const ex = await db.query(
+      `SELECT role, subject, body
+         FROM style_examples
+        WHERE dashboard_user_email=$1 AND connected_email=$2
+        ORDER BY created_at DESC
+        LIMIT $3`,
+      [dashboardUserEmail, email, Math.min(Number(limit)||120, 300)]
+    );
+    const examples = ex.rows || [];
+    db.release();
+
+    if (!examples.length) {
+      return res.json({ success:true, created:0, faqs:[] });
+    }
+
+    // Prompt: ze vzorků udělej 8–15 FAQ (Q/A) jako JSON
+    const prompt = `
+Jsi e-mailový asistent. Z následujících vzorků e-mailové komunikace vytvoř seznam FAQ pro daný účet.
+FAQ má zachytit NEJČASTĚJŠÍ dotazy a typické odpovědi firmy. Vrať POUZE validní JSON pole:
+[
+  {"question":"…","answer":"…"},
+  ...
+]
+Počet 8–15, bez duplicit, česky, krátké a praktické.
+Vzorky (JSON řádky):
+${examples.map(e => JSON.stringify(e)).join('\n').slice(0, 15000)}
+    `.trim();
+
+    const out = await model.generateContent(prompt);
+    const raw = out?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+    let faqs = [];
+    try { faqs = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
+    catch {
+      // oprav JSON
+      const fix = await model.generateContent(`Oprav na validní JSON pole Q/A:\n${raw}`);
+      faqs = JSON.parse(fix.response.candidates[0].content.parts[0].text.replace(/```json|```/g,'').trim());
+    }
+
+    // Ulož: smaž staré a vlož nové (pro daný účet)
+    const db2 = await pool.connect();
+    try {
+      await db2.query(`DELETE FROM faqs WHERE dashboard_user_email=$1 AND connected_email=$2`, [dashboardUserEmail, email]);
+      for (const qa of faqs) {
+        if (!qa?.question || !qa?.answer) continue;
+        await db2.query(
+          `INSERT INTO faqs (dashboard_user_email, connected_email, question, answer)
+           VALUES ($1,$2,$3,$4)`,
+          [dashboardUserEmail, email, qa.question.trim(), qa.answer.trim()]
+        );
+      }
+    } finally { db2.release(); }
+
+    res.json({ success:true, created: faqs.length, faqs });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Regenerace FAQ selhala.' });
+  }
+});
+
+
+
 // Update
 app.put('/api/templates/:id', async (req, res) => {
   const id = Number(req.params.id);
@@ -3154,6 +3339,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
