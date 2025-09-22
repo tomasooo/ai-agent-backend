@@ -630,39 +630,47 @@ async function getGmailClientFor(dashboardUserEmail, email) {
 
 
 app.get('/api/gmail/sent-replies', async (req, res) => {
-  try {
+ try {
     const { dashboardUserEmail, email, limit = 200 } = req.query;
     if (!dashboardUserEmail || !email) {
       return res.status(400).json({ success:false, message:'Chybí parametry.' });
     }
 
-    const gmail = await getGmailClientFor(dashboardUserEmail, email);
+    let gmail;
+    try {
+      gmail = await getGmailClientFor(dashboardUserEmail, email);
+    } catch (e) {
+      return sendGmailApiError(res, e, 'SENT');
+    }
 
-    // vezmeme SENTS, můžeme dodat i filtr (třeba poslední rok): q: 'newer_than:365d'
     const list = await gmail.users.messages.list({
       userId: 'me',
       labelIds: ['SENT'],
+      includeSpamTrash: false,
       maxResults: Math.min(Number(limit) || 200, 500),
     });
 
-    const ids = (list.data.messages || []).map(m => m.id);
-    const items = [];
+    const ids = (list.data?.messages || []).map(m => m.id);
+    if (!ids.length) return res.json({ success:true, items: [] });
 
+    const items = [];
     for (const id of ids) {
-      const msg = await gmail.users.messages.get({ userId: 'me', id });
-      const payload = msg.data.payload;
-      const headers = msg.data.payload?.headers || [];
-      const subject = headers.find(h => h.name === 'Subject')?.value || '';
-      const body = extractPlainText(payload);
-      if (body) {
-        items.push({ role:'outgoing', subject, body });
+      try {
+        const msg = await gmail.users.messages.get({ userId: 'me', id });
+        const payload = msg.data?.payload;
+        const headers = payload?.headers || [];
+        const subject = headers.find(h => h.name === 'Subject')?.value || '';
+        const body = extractPlainText(payload);
+        if (body) items.push({ role:'outgoing', subject, body });
+      } catch (e) {
+        console.warn('[SENT] skip message', id, e?.message || e);
+        continue;
       }
     }
 
     return res.json({ success:true, items });
   } catch (e) {
-    console.error('sent-replies error', e);
-    return res.status(500).json({ success:false, message:'Chyba při čtení odeslané pošty' });
+    return sendGmailApiError(res, e, 'SENT');
   }
 });
 
@@ -952,41 +960,51 @@ app.get('/api/custom-email/emails', async (req, res) => {
 });
 
 app.get('/api/gmail/inbox-examples', async (req, res) => {
-  try {
+ try {
     const { dashboardUserEmail, email, limit = 200 } = req.query;
     if (!dashboardUserEmail || !email) {
       return res.status(400).json({ success:false, message:'Chybí parametry.' });
     }
 
-    const gmail = await getGmailClientFor(dashboardUserEmail, email);
+    let gmail;
+    try {
+      gmail = await getGmailClientFor(dashboardUserEmail, email);
+    } catch (e) {
+      return sendGmailApiError(res, e, 'INBOX');
+    }
 
     const list = await gmail.users.messages.list({
       userId: 'me',
       labelIds: ['INBOX'],
-      q: '-from:me -in:spam -in:trash',         // příchozí, ne spam/koš
+      includeSpamTrash: false,
+      q: '-from:me -in:spam -in:trash',
       maxResults: Math.min(Number(limit) || 200, 500),
     });
 
-    const ids = (list.data.messages || []).map(m => m.id);
-    const items = [];
+    const ids = (list.data?.messages || []).map(m => m.id);
+    if (!ids.length) return res.json({ success:true, items: [] });
 
+    const items = [];
     for (const id of ids) {
-      const msg = await gmail.users.messages.get({ userId: 'me', id });
-      const payload = msg.data.payload;
-      const headers = payload?.headers || [];
-      const subject = headers.find(h => h.name === 'Subject')?.value || '';
-      const fromHdr = headers.find(h => h.name === 'From')?.value || '';
-      const from = decodeHeader(fromHdr);
-      const body = extractPlainText(payload);
-      if (body) {
-        items.push({ role:'incoming', subject, from, body });
+      try {
+        const msg = await gmail.users.messages.get({ userId: 'me', id });
+        const payload = msg.data?.payload;
+        const headers = payload?.headers || [];
+        const subject = headers.find(h => h.name === 'Subject')?.value || '';
+        const fromHdr = headers.find(h => h.name === 'From')?.value || '';
+        const from = decodeHeader(fromHdr);
+        const body = extractPlainText(payload);
+        if (body) items.push({ role:'incoming', subject, from, body });
+      } catch (e) {
+        // u jedné zprávy spadlo? pokračuj dál
+        console.warn('[INBOX] skip message', id, e?.message || e);
+        continue;
       }
     }
 
     return res.json({ success:true, items });
   } catch (e) {
-    console.error('inbox-examples error', e);
-    return res.status(500).json({ success:false, message:'Chyba při čtení INBOXu' });
+    return sendGmailApiError(res, e, 'INBOX');
   }
 });
 
@@ -1354,7 +1372,27 @@ app.get('/api/style-profile', async (req, res) => {
   }
 });
 
+function sendGmailApiError(res, e, label='Gmail') {
+  const msg = String(e?.message || e);
+  const status = e?.code || e?.response?.status;
 
+  // čitelný log (response body od Google, pokud je)
+  console.error(`[${label}]`, status || '', e?.response?.data || msg);
+
+  if (/Refresh token nenalezen/i.test(msg)) {
+    return res.status(404).json({ success:false, message:'Gmail účet není propojen – připoj ho v Nastavení.' });
+  }
+  if (status === 401 || /invalid_grant/i.test(msg)) {
+    return res.status(401).json({ success:false, message:'Přístup k Gmailu vypršel/ byl odvolán – odpoj a znovu připoj.' });
+  }
+  if (status === 403 && /insufficient.+permissions/i.test(msg)) {
+    return res.status(403).json({ success:false, message:'Chybí oprávnění – připoj Gmail se scopem gmail.readonly.' });
+  }
+  if (status === 403 && /accessNotConfigured/i.test(msg)) {
+    return res.status(503).json({ success:false, message:'Gmail API není povoleno v Google Cloudu projektu.' });
+  }
+  return res.status(500).json({ success:false, message:`Chyba při čtení ${label === 'INBOX' ? 'INBOXu' : 'odeslané pošty'}` });
+}
 
 
 app.post('/api/templates/render', async (req, res) => {
@@ -3386,6 +3424,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
