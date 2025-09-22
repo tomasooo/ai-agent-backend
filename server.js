@@ -1028,6 +1028,92 @@ async function ensureStyleTables() {
 }
 ensureStyleTables().catch(console.error);
 
+// === ANALYTICS: denní aktivita z tabulky style_examples ===
+app.get('/api/analytics/activity', async (req, res) => {
+  const { dashboardUserEmail, email, days = '7' } = req.query || {};
+  const nDays = Math.min(parseInt(days, 10) || 7, 180);
+  if (!dashboardUserEmail || !email) {
+    return res.status(400).json({ success:false, message:'Chybí parametry.' });
+  }
+  const db = await pool.connect();
+  try {
+    const q = await db.query(`
+      SELECT (created_at AT TIME ZONE 'Europe/Prague')::date AS day,
+             COUNT(*) FILTER (WHERE role='incoming') AS incoming,
+             COUNT(*) FILTER (WHERE role='outgoing') AS outgoing
+        FROM style_examples
+       WHERE dashboard_user_email = $1
+         AND connected_email      = $2
+         AND created_at >= NOW() - ($3 || ' days')::interval
+       GROUP BY 1
+       ORDER BY 1
+    `, [dashboardUserEmail, email, nDays]);
+    res.json({ success:true, days:nDays, series:q.rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Analytics: activity selhala.' });
+  } finally { db.release(); }
+});
+
+// === ANALYTICS: šablony – souhrn + TOP seznam ===
+app.get('/api/analytics/templates', async (req, res) => {
+  const { dashboardUserEmail } = req.query || {};
+  if (!dashboardUserEmail) {
+    return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail.' });
+  }
+  const db = await pool.connect();
+  try {
+    const totals = await db.query(`
+      SELECT COUNT(*)::int                              AS total_templates,
+             COALESCE(SUM(uses),0)::int                 AS total_uses,
+             ROUND(AVG(NULLIF(success_rate,0))::numeric, 2) AS avg_success_rate
+        FROM templates
+       WHERE dashboard_user_email = $1
+    `, [dashboardUserEmail]);
+
+    const top = await db.query(`
+      SELECT name,
+             COALESCE(uses,0)::int        AS uses,
+             COALESCE(success_rate,0)::float AS success_rate,
+             category
+        FROM templates
+       WHERE dashboard_user_email = $1
+       ORDER BY uses DESC NULLS LAST, updated_at DESC
+       LIMIT 10
+    `, [dashboardUserEmail]);
+
+    res.json({ success:true, ...totals.rows[0], top: top.rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Analytics: templates selhala.' });
+  } finally { db.release(); }
+});
+
+// === ANALYTICS: kategorie – koláč podle uses v tabulce templates ===
+app.get('/api/analytics/categories', async (req, res) => {
+  const { dashboardUserEmail } = req.query || {};
+  if (!dashboardUserEmail) {
+    return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail.' });
+  }
+  const db = await pool.connect();
+  try {
+    const r = await db.query(`
+      SELECT COALESCE(category, 'Nezařazené') AS category,
+             SUM(COALESCE(uses,0))::int       AS uses
+        FROM templates
+       WHERE dashboard_user_email = $1
+       GROUP BY 1
+       ORDER BY 2 DESC
+    `, [dashboardUserEmail]);
+    res.json({ success:true, items:r.rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Analytics: categories selhala.' });
+  } finally { db.release(); }
+});
+
+
+
 app.post('/api/style-examples/ingest', async (req, res) => {
   try {
     const { dashboardUserEmail, email, items } = req.body || {};
@@ -3425,6 +3511,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
