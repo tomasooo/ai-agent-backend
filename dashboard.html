@@ -6,6 +6,72 @@
     <title>Dashboard - AI Emailový Agent</title>
     <style>
 
+
+
+
+/* === PRO EMAIL MODAL === */
+.pro-modal { padding: 0; overflow: hidden; border-radius: 18px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.pro-modal__header {
+  display:flex; align-items:center; justify-content:space-between; gap:1rem;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 60%, #6366f1 100%);
+  color:#fff;
+}
+.pro-modal__id { display:flex; align-items:center; gap: 12px; min-width:0; }
+.pro-headings { min-width:0; }
+.pro-title { font-weight:700; font-size:1.1rem; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pro-subtitle { opacity:.95; font-size:.9rem; display:flex; align-items:center; gap:.5rem; }
+.pro-dot { opacity:.75; }
+
+.pro-avatar {
+  width:40px; height:40px; border-radius:50%;
+  display:grid; place-items:center;
+  background: rgba(255,255,255,.2);
+  border: 1px solid rgba(255,255,255,.35);
+  font-weight:700;
+  backdrop-filter: blur(6px);
+}
+
+.pro-actions { display:flex; align-items:center; gap:.5rem; }
+.pro-chip { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.35); color:#fff; }
+.pro-chip:hover { background: rgba(255,255,255,.28); }
+.pro-close {
+  margin-left:.25rem; width:36px; height:36px; border-radius:10px;
+  background: rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.35);
+  color:#fff; cursor:pointer;
+}
+.pro-close:hover { background: rgba(255,255,255,.28); }
+
+.pro-modal__body { padding: 18px; display:grid; grid-template-columns: 280px minmax(0,1fr); gap: 16px; }
+@media (max-width: 860px) { .pro-modal__body { grid-template-columns: 1fr; } }
+
+.pro-meta {
+  background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 14px; padding: 12px;
+}
+.pro-meta__row { display:grid; grid-template-columns: 90px 1fr; gap: 10px; padding: 8px 6px; align-items:start; }
+.pro-meta__label { font-size:.8rem; color:#64748b; }
+.pro-meta__value { font-size:.95rem; color:#0f172a; word-break:break-word; }
+
+.pro-body-card { background:#ffffff; border:1px solid #e5e7eb; border-radius: 14px; overflow:hidden; }
+.pro-body-card__title { padding:10px 12px; font-weight:600; color:#0f172a; background:#f8fafc; border-bottom:1px solid #e5e7eb; }
+.pro-body-card__content {
+  padding: 14px 12px; min-height:220px;
+  white-space: pre-wrap; line-height:1.55; color:#111827;
+}
+.pro-modal__footer { padding: 12px 18px; display:flex; justify-content:flex-end; gap: 10px; border-top:1px solid #e5e7eb; background:#fff; }
+
+/* drobnosti */
+#emailDetailModal .btn { border-radius:10px; padding:8px 12px; }
+#emailDetailModal.show .modal { transform: translateY(0); opacity:1; transition:.28s ease; }
+#emailDetailModal .modal { transform: translateY(8px); opacity:0; }
+
+
+
+
+
+
+
+
 .toast .toast-action:hover { opacity: .9; }
 
           /* === STYLY PRO NOVÉ MODÁLNÍ OKNO === */
@@ -16,6 +82,11 @@
     align-items: center; justify-content: center; z-index: 2000;
     opacity: 0; transition: opacity 0.3s ease;
 }
+
+.email-item { cursor: pointer; }
+.email-item .analyze-btn { cursor: default; }
+#emailDetailModal { z-index: 2050; }
+#emailDetailModal .modal-body { max-height: calc(90vh - 160px); overflow: auto; }
 
 #analysisModal { z-index: 2000; }
 #templatePicker { z-index: 2100; }
@@ -379,6 +450,15 @@
             display: block;
             animation: fadeIn 0.5s ease-in;
         }
+
+        #er-tags .tag {
+  padding:.25rem .5rem;
+  border:1px solid #e5e7eb;
+  border-radius:999px;
+  background:#f8fafc;
+  font-size:.8rem;
+  color:#475569;
+}
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(20px); }
@@ -1645,6 +1725,65 @@
   </div>
 </div>
 
+<!-- Email Detail Modal -->
+<div class="modal-overlay" id="emailDetailModal">
+  <div class="modal pro-modal">
+    <!-- Header -->
+    <div class="pro-modal__header">
+      <div class="pro-modal__id">
+        <div class="pro-avatar" id="ed-avatar" aria-hidden="true">✉️</div>
+        <div class="pro-headings">
+          <div class="pro-title" id="ed-subject">Bez předmětu</div>
+          <div class="pro-subtitle">
+            <span id="ed-from">—</span>
+            <span class="pro-dot">•</span>
+            <span id="ed-date">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="pro-actions">
+        <button class="btn btn-secondary pro-chip" id="ed-copy">
+          <span>Copy</span>
+        </button>
+        <button class="btn btn-primary" id="ed-reply-open">Odpovědět</button>
+        <button class="pro-close" id="closeEmailDetail" aria-label="Zavřít">✕</button>
+      </div>
+    </div>
+
+
+
+
+    <!-- Body -->
+    <div class="pro-modal__body">
+      <div class="pro-meta">
+        <div class="pro-meta__row">
+          <div class="pro-meta__label">Odesílatel</div>
+          <div class="pro-meta__value" id="ed-from-meta">—</div>
+        </div>
+        <div class="pro-meta__row">
+          <div class="pro-meta__label">Předmět</div>
+          <div class="pro-meta__value" id="ed-subject-meta">—</div>
+        </div>
+        <div class="pro-meta__row">
+          <div class="pro-meta__label">Datum</div>
+          <div class="pro-meta__value" id="ed-date-meta">—</div>
+        </div>
+      </div>
+
+      <div class="pro-body-card">
+        <div class="pro-body-card__title">Obsah zprávy</div>
+        <div class="pro-body-card__content" id="ed-body">Načítám…</div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="pro-modal__footer">
+      <button class="btn btn-secondary" id="closeEmailDetailBottom">Zavřít</button>
+      <button class="btn btn-primary" id="ed-reply-bottom">Odpovědět</button>
+    </div>
+  </div>
+</div>
+
 
 
 
@@ -1731,6 +1870,7 @@
         <div class="settings-tab" data-tab="plan">Plán</div>
         <div class="settings-tab" data-tab="notifications">Notifikace</div>
         <div class="settings-tab" data-tab="security">Zabezpečení</div>
+        <div class="settings-tab" data-tab="faq">FAQ</div>
     </div>
 
     <div class="settings-content" id="ai-settings">
@@ -2006,6 +2146,35 @@
                             </div>
                         </div>
                     </div>
+
+<!-- FAQ Tab -->
+<div class="settings-content" id="faq-settings" style="display:none;">
+  <div class="form-section">
+    <h3>FAQ pro účet</h3>
+
+    <div class="form-group">
+      <label class="form-label">Aktivní účet</label>
+      <!-- ukáže aktuální primaryEmail jen pro informaci -->
+      <div id="faq-current-account" class="muted" style="padding:.35rem .5rem;background:#f1f5f9;border-radius:.5rem;"></div>
+    </div>
+
+    <div class="form-group" style="display:flex; gap:.5rem; flex-wrap:wrap;">
+      <button id="faq-learn-btn" class="btn btn-secondary"><span>🧠</span> Naučit se z historie</button>
+      <button id="faq-add-btn" class="btn btn-primary"><span>➕</span> Přidat FAQ položku</button>
+      <button id="faq-save-all-btn" class="btn"><span>💾</span> Uložit změny</button>
+    </div>
+
+    <div id="faq-list" style="display:grid; gap:.5rem;">
+      <!-- dynamicky se sem vykreslí jednotlivé položky FAQ -->
+    </div>
+
+    <div class="muted" style="margin-top:.75rem;">
+      Tip: FAQ se ukládá **per účet**. Přepni primární účet vpravo nahoře (pokud to u tebe máš), nebo dle toho, jak dnes vybíráš aktivní schránku.
+    </div>
+  </div>
+</div>
+
+
                 </div>
 
                 </div>
@@ -2033,7 +2202,7 @@
                             </div>
                         </div>
                         <div class="chart-placeholder">
-                            📊 Graf emailové aktivity se zobrazí zde
+                            <canvas id="activityChart" style="height:300px"></canvas>
                         </div>
                     </div>
 
@@ -2043,7 +2212,7 @@
                                 <h3 class="chart-title">Úspěšnost AI</h3>
                             </div>
                             <div class="chart-placeholder">
-                                🎯 Graf úspěšnosti AI
+                                <canvas id="aiChart" style="height:300px"></canvas>
                             </div>
                         </div>
 
@@ -2052,7 +2221,7 @@
                                 <h3 class="chart-title">Kategorie emailů</h3>
                             </div>
                             <div class="chart-placeholder">
-                                🥧 Koláčový graf kategorií
+                                <canvas id="categoryChart" style="height:300px"></canvas>
                             </div>
                         </div>
                     </div>
@@ -2206,6 +2375,21 @@ const analysisModal = document.getElementById('analysisModal');
 const closeAnalysisModalBtn = document.getElementById('closeAnalysisModal');
 const searchBar = document.getElementById('search-bar');
 
+
+// === Modal helpers: uložit výchozí obsah a možnost ho vrátit ===
+const modalBodyEl = document.querySelector('#modal-content .modal-body');
+const DEFAULT_PROVIDER_HTML = modalBodyEl ? modalBodyEl.innerHTML : '';
+
+function restoreProviderChooser() {
+  if (!modalBodyEl || !DEFAULT_PROVIDER_HTML) return;
+  modalBodyEl.innerHTML = DEFAULT_PROVIDER_HTML;
+
+  // znovu navázat kliky na tlačítka v chooseru
+  document.getElementById('connect-google-btn')?.addEventListener('click', connectGoogleAccount);
+  document.getElementById('connect-custom-btn')?.addEventListener('click', openCustomConnect);
+}
+
+
 let connectedAccounts = []; // [{ email: string, active: boolean }]
 function getConnectedAccounts() { return connectedAccounts || []; }
 function setConnectedAccounts(arr) { connectedAccounts = Array.isArray(arr) ? arr : []; }
@@ -2279,14 +2463,35 @@ function setConnectedEmailsLS(emails) {
   };
 
   window.saveStyleExamples = async function(dashboardUserEmail, email, items) {
+    // 1) lehký limit na délku těla (kvůli velikosti JSONu)
+  const MAX_BODY = 4000; // znaků
+  const cleaned = (items || []).map(it => ({
+    ...it,
+    body: String(it.body || '').slice(0, MAX_BODY)
+  }));
+
+  // 2) pošli to na server po menších dávkách
+  const BATCH = 80;
+  let savedTotal = 0;
+
+  for (let i = 0; i < cleaned.length; i += BATCH) {
+    const batch = cleaned.slice(i, i + BATCH);
     const r = await fetch(`${window.BACKEND}/api/style-examples/ingest`, {
       method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ dashboardUserEmail, email, items })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dashboardUserEmail, email, items: batch })
     });
     const j = await r.json();
-    if (!j.success) throw new Error(j.message || 'saveStyleExamples: backend vrátil chybu');
-    return { saved: j.saved || 0 };
+    if (!r.ok || !j?.success) {
+      throw new Error(j?.message || 'saveStyleExamples: backend vrátil chybu');
+    }
+    savedTotal += j.saved || 0;
+
+    // krátká pauza, ať netrápíme server
+    await new Promise(res => setTimeout(res, 150));
+  }
+
+  return { saved: savedTotal };
   };
 
   window.fetchStyleProfile = async function(dashboardUserEmail, email) {
@@ -2294,6 +2499,100 @@ function setConnectedEmailsLS(emails) {
     const r = await fetch(url, { cache: 'no-store' });
     return await r.json();
   };
+
+
+
+// ===== ANALYTICS =====
+let __activityChart, __aiChart, __catChart;
+
+async function loadAnalytics(days = 7) {
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  const account = (localStorage.getItem('primaryEmail') || '').trim();
+  if (!dashboardUserEmail || !account) return;
+
+  // načti data
+  const [act, tpl, cat] = await Promise.all([
+    fetch(`${window.BACKEND}/api/analytics/activity?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(account)}&days=${days}`).then(r=>r.json()),
+    fetch(`${window.BACKEND}/api/analytics/templates?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`).then(r=>r.json()),
+    fetch(`${window.BACKEND}/api/analytics/categories?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`).then(r=>r.json()),
+  ]);
+
+  // připrav X osu za posledních N dní
+  const labels = Array.from({length: days}, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (days - 1 - i));
+    return d.toLocaleDateString('cs-CZ', { day:'2-digit', month:'2-digit' });
+  });
+  const byDate = {};
+  (act.series || []).forEach(r => { byDate[r.day] = r; });
+
+  const toIso = (offset) => {
+    const d = new Date(); d.setDate(d.getDate() - offset);
+    return d.toISOString().slice(0,10);
+  };
+  const incoming = labels.map((_, i) => Number((byDate[toIso(days - 1 - i)] || {}).incoming || 0));
+  const outgoing = labels.map((_, i) => Number((byDate[toIso(days - 1 - i)] || {}).outgoing || 0));
+
+  // 1) Line – aktivita
+  const ctx1 = document.getElementById('activityChart')?.getContext('2d');
+  if (ctx1) {
+    if (__activityChart) __activityChart.destroy();
+    __activityChart = new Chart(ctx1, {
+      type: 'line',
+      data: { labels, datasets: [
+        { label: 'Příchozí', data: incoming, tension: 0.3 },
+        { label: 'Odchozí', data: outgoing, tension: 0.3 },
+      ]},
+      options: { responsive:true, maintainAspectRatio:false }
+    });
+  }
+
+  // 2) Bar – TOP šablony podle uses
+  const ctx2 = document.getElementById('aiChart')?.getContext('2d');
+  if (ctx2) {
+    const top = (tpl.top || []).slice(0, 8);
+    if (__aiChart) __aiChart.destroy();
+    __aiChart = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels: top.map(t => t.name),
+        datasets: [{ label: 'Použití šablon', data: top.map(t => t.uses) }]
+      },
+      options: { indexAxis: 'y', responsive:true, maintainAspectRatio:false }
+    });
+  }
+
+  // 3) Pie – kategorie dle uses
+  const ctx3 = document.getElementById('categoryChart')?.getContext('2d');
+  if (ctx3) {
+    const items = cat.items || [];
+    if (__catChart) __catChart.destroy();
+    __catChart = new Chart(ctx3, {
+      type: 'pie',
+      data: {
+        labels: items.map(i => i.category),
+        datasets: [{ data: items.map(i => i.uses) }]
+      },
+      options: { responsive:true, maintainAspectRatio:false }
+    });
+  }
+
+  // přepínače 7/30/3 měsíce
+  document.querySelectorAll('#analytics .filter-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('#analytics .filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const t = btn.textContent.trim();
+      const d = t.includes('3 měsíce') ? 90 : (t.includes('30') ? 30 : 7);
+      loadAnalytics(d);
+    };
+  });
+}
+
+
+
+
+
+
 
   // === Klik handler ===
   window.learnFromHistory = async function() {
@@ -2456,7 +2755,7 @@ async function learnStyleFromHistory() {
     const r = await fetch('https://ai-email-server-stejdesign.onrender.com/api/style/learn', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dashboardUserEmail, email: primaryEmail, sampleCount: 200 })
+      body: JSON.stringify({ dashboardUserEmail, email: primaryEmail, limit: 200 })
     });
     const j = await r.json();
     if (!j.success) throw new Error(j.message || 'Učení stylu selhalo.');
@@ -2632,13 +2931,17 @@ function checkMobile() {
 }
 
 function openModal() {
-    if (modal) modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+  // pokaždé začni výběrem poskytovatele
+  restoreProviderChooser();
+  if (modal) modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
 }
 
 function closeModal() {
-    if (modal) modal.style.display = 'none';
-    document.body.style.overflow = '';
+  if (modal) modal.style.display = 'none';
+  document.body.style.overflow = '';
+  // po zavření resetuj, aby příště nebyl ponechaný formulář
+  restoreProviderChooser();
 }
 
 function hideAnalysisModal() {
@@ -2657,7 +2960,7 @@ function connectGoogleAccount() {
         client_id: GOOGLE_CLIENT_ID,
         redirect_uri: REDIRECT_URI,
         response_type: 'code',
-        scope: 'openid email profile https://www.googleapis.com/auth/gmail.modify',
+        scope: 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
         access_type: 'offline',
         prompt: 'consent',
         include_granted_scopes: 'true',
@@ -2668,31 +2971,70 @@ function connectGoogleAccount() {
 
 // === CUSTOM EMAIL: otevřít modal s formulářem a zavolat /api/custom-email/connect ===
 function openCustomConnect() {
-  const overlay = document.getElementById('modal-overlay');
+ const overlay = document.getElementById('modal-overlay');
   const box = document.getElementById('modal-content');
   const body = box?.querySelector('.modal-body');
   if (!overlay || !body) return;
 
+  // ⚙️ Základ: jen e-mail + heslo. Ostatní je schované v "Pokročilé nastavení".
   body.innerHTML = `
     <div class="form-grid">
-      <div class="form-group"><label class="form-label">Email adresa</label><input id="ce-emailAddress" class="form-control" type="email" placeholder="jan@firma.cz" required></div>
-      <div class="form-group"><label class="form-label">Uživatelské jméno</label><input id="ce-username" class="form-control" type="text" placeholder="(většinou stejný jako email)"></div>
-      <div class="form-group"><label class="form-label">Heslo</label><input id="ce-password" class="form-control" type="password" placeholder="••••••••" required></div>
-    </div>
-
-    <div class="form-grid" style="margin-top:1rem;">
-      <div class="form-group"><label class="form-label">IMAP host</label><input id="ce-imapHost" class="form-control" placeholder="imap.firma.cz" required></div>
-      <div class="form-group"><label class="form-label">IMAP port</label><input id="ce-imapPort" class="form-control" type="number" value="993" required></div>
-      <div class="form-group"><label class="form-label">IMAP zabezpečení</label>
-        <select id="ce-imapSecure" class="form-control"><option value="1" selected>SSL/TLS</option><option value="0">Nezabezpečené</option></select>
+      <div class="form-group">
+        <label class="form-label">Email adresa</label>
+        <input id="ce-emailAddress" class="form-control" type="email" placeholder="jan@firma.cz" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Heslo</label>
+        <input id="ce-password" class="form-control" type="password" placeholder="••••••••" required>
       </div>
     </div>
 
-    <div class="form-grid">
-      <div class="form-group"><label class="form-label">SMTP host</label><input id="ce-smtpHost" class="form-control" placeholder="smtp.firma.cz" required></div>
-      <div class="form-group"><label class="form-label">SMTP port</label><input id="ce-smtpPort" class="form-control" type="number" value="465" required></div>
-      <div class="form-group"><label class="form-label">SMTP zabezpečení</label>
-        <select id="ce-smtpSecure" class="form-control"><option value="1" selected>SSL/TLS</option><option value="0">Nezabezpečené</option></select>
+    <button type="button" id="toggle-advanced" class="bulk-btn" style="margin:.75rem 0 0;">
+      Pokročilé nastavení
+    </button>
+
+    <div class="advanced-settings" style="display:none; margin-top: .75rem;">
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Uživatelské jméno</label>
+          <input id="ce-username" class="form-control" type="text" placeholder="(většinou stejný jako email)">
+        </div>
+      </div>
+
+      <div class="form-grid" style="margin-top:1rem;">
+        <div class="form-group">
+          <label class="form-label">IMAP host</label>
+          <input id="ce-imapHost" class="form-control" placeholder="imap.firma.cz">
+        </div>
+        <div class="form-group">
+          <label class="form-label">IMAP port</label>
+          <input id="ce-imapPort" class="form-control" type="number" value="993">
+        </div>
+        <div class="form-group">
+          <label class="form-label">IMAP zabezpečení</label>
+          <select id="ce-imapSecure" class="form-control">
+            <option value="1" selected>SSL/TLS</option>
+            <option value="0">Nezabezpečené</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">SMTP host</label>
+          <input id="ce-smtpHost" class="form-control" placeholder="smtp.firma.cz">
+        </div>
+        <div class="form-group">
+          <label class="form-label">SMTP port</label>
+          <input id="ce-smtpPort" class="form-control" type="number" value="465">
+        </div>
+        <div class="form-group">
+          <label class="form-label">SMTP zabezpečení</label>
+          <select id="ce-smtpSecure" class="form-control">
+            <option value="1" selected>SSL/TLS</option>
+            <option value="0">Nezabezpečené</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -2702,34 +3044,59 @@ function openCustomConnect() {
     </div>
     <div id="ce-connect-msg" style="margin-top:.5rem; color:#64748b;"></div>
   `;
+
   overlay.style.display = 'flex';
 
-  document.getElementById('ce-cancel-btn')?.addEventListener('click', () => { overlay.style.display = 'none'; });
+  // Toggle "Pokročilé nastavení"
+  document.getElementById('toggle-advanced')?.addEventListener('click', () => {
+    const adv = document.querySelector('.advanced-settings');
+    if (!adv) return;
+    adv.style.display = adv.style.display === 'none' ? 'block' : 'none';
+  });
+
+  document.getElementById('ce-cancel-btn')?.addEventListener('click', () => { closeModal();   });
+
+  // Ověřit & uložit
   document.getElementById('ce-connect-btn')?.addEventListener('click', async () => {
     const dashboardUserEmail = localStorage.getItem('userEmail');
     const emailAddress = document.getElementById('ce-emailAddress').value.trim();
-    const username = document.getElementById('ce-username').value.trim() || emailAddress;
-    const password = document.getElementById('ce-password').value;
-    const imapHost = document.getElementById('ce-imapHost').value.trim();
-    const imapPort = Number(document.getElementById('ce-imapPort').value);
-    const imapSecure = document.getElementById('ce-imapSecure').value === '1';
-    const smtpHost = document.getElementById('ce-smtpHost').value.trim();
-    const smtpPort = Number(document.getElementById('ce-smtpPort').value);
-    const smtpSecure = document.getElementById('ce-smtpSecure').value === '1';
+    const password     = document.getElementById('ce-password').value;
+
     const msgEl = document.getElementById('ce-connect-msg');
+    const advVisible = document.querySelector('.advanced-settings')?.style.display !== 'none';
+    const val = (id) => {
+      const el = document.getElementById(id);
+      return el && el.value ? el.value : undefined;
+    };
+
+    // 📦 Minimální payload (email+heslo). Pokud je otevřené Pokročilé a něco vyplněné, přidáme to.
+    const payload = {
+      dashboardUserEmail,
+      emailAddress,
+      password
+    };
+    if (advVisible) {
+      payload.username   = val('ce-username') || emailAddress;
+      payload.imapHost   = val('ce-imapHost');
+      const ip = val('ce-imapPort'); if (ip) payload.imapPort = Number(ip);
+      const isec = val('ce-imapSecure'); if (isec != null) payload.imapSecure = isec === '1';
+
+      payload.smtpHost   = val('ce-smtpHost');
+      const sp = val('ce-smtpPort'); if (sp) payload.smtpPort = Number(sp);
+      const ssec = val('ce-smtpSecure'); if (ssec != null) payload.smtpSecure = ssec === '1';
+    }
 
     msgEl.textContent = 'Ověřuji přihlášení…';
     try {
       const resp = await fetch(`${window.BACKEND}/api/custom-email/connect`, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ dashboardUserEmail, emailAddress, username, password,
-          imapHost, imapPort, imapSecure, smtpHost, smtpPort, smtpSecure })
+        body: JSON.stringify(payload)
       });
       const j = await resp.json();
       if (!resp.ok || !j.success) throw new Error(j.message || 'Připojení selhalo.');
       msgEl.textContent = '✅ Účet připojen. Načítám…';
 
-      // založ výchozí settings pro tento účet (aby AI měla styl)
+      // výchozí AI nastavení pro tento účet
       await fetch(`${window.BACKEND}/api/settings`, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
@@ -2739,7 +3106,6 @@ function openCustomConnect() {
         })
       });
 
-      // refresh účtů + nastav jako primární
       await syncConnectedEmails();
       localStorage.setItem('primaryEmail', emailAddress);
       renderConnectedAccounts();
@@ -2755,17 +3121,12 @@ function openCustomConnect() {
 // zapni tlačítko v modalu „Připojit přes Custom Email“
 document.getElementById('connect-custom-btn')?.addEventListener('click', openCustomConnect);
 
-
 function parseSenderName(s='') {
-  const m = String(s).match(/"?(.*?)"?\s*<.+?>/);
-  return (m?.[1] || s).trim();
-}
-function extractEmailAddress(s='') {
   const m = String(s).match(/<([^>]+)>/);
-  if (m) return m[1].trim();
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim())) return s.trim();
-  return s.trim();
+  const raw = m ? m[1] : String(s);
+  return raw.trim().replace(/^mailto:/i, '');
 }
+
 
 async function tryGmailEmails(primaryEmail, status, period, searchQuery) {
   const url = `${window.BACKEND}/api/gmail/emails?email=${encodeURIComponent(primaryEmail)}&dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}`;
@@ -2926,6 +3287,9 @@ async function loadTemplates() {
 }
 
 
+
+
+
 function renderTemplateList(templates = []) {
     const countEl = document.getElementById('tpl-count');
 if (countEl) countEl.textContent = templates.length;
@@ -2965,11 +3329,24 @@ if (countEl) countEl.textContent = templates.length;
     });
 }
 
+function extractEmailAddress(s = '') {
+  // 1) odescapuj případné &lt; a &gt; apod.
+  const txt = document.createElement('textarea');
+  txt.innerHTML = String(s);
+  const unescaped = txt.value;
 
-function extractEmailAddress(s='') {
-  const m = String(s).match(/<([^>]+)>/);
-  return (m ? m[1] : String(s)).trim();
+  // 2) pokus o <email> tvar
+  const m = unescaped.match(/<\s*([^>]+)\s*>/);
+  if (m) return m[1].trim();
+
+  // 3) fallback: najdi první výskyt něco@něco.tld ve stringu
+  const m2 = unescaped.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  if (m2) return m2[0].trim();
+
+  // 4) poslední možnost – vrať ořezaný text
+  return unescaped.trim();
 }
+
 
 
 
@@ -3869,7 +4246,26 @@ if (!currentPrimary || !connectedEmails.some(a => a.email === currentPrimary)) {
   }
 }
 
+(function(){
+  const modal = document.getElementById('emailDetailModal');
+  const closeBtns = [
+    document.getElementById('closeEmailDetail'),
+    document.getElementById('closeEmailDetailBottom')
+  ].filter(Boolean);
 
+  closeBtns.forEach(btn => btn.addEventListener('click', () => {
+    modal.classList.remove('show');
+    document.body.style.overflow = '';
+  }));
+
+  // Klik mimo modal zavře
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.classList.remove('show');
+      document.body.style.overflow = '';
+    }
+  });
+})();
 
 
 
@@ -3936,6 +4332,7 @@ if (planTab) {
             // ZMĚNA: Funkce se volají bez parametrů, vezmou si primární email z localStorage
             if (targetPageId === 'emails') fetchEmails();
             if (targetPageId === 'settings') loadSettings();
+            if (targetPageId === 'analytics') loadAnalytics(7);
         });
     });
 
@@ -3969,6 +4366,13 @@ document.getElementById('tpl-save-btn')?.addEventListener('click', (e) => {
 
             if (targetContent) {
                  targetContent.style.display = 'block';
+
+                 // pokud je to FAQ tab, načti FAQ
+                 if (tab.getAttribute('data-tab') === 'faq') {
+  loadFaqs();
+  wireFaqButtons();
+}
+
                  if (tab.getAttribute('data-tab') === 'email') {
                      renderConnectedAccounts();
                  }
@@ -4177,6 +4581,64 @@ if (dlg) dlg.classList.add('modal-xl');
                     if(modalBody) modalBody.innerHTML = `<p style="text-align: center; color: red;">Nepodařilo se připojit k serveru pro analýzu.</p>`;
                 }
             }
+
+const item = event.target.closest('.email-item');
+    if (item && !event.target.closest('.analyze-btn')) {
+      const id  = item.dataset.id;
+      const src = (item.dataset.src || '').toLowerCase(); // 'gmail' | 'custom'
+      const from = item.dataset.from || '';
+      const subject = item.querySelector('.email-subject')?.textContent?.trim() || '';
+      const dateTxt = item.querySelector('.email-meta > div')?.textContent?.trim() || '';
+
+      window.__currentEmailCtx = {
+  id,                                   // stejné "id" co už máš (messageId nebo UID)
+  src,                                  // 'gmail' | 'custom'
+  account: (item.dataset.account || localStorage.getItem('primaryEmail') || ''),
+  from, subject, date: dateTxt
+};
+
+      // otevři modal + loading
+      const modal = document.getElementById('emailDetailModal');
+      const edFrom = document.getElementById('ed-from');
+      const edSubj = document.getElementById('ed-subject');
+      const edDate = document.getElementById('ed-date');
+      const edBody = document.getElementById('ed-body');
+      
+
+      if (!modal || !edFrom || !edSubj || !edDate || !edBody) return;
+
+      edFrom.textContent = from || '(neznámý odesílatel)';
+      edSubj.textContent = subject || '(bez předmětu)';
+      edDate.textContent = dateTxt || '';
+      edBody.textContent = 'Načítám obsah zprávy…';
+      syncProMeta();
+
+
+      modal.classList.add('show');
+      document.body.style.overflow = 'hidden';
+
+      try {
+        const dashboardUserEmail = localStorage.getItem('userEmail');
+        const primaryEmail       = localStorage.getItem('primaryEmail');
+        const isCustom = (src === 'custom') || /^\d+$/.test(String(id)); // UID = custom
+
+        // Volání lehkého backend endpointu pro tělo zprávy (viz změny v serveru níže)
+        let url;
+        if (isCustom) {
+          url = `${window.BACKEND}/api/custom-email/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&uid=${encodeURIComponent(id)}`;
+        } else {
+          url = `${window.BACKEND}/api/gmail/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}&messageId=${encodeURIComponent(id)}`;
+        }
+
+        const r = await fetch(url);
+        const j = await r.json();
+        if (!r.ok || !j.success) throw new Error(j.message || 'Nepodařilo se načíst obsah zprávy.');
+        edBody.textContent = j.body || '(tělo zprávy je prázdné)';
+      } catch (e) {
+        edBody.textContent = e.message || 'Chyba při načítání obsahu zprávy.';
+      }
+    }
+
         });
     }
     
@@ -4236,7 +4698,8 @@ if (dlg) dlg.classList.add('modal-xl');
       emailAddress: account,
       to: toAddr,
       subject: subj ? `Re: ${subj}` : 'Re:',
-      text: replyBody
+      text: replyBody,
+      replyToUid: Number(currentMessageId)
     };
   } else {
     // Gmail
@@ -4245,9 +4708,12 @@ if (dlg) dlg.classList.add('modal-xl');
       dashboardUserEmail,
       email: account,
       messageId: currentMessageId,
+      to: toAddr,
       replyBody
     };
   }
+
+
 
   // odeslat
   const response = await fetch(urlPost, {
@@ -4300,6 +4766,319 @@ document.getElementById('tplCategory')?.addEventListener('change', refreshPicker
 
 
     
+// ===== FAQ (per účet) =====
+async function loadFaqs() {
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  const account = (localStorage.getItem('primaryEmail') || '').trim();
+
+  const infoEl = document.getElementById('faq-current-account');
+  if (infoEl) infoEl.textContent = account || '(není zvolen primární účet)';
+
+  const listEl = document.getElementById('faq-list');
+  if (!dashboardUserEmail || !account) {
+    if (listEl) listEl.innerHTML = `<div class="banner error">Chybí přihlášený uživatel nebo aktivní účet.</div>`;
+    return;
+  }
+
+  // 1) zkus načíst existující FAQ
+  let faqs = [];
+  try {
+    const r = await fetch(`${window.BACKEND}/api/faq?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(account)}`);
+    const j = await r.json();
+    if (j?.success) faqs = Array.isArray(j.faqs) ? j.faqs : (Array.isArray(j.items) ? j.items : []);
+  } catch(e) {
+    // necháme pokračovat na autogeneraci
+  }
+
+  // 2) pokud nic není, automaticky vygeneruj z posledních 200
+  if (!faqs.length) {
+    const ok = await autoGenerateFaq(200); // ↓ viz funkce níže
+    if (ok) {
+      try {
+        const r2 = await fetch(`${window.BACKEND}/api/faq?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(account)}`);
+        const j2 = await r2.json();
+        if (j2?.success) faqs = Array.isArray(j2.faqs) ? j2.faqs : (Array.isArray(j2.items) ? j2.items : []);
+      } catch(e){}
+    }
+  }
+
+  renderFaqList(faqs); 
+}
+
+function renderFaqList(items=[]) {
+  const listEl = document.getElementById('faq-list');
+  if (!listEl) return;
+
+  // 🟢 NORMALIZACE DAT – přidat tento blok:
+  items = items.map(it => ({
+    q: it.q || it.question || '',
+    a: it.a || it.answer || ''
+  }));
+
+  if (!items.length) {
+    listEl.innerHTML = `<div class="banner info">Zatím žádné položky. Klikni na „Přidat FAQ položku“ nebo „Naučit se z historie“.</div>`;
+    return;
+  }
+
+  listEl.innerHTML = items.map((it, idx) => `
+    <div class="card" data-faq-index="${idx}" style="padding:.75rem; border:1px solid #e5e7eb; border-radius:12px;">
+      <div class="form-group">
+        <label class="form-label">Otázka</label>
+        <input class="form-control faq-q" value="${escapeHtml(it.q)}" placeholder="Např. Jak změnit fakturační údaje?">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Odpověď</label>
+        <textarea class="form-control faq-a" rows="3" placeholder="Stručná, jasná odpověď…">${escapeHtml(it.a)}</textarea>
+      </div>
+      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
+        <button class="btn btn-danger faq-del">🗑️ Smazat</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+
+
+function wireFaqButtons() {
+  document.getElementById('faq-add-btn')?.addEventListener('click', () => {
+    const listEl = document.getElementById('faq-list');
+    const idx = listEl.querySelectorAll('[data-faq-index]').length;
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.dataset.faqIndex = String(idx);
+    div.style.cssText = 'padding:.75rem; border:1px solid #e5e7eb; border-radius:12px;';
+    div.innerHTML = `
+      <div class="form-group">
+        <label class="form-label">Otázka</label>
+        <input class="form-control faq-q" placeholder="Např. Jak změnit fakturační údaje?">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Odpověď</label>
+        <textarea class="form-control faq-a" rows="3" placeholder="Stručná, jasná odpověď…"></textarea>
+      </div>
+      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
+        <button class="btn btn-danger faq-del">🗑️ Smazat</button>
+      </div>`;
+    listEl.appendChild(div);
+    div.querySelector('.faq-del').addEventListener('click', () => div.remove());
+  });
+
+  // smazání existujících renderovaných
+  document.querySelectorAll('#faq-list .faq-del').forEach(btn => {
+    btn.onclick = () => btn.closest('[data-faq-index]')?.remove();
+  });
+
+  document.getElementById('faq-save-all-btn')?.addEventListener('click', saveFaqAll);
+  document.getElementById('faq-learn-btn')?.addEventListener('click', learnFaqFromHistory);
+}
+
+async function saveFaqAll() {
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  const account = (localStorage.getItem('primaryEmail') || '').trim();
+  if (!dashboardUserEmail || !account) return showToast('Chybí účet nebo uživatel.', 'error');
+
+  // seber data z formuláře
+  const items = Array.from(document.querySelectorAll('#faq-list [data-faq-index]')).map(card => ({
+    q: card.querySelector('.faq-q')?.value?.trim() || '',
+    a: card.querySelector('.faq-a')?.value?.trim() || ''
+  })).filter(x => x.q || x.a);
+
+  try {
+    const r = await fetch(`${window.BACKEND}/api/faq/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dashboardUserEmail, email: account, items })
+    });
+    const data = await r.json();
+    if (data?.success) {
+      showToast('FAQ uloženo.', 'success');
+      loadFaqs();
+    } else {
+      showToast(data?.message || 'Uložení selhalo.', 'error');
+    }
+  } catch(e) {
+    showToast('Nepodařilo se uložit FAQ.', 'error');
+  }
+}
+
+async function learnFaqFromHistory() {
+    const dashboardUserEmail = localStorage.getItem('userEmail');
+  const account = (localStorage.getItem('primaryEmail') || '').trim();
+  if (!dashboardUserEmail || !account) {
+    showToast('Chybí účet nebo uživatel.', 'error');
+    return;
+  }
+
+  // 1) naplníme style_examples (Gmail i Custom větev)
+  const ok = await seedStyleExamples(dashboardUserEmail, account);
+  if (!ok) {
+    showToast('Nepodařilo se načíst historii pro učení (málo dat nebo chyba).', 'warning');
+    // i tak zkusíme pokračovat (kdyby tam něco mezitím bylo)
+  }
+
+  // 2) z historie vygenerovat a uložit FAQ
+  try {
+    const r = await fetch(`${window.BACKEND}/api/faq/regenerate`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ dashboardUserEmail, email: account, limit: 200 })
+    });
+    const data = await r.json();
+    if (r.ok && data?.success) {
+      if ((data.created|0) > 0) {
+        showToast(`FAQ vygenerováno z ${data.created} položek.`, 'success');
+      } else {
+        showToast('Z historie se nepodařilo vytvořit žádné FAQ (málo dat?).', 'info');
+      }
+      await loadFaqs(); // načti a vykresli
+    } else {
+      showToast(data?.message || 'Učení/Regenerace FAQ selhala.', 'error');
+    }
+  } catch (e) {
+    showToast('Síťová chyba při regeneraci FAQ.', 'error');
+  }
+}
+
+// === Uložení vybraného účtu do localStorage ===
+document.querySelectorAll('.account-item').forEach(item => {
+  item.addEventListener('click', () => {
+    const email = item.dataset.email;
+    const src = item.dataset.src || 'custom'; // 'gmail' nebo 'custom'
+    if (email) {
+      localStorage.setItem('primaryEmail', email);
+      localStorage.setItem('primarySrc', src);
+      console.log('Vybraný účet nastaven:', email, src);
+    }
+  });
+});
+
+
+
+async function seedStyleExamples(dashboardUserEmail, accountEmail) {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const isGmail = /@gmail\.com$/i.test(accountEmail);
+
+  try {
+    let items = [];
+
+    if (isGmail) {
+      // GMAIL: stáhni příklady z outboxu a inboxu a rovnou je ulož
+      const [sent, inbox] = await Promise.all([
+        window.fetchSentReplies(dashboardUserEmail, accountEmail, 200),
+        window.fetchInboxExamples(dashboardUserEmail, accountEmail, 200),
+      ]);
+      items = [...sent, ...inbox];
+    } else {
+      // CUSTOM: fallback – vytáhni pár e-mailů a nech backend zanalyzovat těla
+      const rList = await fetch(
+        `${window.BACKEND}/api/custom-email/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(accountEmail)}&limit=30`
+      );
+      const jList = await rList.json();
+      const emails = Array.isArray(jList.emails) ? jList.emails : [];
+      const picked = emails.slice(0, 20);
+
+      for (const e of picked) {
+        const uid = e.id || e.uid; if (!uid) continue;
+        const rOne = await fetch(
+          `${window.BACKEND}/api/custom-email/analyze-email?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(accountEmail)}&uid=${encodeURIComponent(uid)}`
+        );
+        const jOne = await rOne.json();
+        const body = (jOne.emailBody || '').trim();
+        if (body) {
+          items.push({
+            role: e.fromMe ? 'outgoing' : 'incoming',
+            subject: String(e.subject || ''),
+            body
+          });
+        }
+        await sleep(200);
+      }
+    }
+
+    if (!items.length) return false;
+
+    // Ulož nasbírané příklady do DB
+    const rIngest = await fetch(`${window.BACKEND}/api/style-examples/ingest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dashboardUserEmail, email: accountEmail, items })
+    });
+    const jIngest = await rIngest.json();
+    return rIngest.ok && jIngest?.success && (jIngest.saved | 0) > 0;
+  } catch (err) {
+    console.warn('seedStyleExamples error:', err);
+    return false;
+  }
+  }
+
+
+
+
+
+async function autoGenerateFaq(limit = 200) {
+   const dashboardUserEmail = localStorage.getItem('userEmail');
+   const account = (localStorage.getItem('primaryEmail') || '').trim();
+   if (!dashboardUserEmail || !account) return false;
+
+  // 0) nejdřív zkus nasypat vzorky z historie
+  try {
+    const seeded = await seedStyleExamples(dashboardUserEmail, account);
+    if (!seeded) {
+      // není to fatální – zkusíme i tak pokračovat (třeba už v DB něco je)
+      console.warn('seedStyleExamples neuložil žádná data, pokračuji k regenerate…');
+    }
+  } catch(e) {
+    console.warn('seedStyleExamples chyba:', e);
+    // pokračujeme
+  }
+
+   try {
+     const r = await fetch(`${window.BACKEND}/api/faq/regenerate`, {
+       method: 'POST',
+       headers: { 'Content-Type':'application/json' },
+       body: JSON.stringify({ dashboardUserEmail, email: account, limit })
+     });
+     const j = await r.json();
+
+    if (r.status === 429) {
+      showToast(j?.message || 'Vyčerpán měsíční limit AI akcí.', 'warning');
+      return false;
+    }
+     if (!r.ok || !j?.success) {
+       console.warn('Auto FAQ generation failed:', j?.message || r.statusText);
+       showToast(j?.message || 'Auto-generace FAQ selhala.', 'error');
+       return false;
+     }
+
+     if ((j.created|0) <= 0) {
+       showToast('Z historie se nepodařilo vytvořit žádné FAQ (málo dat?).', 'info');
+       return false;
+     }
+
+     showToast(`FAQ vygenerováno z ${limit} zpráv.`, 'success');
+     return true;
+   } catch (e) {
+     console.warn('Auto FAQ generation error:', e);
+     showToast('Auto-generace FAQ selhala (síť).', 'error');
+     return false;
+   }
+}
+
+
+
+
+// pomocné
+function escapeHtml(s='') {
+  return String(s)
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;')
+    .replaceAll("'",'&#39;');
+}
+
+
+
 
     checkMobile();
     window.addEventListener('resize', checkMobile);
@@ -4330,9 +5109,171 @@ if (savePlanBtn) savePlanBtn.addEventListener('click', async () => {
 });
     
 
+function syncProMeta(){
+  const from = document.getElementById('ed-from')?.textContent?.trim() || '';
+  const subj = document.getElementById('ed-subject')?.textContent?.trim() || '';
+  const date = document.getElementById('ed-date')?.textContent?.trim() || '';
+  const v = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val || '—'; };
+
+  v('ed-from-meta', from);
+  v('ed-subject-meta', subj);
+  v('ed-date-meta', date);
+
+  const av = document.getElementById('ed-avatar');
+  if (av) {
+    // vezmi iniciály z jména / adresy
+    let initials = '✉️';
+    const namePart = (from.split('<')[0] || '').trim();
+    if (namePart) {
+      const words = namePart.split(/\s+/).filter(Boolean);
+      initials = words.slice(0,2).map(w => w[0]?.toUpperCase()).join('');
+      if (!initials) initials = '✉️';
+    }
+    av.textContent = initials;
+  }
+
+  const copyBtn = document.getElementById('ed-copy');
+  const bodyEl  = document.getElementById('ed-body');
+  if (copyBtn && bodyEl) {
+    copyBtn.onclick = async () => {
+      try { await navigator.clipboard.writeText(bodyEl.textContent || ''); }
+      catch(e){ /* ignore */ }
+    };
+  }
+
+  
+  
+}
 
 
-    
+
+
+// "Odpovědět" spustí stejnou AI analýzu jako tlačítko "Analyzovat 🤖"
+(function wireReplyToAI(){
+  const triggerAiFromDetail = async () => {
+    const ctx = window.__currentEmailCtx;
+    if (!ctx || !ctx.id) {
+      alert('Chybí kontext zprávy – otevři nejdřív detail e-mailu.');
+      return;
+    }
+
+    // --- zavři otevřený detailový modal, ať nepřekáží ---
+    const detailModal = document.getElementById('emailDetailModal');
+    if (detailModal) {
+      detailModal.classList.remove('show');
+    }
+    const readerModal = document.getElementById('emailReader');
+    if (readerModal) {
+      readerModal.classList.remove('show');
+    }
+    // vrať scrollování body, pokud bylo zamknuté
+    document.body.style.overflow = '';
+
+    // 1) Zkus najít původní řádek v seznamu a "kliknout" na jeho tlačítko .analyze-btn
+    const row = document.querySelector(`.email-item[data-id="${ctx.id}"]`);
+    const btn = row?.querySelector('.analyze-btn');
+    if (btn) {
+      btn.click();        // → použije přesně tvoji existující analýzu v UI
+      return;
+    }
+
+    // 2) Fallback: zavolej přímo backend analýzu (kdyby řádek nebyl v DOM)
+    try {
+      const dashboardUserEmail = localStorage.getItem('userEmail');
+      const primaryEmail       = ctx.account || localStorage.getItem('primaryEmail');
+
+      const url  = ctx.src === 'gmail'
+        ? `${window.BACKEND}/api/gmail/analyze-email`
+        : `${window.BACKEND}/api/custom-email/analyze-email`;
+
+      const body = ctx.src === 'gmail'
+        ? { dashboardUserEmail, email: primaryEmail, messageId: ctx.id }
+        : { dashboardUserEmail, emailAddress: primaryEmail, uid: ctx.id };
+
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (!r.ok || !j.success) throw new Error(j.message || 'AI analýza selhala.');
+
+      // zobraz výsledek stejně jako to dělá tvoje AI UI (zachovej si vlastní funkci, název jen příklad)
+      if (typeof window.showAiAnalysisModal === 'function') {
+        window.showAiAnalysisModal(j);  // pokud máš vlastní vykreslení AI modalu
+      } else {
+        alert('AI hotovo – připoj sem volání své funkce pro zobrazení výsledku.');
+        console.log('AI analysis result:', j);
+      }
+    } catch (e) {
+      alert(e.message || 'Nepodařilo se spustit AI analýzu.');
+    }
+  };
+
+  // napoj obě tlačítka v headeru/footru detailu
+  const replyTop    = document.getElementById('ed-reply-open');
+  const replyBottom = document.getElementById('ed-reply-bottom');
+  replyTop    && (replyTop.onclick    = triggerAiFromDetail);
+  replyBottom && (replyBottom.onclick = triggerAiFromDetail);
+  const erReplyTop    = document.getElementById('er-reply');
+  const erReplyBottom = document.getElementById('er-reply-bottom');
+  erReplyTop    && (erReplyTop.onclick    = triggerAiFromDetail);
+  erReplyBottom && (erReplyBottom.onclick = triggerAiFromDetail);
+})();
+  
+
+
 </script>
+
+
+<!-- Email Reader Modal -->
+<div class="modal-overlay" id="emailReader">
+  <div class="modal modal-full-width" style="max-width: 980px;">
+    <div class="modal-header">
+      <div class="modal-title" id="er-subject">📧 Načítám…</div>
+      <button class="modal-close" id="er-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="analysis-section" style="margin-bottom:1rem;">
+        <div class="section-header" style="justify-content:space-between;">
+          <div style="display:flex; gap:.75rem; align-items:center;">
+            <span class="section-icon">👤</span>
+            <div>
+              <div class="section-title" id="er-from">—</div>
+              <div class="section-content" id="er-date" style="font-size:.9rem; color:#64748b;">—</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:.5rem;">
+            <button class="btn btn-secondary" id="er-copy">Kopírovat text</button>
+            <button class="btn btn-primary" id="er-reply">✉️ Odpovědět</button>
+          </div>
+        </div>
+        <div id="er-tags" style="display:flex; gap:.5rem; flex-wrap:wrap;"></div>
+      </div>
+
+      <div class="response-section">
+        <div class="response-header">
+          <div class="response-title">Obsah zprávy</div>
+        </div>
+        <div class="response-content" id="er-body" style="min-height:180px;">Načítám obsah…</div>
+      </div>
+
+      <div class="analysis-section" id="er-ai" style="display:none;">
+        <div class="section-header">
+          <span class="section-icon">🤖</span>
+          <div class="section-title">Návrh odpovědi (AI)</div>
+        </div>
+        <div class="section-content" id="er-ai-reply" style="white-space:pre-wrap;"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="er-close-bottom">Zavřít</button>
+      <button class="btn btn-primary" id="er-reply-bottom">✉️ Odpovědět</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 </body>
 </html>
