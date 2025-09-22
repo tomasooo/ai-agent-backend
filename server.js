@@ -1206,6 +1206,33 @@ app.post('/api/style/learn', async (req, res) => {
 });
 
 
+
+app.post('/api/faq/save', async (req, res) => {
+  const { dashboardUserEmail, email, items } = req.body || {};
+  if (!dashboardUserEmail || !email || !Array.isArray(items)) {
+    return res.status(400).json({ success:false, message:'Chybí data.' });
+  }
+  const db = await pool.connect();
+  try {
+    await db.query(`DELETE FROM faqs WHERE dashboard_user_email=$1 AND connected_email=$2`, [dashboardUserEmail, email]);
+    for (const it of items) {
+      const q = (it.q || it.question || '').trim();
+      const a = (it.a || it.answer   || '').trim();
+      if (!q && !a) continue;
+      await db.query(
+        `INSERT INTO faqs (dashboard_user_email, connected_email, question, answer)
+         VALUES ($1,$2,$3,$4)`,
+        [dashboardUserEmail, email, q, a]
+      );
+    }
+    res.json({ success:true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success:false, message:'Uložení FAQ selhalo.' });
+  } finally { db.release(); }
+});
+
+
 app.get('/api/auth/has-password', async (req, res) => {
   const email = req.query.email;
   if (!email) return res.status(400).json({ success: false, message: 'Chybí email.' });
@@ -3359,6 +3386,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
