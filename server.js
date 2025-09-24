@@ -2885,40 +2885,28 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     try {
         await imapClient.connect();
         const mailboxes = await imapClient.list();
-        console.log('[DEBUG] Seznam nalezených IMAP složek:', JSON.stringify(mailboxes, null, 2));
 
-        // === ZDE JE FINÁLNÍ "NEPRŮSTŘELNÁ" OPRAVA ===
+        // === FINÁLNÍ ŘEŠENÍ NA ZÁKLADĚ VAŠICH LOGŮ ===
         let sentFolder = null;
-        // 1. Zkus najít složku pomocí systémového příznaku \Sent
+        // 1. Priorita: Hledej složku, která má speciální příznak "\Sent"
         for (const m of mailboxes) {
-            // Pojistka: zkontroluj, že m i m.attributes existují, než je použiješ
-            if (m && m.attributes && m.attributes.has('\\Sent')) {
+            if (m && m.specialUse && m.specialUse === '\\Sent') {
                 sentFolder = m;
                 break;
             }
         }
 
-        // 2. Pokud se nenašla, zkus to podle běžných názvů
+        // 2. Pokud se nenašla (což by nemělo nastat), zkus to podle cesty
         if (!sentFolder) {
-            const commonNames = ['sent items', 'sent', 'odeslaná pošta', 'odeslané', '[gmail]/sent mail'];
-            for (const name of commonNames) {
-                const found = mailboxes.find(m => {
-                    const normalizedPath = (m && m.path) ? m.path.toLowerCase().replace(/[./]/g, '/') : '';
-                    return normalizedPath === name || normalizedPath.endsWith('/' + name);
-                });
-                if (found) {
-                    sentFolder = found;
-                    break; 
-                }
-            }
+            sentFolder = mailboxes.find(m => (m && m.path) && m.path.toLowerCase() === 'inbox.sent items');
         }
-        // ===========================================
+        // ===============================================
 
         if (sentFolder) {
             await imapClient.append(sentFolder.path, rawMessage, ['\\Seen']);
             console.log(`[OK] Kopie odpovědi uložena do složky "${sentFolder.path}".`);
         } else {
-            console.warn(`[VAROVÁNÍ] Nepodařilo se automaticky najít složku pro odeslanou poštu. Kopie nebyla uložena.`);
+            console.warn(`[VAROVÁNÍ] Nepodařilo se najít složku pro odeslanou poštu. Zkontrolujte logy.`);
         }
     } catch (imapError) {
         console.error('[CHYBA] Nepodařilo se uložit kopii odeslané odpovědi:', imapError);
@@ -2926,7 +2914,7 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
         if (imapClient.connected) await imapClient.logout();
     }
 
-    return res.json({ success: true, message: 'Odpověď byla úspěšně odeslána.' });
+    return res.json({ success: true, message: 'Odpověď byla úspěšně odeslána a uložena.' });
 
   } catch (e) {
     console.error('[custom-email/send-reply] Kritická chyba při odesílání:', e);
@@ -3508,6 +3496,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
