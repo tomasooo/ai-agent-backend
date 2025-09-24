@@ -2831,7 +2831,7 @@ app.get('/api/custom-email/message-body', async (req, res) => {
 
 
 app.post('/api/custom-email/send-reply', async (req, res) => {
-  const { dashboardUserEmail, emailAddress, to, subject, text, fromName, origMessageId, origReferences } = req.body || {};
+ const { dashboardUserEmail, emailAddress, to, subject, text, fromName, origMessageId, origReferences } = req.body || {};
 
   if (!dashboardUserEmail || !emailAddress || !to || !subject || !text || !origMessageId) {
     return res.status(400).json({ success: false, message: 'Chybí povinná data pro odeslání.' });
@@ -2864,47 +2864,37 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     const toHeader = toName ? `${libmime.encodeWord(toName, 'B', 'utf-8')} <${toAddr}>` : toAddr;
 
     const rawLines = [
-      `From: ${fromHeader}`,
-      `To: ${toHeader}`,
-      `Subject: ${libmime.encodeWord(replySubject, 'B', 'utf-8')}`,
-      `In-Reply-To: ${origMessageId}`,
-      `References: ${(origReferences ? `${origReferences} ${origMessageId}` : origMessageId).trim()}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset=utf-8',
-      'Content-Transfer-Encoding: 8bit',
-      '',
-      text
+      `From: ${fromHeader}`, `To: ${toHeader}`, `Subject: ${libmime.encodeWord(replySubject, 'B', 'utf-8')}`,
+      `In-Reply-To: ${origMessageId}`, `References: ${(origReferences ? `${origReferences} ${origMessageId}` : origMessageId).trim()}`,
+      'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '', text
     ];
     const rawMessage = rawLines.join('\r\n');
 
     const transporter = nodemailer.createTransport({
-      host: accountDetails.smtp_host,
-      port: Number(accountDetails.smtp_port),
-      secure: !!accountDetails.smtp_secure,
-      auth: { user, pass },
-      tls: { rejectUnauthorized: false }
+      host: accountDetails.smtp_host, port: Number(accountDetails.smtp_port), secure: !!accountDetails.smtp_secure,
+      auth: { user, pass }, tls: { rejectUnauthorized: false }
     });
     await transporter.sendMail({ from: fromHeader, to: toHeader, raw: rawMessage });
     console.log(`[OK] Odpověď pro ${toAddr} byla odeslána.`);
 
     const imapClient = createImapClient({
-        host: accountDetails.imap_host,
-        port: accountDetails.imap_port,
-        secure: accountDetails.imap_secure,
-        auth: { user, pass }
+        host: accountDetails.imap_host, port: accountDetails.imap_port,
+        secure: accountDetails.imap_secure, auth: { user, pass }
     });
 
     try {
         await imapClient.connect();
         const mailboxes = await imapClient.list();
+        console.log('[DEBUG] Seznam nalezených IMAP složek:', JSON.stringify(mailboxes, null, 2));
 
-        // === FINÁLNÍ VYLEPŠENÉ HLEDÁNÍ SLOŽKY ===
-        let sentFolder = mailboxes.find(m => m.attributes.has('\\Sent'));
+        // === ZDE JE FINÁLNÍ OPRAVA ===
+        // Přidali jsme m.attributes && ... pro bezpečnost
+        let sentFolder = mailboxes.find(m => m.attributes && m.attributes.has('\\Sent'));
         if (!sentFolder) {
             const commonNames = ['sent items', 'sent', 'odeslaná pošta', 'odeslané', '[gmail]/sent mail'];
             for (const name of commonNames) {
                 const found = mailboxes.find(m => {
-                    const normalizedPath = m.path.toLowerCase().replace(/[./]/g, '/'); // Sjednotí oddělovače
+                    const normalizedPath = (m.path || '').toLowerCase().replace(/[./]/g, '/');
                     return normalizedPath === name || normalizedPath.endsWith('/' + name);
                 });
                 if (found) {
@@ -2913,7 +2903,6 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
                 }
             }
         }
-        // ===========================================
 
         if (sentFolder) {
             await imapClient.append(sentFolder.path, rawMessage, ['\\Seen']);
@@ -2924,12 +2913,10 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     } catch (imapError) {
         console.error('[CHYBA] Nepodařilo se uložit kopii odeslané odpovědi:', imapError);
     } finally {
-        if (imapClient.connected) {
-            await imapClient.logout();
-        }
+        if (imapClient.connected) await imapClient.logout();
     }
 
-    return res.json({ success: true, message: 'Odpověď byla úspěšně odeslána a uložena.' });
+    return res.json({ success: true, message: 'Odpověď byla úspěšně odeslána.' });
 
   } catch (e) {
     console.error('[custom-email/send-reply] Kritická chyba při odesílání:', e);
@@ -3511,6 +3498,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
