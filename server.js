@@ -2831,9 +2831,9 @@ app.get('/api/custom-email/message-body', async (req, res) => {
 
 
 app.post('/api/custom-email/send-reply', async (req, res) => {
- const { dashboardUserEmail, emailAddress, to, subject, text, fromName, origMessageId, origReferences } = req.body || {};
+ const { dashboardUserEmail, emailAddress, to, subject, text, fromName, origMessageId, origReferences, replyToUid } = req.body || {};
 
-  if (!dashboardUserEmail || !emailAddress || !to || !subject || !text || !origMessageId) {
+  if (!dashboardUserEmail || !emailAddress || !to || !subject || !text || !origMessageId || !replyToUid) {
     return res.status(400).json({ success: false, message: 'Chybí povinná data pro odeslání.' });
   }
 
@@ -2844,7 +2844,7 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
       SELECT smtp_host, smtp_port, smtp_secure, enc_username, enc_password, active,
              imap_host, imap_port, imap_secure
       FROM custom_accounts
-      WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
+      WHERE dashboardUserEmail=$1 AND email_address=$2 AND active=true
       LIMIT 1
     `, [dashboardUserEmail, emailAddress]);
     if (!rAcc.rowCount) return res.status(404).json({ success: false, message: 'Custom účet nenalezen.' });
@@ -2857,19 +2857,18 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
   const pass = decSecret(accountDetails.enc_password);
 
   try {
+    // Krok 1 a 2: Sestavení a odeslání odpovědi (beze změny)
     const toAddr = extractEmail(to);
     const toName = parseNameFromFromHeader(String(to)) || '';
     const replySubject = subject?.trim() ? (subject.startsWith('Re: ') ? subject : `Re: ${subject}`) : 'Re: (bez předmětu)';
     const fromHeader = fromName ? `${libmime.encodeWord(fromName, 'B', 'utf-8')} <${emailAddress}>` : emailAddress;
     const toHeader = toName ? `${libmime.encodeWord(toName, 'B', 'utf-8')} <${toAddr}>` : toAddr;
-
     const rawLines = [
       `From: ${fromHeader}`, `To: ${toHeader}`, `Subject: ${libmime.encodeWord(replySubject, 'B', 'utf-8')}`,
       `In-Reply-To: ${origMessageId}`, `References: ${(origReferences ? `${origReferences} ${origMessageId}` : origMessageId).trim()}`,
       'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '', text
     ];
     const rawMessage = rawLines.join('\r\n');
-
     const transporter = nodemailer.createTransport({
       host: accountDetails.smtp_host, port: Number(accountDetails.smtp_port), secure: !!accountDetails.smtp_secure,
       auth: { user, pass }, tls: { rejectUnauthorized: false }
@@ -2877,6 +2876,7 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     await transporter.sendMail({ from: fromHeader, to: toHeader, raw: rawMessage });
     console.log(`[OK] Odpověď pro ${toAddr} byla odeslána.`);
 
+    // Připojení k IMAP pro další operace
     const imapClient = createImapClient({
         host: accountDetails.imap_host, port: accountDetails.imap_port,
         secure: accountDetails.imap_secure, auth: { user, pass }
@@ -2884,32 +2884,33 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
 
     try {
         await imapClient.connect();
-        const mailboxes = await imapClient.list();
 
-        // === FINÁLNÍ ŘEŠENÍ NA ZÁKLADĚ VAŠICH LOGŮ ===
-        let sentFolder = null;
-        // 1. Priorita: Hledej složku, která má speciální příznak "\Sent"
-        for (const m of mailboxes) {
-            if (m && m.specialUse && m.specialUse === '\\Sent') {
-                sentFolder = m;
-                break;
-            }
+        // === NOVÝ KROK: Označení původní zprávy jako přečtené a zodpovězené ===
+        try {
+            await imapClient.mailboxOpen('INBOX'); // Otevřeme Doručenou poštu
+            await imapClient.messageFlagsAdd({ uid: String(replyToUid) }, ['\\Seen', '\\Answered']);
+            console.log(`[OK] Původní zpráva (UID: ${replyToUid}) byla označena jako přečtená a zodpovězená.`);
+        } catch (flagError) {
+            console.warn(`[VAROVÁNÍ] Nepodařilo se označit původní zprávu:`, flagError.message);
         }
+        // ======================================================================
 
-        // 2. Pokud se nenašla (což by nemělo nastat), zkus to podle cesty
+        // Krok 3: Uložení kopie do odeslané pošty (beze změny)
+        const mailboxes = await imapClient.list();
+        let sentFolder = mailboxes.find(m => m && m.specialUse && m.specialUse === '\\Sent');
         if (!sentFolder) {
             sentFolder = mailboxes.find(m => (m && m.path) && m.path.toLowerCase() === 'inbox.sent items');
         }
-        // ===============================================
-
         if (sentFolder) {
+            // mailboxOpen se automaticky přepne na správnou složku
             await imapClient.append(sentFolder.path, rawMessage, ['\\Seen']);
             console.log(`[OK] Kopie odpovědi uložena do složky "${sentFolder.path}".`);
         } else {
-            console.warn(`[VAROVÁNÍ] Nepodařilo se najít složku pro odeslanou poštu. Zkontrolujte logy.`);
+            console.warn(`[VAROVÁNÍ] Nepodařilo se najít složku pro odeslanou poštu. Kopie nebyla uložena.`);
         }
+
     } catch (imapError) {
-        console.error('[CHYBA] Nepodařilo se uložit kopii odeslané odpovědi:', imapError);
+        console.error('[CHYBA] Během IMAP operací došlo k chybě:', imapError);
     } finally {
         if (imapClient.connected) await imapClient.logout();
     }
@@ -3496,6 +3497,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
