@@ -2831,138 +2831,102 @@ app.get('/api/custom-email/message-body', async (req, res) => {
 
 
 app.post('/api/custom-email/send-reply', async (req, res) => {
-  try {
-    const { dashboardUserEmail, emailAddress, to, subject, text, fromName, replyToUid, origMessageId: origIdFromFE, origReferences: origRefsFromFE } = req.body || {};
-// 1) Bez reference na původní zprávu neodesílat jako "reply"
-  if (!replyToUid && !origIdFromFE) {
-    return res.status(400).json({ success:false, message:'Chybí replyToUid nebo origMessageId – bez toho nelze vláknovat.' });
+  const { dashboardUserEmail, emailAddress, to, subject, text, fromName, origMessageId, origReferences } = req.body || {};
+  
+  if (!dashboardUserEmail || !emailAddress || !to || !subject || !text) {
+    return res.status(400).json({ success:false, message:'Chybí povinná data.' });
   }
-    
-    if (!dashboardUserEmail || !emailAddress || !to || !subject || !text) {
-      return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, emailAddress, to, subject, text).' });
-    }
+  if (!origMessageId) {
+    return res.status(400).json({ success: false, message: 'Chybí Message-ID pro vytvoření vlákna.' });
+  }
 
-    // 1) Načti SMTP + IMAP údaje
-    const db = await pool.connect();
-    let row;
-    try {
-      const rAcc = await db.query(`
-        SELECT smtp_host, smtp_port, smtp_secure, enc_username, enc_password, active,
-               imap_host, imap_port, imap_secure
-        FROM custom_accounts
-        WHERE dashboard_user_email=$1 AND email_address=$2
-        LIMIT 1
-      `, [dashboardUserEmail, emailAddress]);
+  const db = await pool.connect();
+  let accountDetails;
+  try {
+    const rAcc = await db.query(`
+      SELECT smtp_host, smtp_port, smtp_secure, enc_username, enc_password, active,
+             imap_host, imap_port, imap_secure
+      FROM custom_accounts
+      WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
+      LIMIT 1
+    `, [dashboardUserEmail, emailAddress]);
+    if (!rAcc.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
+    accountDetails = rAcc.rows[0];
+  } finally {
+    db.release();
+  }
 
-      if (!rAcc.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
-      row = rAcc.rows[0];
-      if (row.active === false) return res.status(403).json({ success:false, message:'Tento účet je neaktivní.' });
-    } finally {
-      db.release();
-    }
+  const user = decSecret(accountDetails.enc_username);
+  const pass = decSecret(accountDetails.enc_password);
 
-    const user = decSecret(row.enc_username);
-    const pass = decSecret(row.enc_password);
-
-    // 2) (VOLITELNĚ) načti Message-ID/References z původní zprávy podle replyToUid
-    let origMessageId = null;
-    let origReferences = null;
-
-    if (replyToUid) {
-      const imap = createImapClient({
-        host: row.imap_host,
-        port: Number(row.imap_port),
-        secure: !!row.imap_secure,
-        auth: { user, pass }
-      });
-      try {
-        await imap.connect();
-        await imap.mailboxOpen('INBOX');
-
-        const { content } = await imap.download(Number(replyToUid), null, { uid: true });
-        const chunks = [];
-        for await (const c of content) chunks.push(c);
-        const parsed = await simpleParser(Buffer.concat(chunks));
-
-        origMessageId = parsed.messageId || (parsed.headers?.get && parsed.headers.get('message-id'));
-        const refs = parsed.references || parsed.headers?.get?.('references');
-        if (Array.isArray(refs)) origReferences = refs.join(' ');
-        else if (typeof refs === 'string') origReferences = refs;
-      } catch (e) {
-        console.warn('[custom-email/send-reply] Nepodařilo se načíst původní zprávu podle UID:', e?.message || e);
-      } finally {
-        try { await imap.logout(); } catch {}
-      }
-    }
-
-// fallback: přijde-li rovnou z FE
- if (!origMessageId && origIdFromFE) {
-   origMessageId = String(origIdFromFE).trim();
- }
- if (!origReferences && origRefsFromFE) {
-   origReferences = String(origRefsFromFE).trim();
- }
-
- // u některých serverů MUSÍ být <...>
- const ensureBrackets = (id) => id && /^<.*>$/.test(id) ? id : (id ? `<${id.replace(/^<|>$/g,'')}>` : null);
- origMessageId = ensureBrackets(origMessageId);
-
-    
-
-    // 3) Vytvoř SMTP transporter
-    const isPort587 = Number(row.smtp_port) === 587;
+  try {
     const transporter = nodemailer.createTransport({
-      host: row.smtp_host,
-      port: Number(row.smtp_port),
-      secure: !!row.smtp_secure,                 // 465 => true
-      requireTLS: !row.smtp_secure && isPort587, // 587 => STARTTLS
+      host: accountDetails.smtp_host,
+      port: Number(accountDetails.smtp_port),
+      secure: !!accountDetails.smtp_secure,
       auth: { user, pass },
       tls: { rejectUnauthorized: false }
     });
-    await transporter.verify();
 
-    // 4) Adresy
-    const toAddr = extractEmail(to);
-    const toName = parseNameFromFromHeader(String(to)) || undefined;
-   const replySubject = subject?.trim()
-   ? (subject.startsWith('Re: ') ? subject : `Re: ${subject}`)
-   : 'Re: (bez předmětu)';
-    const fromObj = fromName
-      ? { name: fromName, address: emailAddress }
-      : { address: emailAddress };
-
-    const toObj = toName
-      ? { name: toName, address: toAddr }
-      : { address: toAddr };
-
-    // 5) Sestav a odešli
+    const replySubject = subject?.trim() ? (subject.startsWith('Re: ') ? subject : `Re: ${subject}`) : 'Re: (bez předmětu)';
+    
     const mailOptions = {
-      from: fromObj,
-      to: toObj,
+      from: fromName ? { name: fromName, address: emailAddress } : { address: emailAddress },
+      to: to,
       subject: replySubject,
       text,
-      encoding: 'utf-8',
+      inReplyTo: origMessageId,
+      references: (origReferences ? `${origReferences} ${origMessageId}` : origMessageId).trim()
     };
 
-    if (origMessageId) {
-      mailOptions.inReplyTo = origMessageId;
-      mailOptions.references = (
-        origReferences
-          ? `${origReferences} ${origMessageId}`.trim()
-          : origMessageId
-      );
-      } else {
-    
-   return res.status(400).json({ success:false, message:'Nepodařilo se zjistit Message-ID původní zprávy.' });
+    // --- KROK 1: Sestavení surového emailu, který pak nahrajeme do IMAPu ---
+    const mail = transporter.mailer.createMimeNode(mailOptions);
+    const rawMessage = await mail.build();
+
+    // --- KROK 2: Odeslání emailu přes SMTP ---
+    await transporter.sendMail(mailOptions);
+    console.log(`[OK] Odpověď pro ${to} byla odeslána.`);
+
+    // --- KROK 3: Uložení kopie do odeslané pošty přes IMAP ---
+    const imapClient = createImapClient({
+        host: accountDetails.imap_host,
+        port: accountDetails.imap_port,
+        secure: accountDetails.imap_secure,
+        auth: { user, pass }
+    });
+
+    try {
+        await imapClient.connect();
+        
+        // Najdeme složku pro odeslanou poštu. Hledáme speciální atribut \Sent.
+        // Pokud neexistuje, zkusíme běžné názvy.
+        const mailboxes = await imapClient.list();
+        let sentFolder = mailboxes.find(m => m.attributes.has('\\Sent'));
+        if (!sentFolder) {
+            const commonNames = ['Sent', 'Odeslaná pošta', 'Sent Items', 'Odeslané'];
+            sentFolder = mailboxes.find(m => commonNames.includes(m.name));
+        }
+
+        if (sentFolder) {
+            await imapClient.append(sentFolder.path, rawMessage, ['\\Seen']);
+            console.log(`[OK] Kopie odpovědi uložena do složky "${sentFolder.path}".`);
+        } else {
+            console.warn(`[VAROVÁNÍ] Nepodařilo se najít složku pro odeslanou poštu. Kopie nebyla uložena.`);
+        }
+    } catch (imapError) {
+        // Chyba při ukládání kopie není kritická, email byl odeslán. Jen zalogujeme.
+        console.error('[CHYBA] Nepodařilo se uložit kopii odeslané odpovědi:', imapError);
+    } finally {
+        if (imapClient.connected) {
+            await imapClient.logout();
+        }
     }
 
-    await transporter.sendMail(mailOptions);
-    return res.json({ success:true, message:'Email odeslán.' });
+    return res.json({ success:true, message:'Odpověď byla úspěšně odeslána a uložena.' });
 
   } catch (e) {
-    console.error('[custom-email/send-reply] error:', e);
-    const msg = e?.response?.message || e?.message || 'Odeslání selhalo.';
-    return res.status(500).json({ success:false, message: msg });
+    console.error('[custom-email/send-reply] Kritická chyba při odesílání:', e);
+    return res.status(500).json({ success:false, message: e?.message || 'Odeslání selhalo.' });
   }
 });
 
@@ -3540,6 +3504,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
