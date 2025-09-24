@@ -2832,12 +2832,9 @@ app.get('/api/custom-email/message-body', async (req, res) => {
 
 app.post('/api/custom-email/send-reply', async (req, res) => {
   const { dashboardUserEmail, emailAddress, to, subject, text, fromName, origMessageId, origReferences } = req.body || {};
-  
-  if (!dashboardUserEmail || !emailAddress || !to || !subject || !text) {
-    return res.status(400).json({ success:false, message:'Chybí povinná data.' });
-  }
-  if (!origMessageId) {
-    return res.status(400).json({ success: false, message: 'Chybí Message-ID pro vytvoření vlákna.' });
+
+  if (!dashboardUserEmail || !emailAddress || !to || !subject || !text || !origMessageId) {
+    return res.status(400).json({ success: false, message: 'Chybí povinná data pro odeslání.' });
   }
 
   const db = await pool.connect();
@@ -2850,7 +2847,7 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
       WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
       LIMIT 1
     `, [dashboardUserEmail, emailAddress]);
-    if (!rAcc.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
+    if (!rAcc.rowCount) return res.status(404).json({ success: false, message: 'Custom účet nenalezen.' });
     accountDetails = rAcc.rows[0];
   } finally {
     db.release();
@@ -2860,6 +2857,32 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
   const pass = decSecret(accountDetails.enc_password);
 
   try {
+    // --- KROK 1: Sestavení surového e-mailu jako text ---
+    const toAddr = extractEmail(to);
+    const toName = parseNameFromFromHeader(String(to)) || '';
+    const replySubject = subject?.trim() ? (subject.startsWith('Re: ') ? subject : `Re: ${subject}`) : 'Re: (bez předmětu)';
+
+    // Funkce pro bezpečné kódování hlaviček (důležité pro diakritiku)
+    const encodeMimeWord = (str) => libmime.encodeWord(str, 'B', 'utf-8');
+
+    const fromHeader = fromName ? `${encodeMimeWord(fromName)} <${emailAddress}>` : emailAddress;
+    const toHeader = toName ? `${encodeMimeWord(toName)} <${toAddr}>` : toAddr;
+
+    const rawLines = [
+      `From: ${fromHeader}`,
+      `To: ${toHeader}`,
+      `Subject: ${encodeMimeWord(replySubject)}`,
+      `In-Reply-To: ${origMessageId}`,
+      `References: ${(origReferences ? `${origReferences} ${origMessageId}` : origMessageId).trim()}`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=utf-8',
+      'Content-Transfer-Encoding: 8bit',
+      '', // Prázdný řádek odděluje hlavičky a tělo
+      text
+    ];
+    const rawMessage = rawLines.join('\r\n');
+
+    // --- KROK 2: Odeslání e-mailu přes SMTP ---
     const transporter = nodemailer.createTransport({
       host: accountDetails.smtp_host,
       port: Number(accountDetails.smtp_port),
@@ -2868,24 +2891,12 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
       tls: { rejectUnauthorized: false }
     });
 
-    const replySubject = subject?.trim() ? (subject.startsWith('Re: ') ? subject : `Re: ${subject}`) : 'Re: (bez předmětu)';
-    
-    const mailOptions = {
-      from: fromName ? { name: fromName, address: emailAddress } : { address: emailAddress },
-      to: to,
-      subject: replySubject,
-      text,
-      inReplyTo: origMessageId,
-      references: (origReferences ? `${origReferences} ${origMessageId}` : origMessageId).trim()
-    };
-
-    // --- KROK 1: Sestavení surového emailu, který pak nahrajeme do IMAPu ---
-    const mail = transporter.mailer.createMimeNode(mailOptions);
-    const rawMessage = await mail.build();
-
-    // --- KROK 2: Odeslání emailu přes SMTP ---
-    await transporter.sendMail(mailOptions);
-    console.log(`[OK] Odpověď pro ${to} byla odeslána.`);
+    await transporter.sendMail({
+      from: fromHeader,
+      to: toHeader,
+      raw: rawMessage
+    });
+    console.log(`[OK] Odpověď pro ${toAddr} byla odeslána.`);
 
     // --- KROK 3: Uložení kopie do odeslané pošty přes IMAP ---
     const imapClient = createImapClient({
@@ -2897,9 +2908,6 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
 
     try {
         await imapClient.connect();
-        
-        // Najdeme složku pro odeslanou poštu. Hledáme speciální atribut \Sent.
-        // Pokud neexistuje, zkusíme běžné názvy.
         const mailboxes = await imapClient.list();
         let sentFolder = mailboxes.find(m => m.attributes.has('\\Sent'));
         if (!sentFolder) {
@@ -2914,7 +2922,6 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
             console.warn(`[VAROVÁNÍ] Nepodařilo se najít složku pro odeslanou poštu. Kopie nebyla uložena.`);
         }
     } catch (imapError) {
-        // Chyba při ukládání kopie není kritická, email byl odeslán. Jen zalogujeme.
         console.error('[CHYBA] Nepodařilo se uložit kopii odeslané odpovědi:', imapError);
     } finally {
         if (imapClient.connected) {
@@ -2922,11 +2929,11 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
         }
     }
 
-    return res.json({ success:true, message:'Odpověď byla úspěšně odeslána a uložena.' });
+    return res.json({ success: true, message: 'Odpověď byla úspěšně odeslána a uložena.' });
 
   } catch (e) {
     console.error('[custom-email/send-reply] Kritická chyba při odesílání:', e);
-    return res.status(500).json({ success:false, message: e?.message || 'Odeslání selhalo.' });
+    return res.status(500).json({ success: false, message: e?.message || 'Odeslání selhalo.' });
   }
 });
 
@@ -3504,6 +3511,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
