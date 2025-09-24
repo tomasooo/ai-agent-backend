@@ -2844,7 +2844,7 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
       SELECT smtp_host, smtp_port, smtp_secure, enc_username, enc_password, active,
              imap_host, imap_port, imap_secure
       FROM custom_accounts
-      WHERE dashboardUserEmail=$1 AND email_address=$2 AND active=true
+      WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
       LIMIT 1
     `, [dashboardUserEmail, emailAddress]);
     if (!rAcc.rowCount) return res.status(404).json({ success: false, message: 'Custom účet nenalezen.' });
@@ -3497,6 +3497,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
