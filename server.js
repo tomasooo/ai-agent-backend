@@ -2887,14 +2887,23 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
         const mailboxes = await imapClient.list();
         console.log('[DEBUG] Seznam nalezených IMAP složek:', JSON.stringify(mailboxes, null, 2));
 
-        // === ZDE JE FINÁLNÍ OPRAVA ===
-        // Přidali jsme m.attributes && ... pro bezpečnost
-        let sentFolder = mailboxes.find(m => m.attributes && m.attributes.has('\\Sent'));
+        // === ZDE JE FINÁLNÍ "NEPRŮSTŘELNÁ" OPRAVA ===
+        let sentFolder = null;
+        // 1. Zkus najít složku pomocí systémového příznaku \Sent
+        for (const m of mailboxes) {
+            // Pojistka: zkontroluj, že m i m.attributes existují, než je použiješ
+            if (m && m.attributes && m.attributes.has('\\Sent')) {
+                sentFolder = m;
+                break;
+            }
+        }
+
+        // 2. Pokud se nenašla, zkus to podle běžných názvů
         if (!sentFolder) {
             const commonNames = ['sent items', 'sent', 'odeslaná pošta', 'odeslané', '[gmail]/sent mail'];
             for (const name of commonNames) {
                 const found = mailboxes.find(m => {
-                    const normalizedPath = (m.path || '').toLowerCase().replace(/[./]/g, '/');
+                    const normalizedPath = (m && m.path) ? m.path.toLowerCase().replace(/[./]/g, '/') : '';
                     return normalizedPath === name || normalizedPath.endsWith('/' + name);
                 });
                 if (found) {
@@ -2903,6 +2912,7 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
                 }
             }
         }
+        // ===========================================
 
         if (sentFolder) {
             await imapClient.append(sentFolder.path, rawMessage, ['\\Seen']);
@@ -3498,6 +3508,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
