@@ -2857,32 +2857,26 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
   const pass = decSecret(accountDetails.enc_password);
 
   try {
-    // --- KROK 1: Sestavení surového e-mailu jako text ---
     const toAddr = extractEmail(to);
     const toName = parseNameFromFromHeader(String(to)) || '';
     const replySubject = subject?.trim() ? (subject.startsWith('Re: ') ? subject : `Re: ${subject}`) : 'Re: (bez předmětu)';
-
-    // Funkce pro bezpečné kódování hlaviček (důležité pro diakritiku)
-    const encodeMimeWord = (str) => libmime.encodeWord(str, 'B', 'utf-8');
-
-    const fromHeader = fromName ? `${encodeMimeWord(fromName)} <${emailAddress}>` : emailAddress;
-    const toHeader = toName ? `${encodeMimeWord(toName)} <${toAddr}>` : toAddr;
+    const fromHeader = fromName ? `${libmime.encodeWord(fromName, 'B', 'utf-8')} <${emailAddress}>` : emailAddress;
+    const toHeader = toName ? `${libmime.encodeWord(toName, 'B', 'utf-8')} <${toAddr}>` : toAddr;
 
     const rawLines = [
       `From: ${fromHeader}`,
       `To: ${toHeader}`,
-      `Subject: ${encodeMimeWord(replySubject)}`,
+      `Subject: ${libmime.encodeWord(replySubject, 'B', 'utf-8')}`,
       `In-Reply-To: ${origMessageId}`,
       `References: ${(origReferences ? `${origReferences} ${origMessageId}` : origMessageId).trim()}`,
       'MIME-Version: 1.0',
       'Content-Type: text/plain; charset=utf-8',
       'Content-Transfer-Encoding: 8bit',
-      '', // Prázdný řádek odděluje hlavičky a tělo
+      '',
       text
     ];
     const rawMessage = rawLines.join('\r\n');
 
-    // --- KROK 2: Odeslání e-mailu přes SMTP ---
     const transporter = nodemailer.createTransport({
       host: accountDetails.smtp_host,
       port: Number(accountDetails.smtp_port),
@@ -2890,15 +2884,9 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
       auth: { user, pass },
       tls: { rejectUnauthorized: false }
     });
-
-    await transporter.sendMail({
-      from: fromHeader,
-      to: toHeader,
-      raw: rawMessage
-    });
+    await transporter.sendMail({ from: fromHeader, to: toHeader, raw: rawMessage });
     console.log(`[OK] Odpověď pro ${toAddr} byla odeslána.`);
 
-    // --- KROK 3: Uložení kopie do odeslané pošty přes IMAP ---
     const imapClient = createImapClient({
         host: accountDetails.imap_host,
         port: accountDetails.imap_port,
@@ -2909,17 +2897,29 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     try {
         await imapClient.connect();
         const mailboxes = await imapClient.list();
+
+        // === FINÁLNÍ VYLEPŠENÉ HLEDÁNÍ SLOŽKY ===
         let sentFolder = mailboxes.find(m => m.attributes.has('\\Sent'));
         if (!sentFolder) {
-            const commonNames = ['Sent', 'Odeslaná pošta', 'Sent Items', 'Odeslané'];
-            sentFolder = mailboxes.find(m => commonNames.includes(m.name));
+            const commonNames = ['sent items', 'sent', 'odeslaná pošta', 'odeslané', '[gmail]/sent mail'];
+            for (const name of commonNames) {
+                const found = mailboxes.find(m => {
+                    const normalizedPath = m.path.toLowerCase().replace(/[./]/g, '/'); // Sjednotí oddělovače
+                    return normalizedPath === name || normalizedPath.endsWith('/' + name);
+                });
+                if (found) {
+                    sentFolder = found;
+                    break; 
+                }
+            }
         }
+        // ===========================================
 
         if (sentFolder) {
             await imapClient.append(sentFolder.path, rawMessage, ['\\Seen']);
             console.log(`[OK] Kopie odpovědi uložena do složky "${sentFolder.path}".`);
         } else {
-            console.warn(`[VAROVÁNÍ] Nepodařilo se najít složku pro odeslanou poštu. Kopie nebyla uložena.`);
+            console.warn(`[VAROVÁNÍ] Nepodařilo se automaticky najít složku pro odeslanou poštu. Kopie nebyla uložena.`);
         }
     } catch (imapError) {
         console.error('[CHYBA] Nepodařilo se uložit kopii odeslané odpovědi:', imapError);
@@ -3511,6 +3511,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
