@@ -2680,7 +2680,14 @@ async function handleCustomAnalyzeEmail(req, res) {
     try { if (imap?.connected) await imap.logout(); } catch {}
 
     const parsed = await simpleParser(Buffer.concat(chunks));
-    const emailBody = parsed.text || parsed.html || '';
+    const emailBody = parsed.text || (parsed.html ? parsed.html.replace(/<[^>]+>/g,'').trim() : '');
+
+    
+    const messageId = parsed.messageId || null;
+    let references = parsed.references || null;
+    if (Array.isArray(references)) {
+        references = references.join(' ');
+    }
 
     const styleProfile = {
       tone: st?.tone || 'Formální',
@@ -2744,7 +2751,13 @@ ${String(emailBody).slice(0, 3000)}
       debugOut.styleProfile = styleProfile;
     }
 
-    return res.json({ success:true, analysis, emailBody, ...debugOut });
+     return res.json({
+        success: true,
+        analysis,
+        emailBody,
+        headers: { messageId, references }, // <-- PŘIDÁNO
+        ...debugOut
+    });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ success:false, message:'Analýza selhala.' });
@@ -3527,6 +3540,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
