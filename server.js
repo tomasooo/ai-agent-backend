@@ -2345,18 +2345,25 @@ const replySubject = originalSubject.startsWith('Re: ') ? originalSubject : `Re:
 const encodedFrom = `<${email}>`;
 const encodedSubject = encodeMimeWord(replySubject);
 
-const raw = Buffer.from([
+const lines = [
   `From: ${encodedFrom}`,
   `To: ${originalFrom}`,
   `Subject: ${encodedSubject}`,
-  `In-Reply-To: ${originalMessageId}`,
-  `References: ${`${originalReferences} ${originalMessageId}`.trim()}`,
   'MIME-Version: 1.0',
   'Content-Type: text/plain; charset=utf-8',
   'Content-Transfer-Encoding: 8bit',
   '',
   replyBody
-].join('\n')).toString('base64url');
+];
+
+// vlož vláknovací hlavičky jen pokud máme Message-ID původní zprávy
+if (originalMessageId) {
+  const refs = `${(originalReferences || '').trim()} ${originalMessageId}`.trim();
+  // za Subject je vhodné tyto dva řádky vsunout před MIME-Version – ale pořadí v poli nevadí
+  lines.splice(3, 0, `In-Reply-To: ${originalMessageId}`, `References: ${refs}`);
+}
+
+const raw = Buffer.from(lines.join('\n')).toString('base64url');
 
 await gmail.users.messages.send({
   userId: 'me',
@@ -2365,10 +2372,19 @@ await gmail.users.messages.send({
 
 res.json({ success: true, message: "Email byl úspěšně odeslán." });
     } catch (error) {
-        console.error("Chyba při odesílání emailu:", error);
-        res.status(500).json({ success: false, message: "Nepodařilo se odeslat email." });
-    }
+  console.error(
+    "Chyba při odesílání emailu:",
+    error?.response?.data || error?.message || error
+  );
+  res.status(500).json({
+    success: false,
+    message: error?.response?.data?.error?.message || "Nepodařilo se odeslat email."
+  });
+}
 });
+
+
+
 
 
 
@@ -3511,6 +3527,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
