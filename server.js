@@ -2650,6 +2650,13 @@ async function handleCustomAnalyzeEmail(req, res) {
       WHERE dashboard_user_email=$1 AND connected_email=$2
       LIMIT 1
     `, [dashboardUserEmail, emailAddress]);
+    
+    // PŘIDÁNO: Načtení FAQ pro daný účet
+    const rFaq = await db.query(`
+      SELECT question, answer FROM faqs
+      WHERE dashboard_user_email=$1 AND connected_email=$2
+    `, [dashboardUserEmail, emailAddress]);
+
     db.release();
 
     if (!rAcc.rowCount) {
@@ -2715,8 +2722,15 @@ Pravidla pro tvorbu "suggested_reply":
   - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
   - Podpis neduplikuj, pokud už v textu je.
 `;
-
-    const task = `Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+    // PŘIDÁNO: Sestavení kontextu z FAQ
+    let faqContext = '';
+    if (rFaq.rowCount > 0) {
+      faqContext = 'Při generování odpovědi se inspiruj a čerpej informace z následující FAQ databáze:\n---\n';
+      faqContext += rFaq.rows.map(row => `Otázka: ${row.question}\nOdpověď: ${row.answer}`).join('\n\n');
+      faqContext += '\n---\n\n';
+    }
+    
+    const task = `${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
 {
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
@@ -2959,10 +2973,18 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
       'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
       [email, dashboardUserEmail]
     );
+    
     const rSet = await db.query(
       'SELECT * FROM settings WHERE dashboard_user_email = $1 AND connected_email = $2',
       [dashboardUserEmail, email]
     );
+
+    Načtení FAQ i pro Gmail účet
+    const rFaq = await db.query(
+      'SELECT question, answer FROM faqs WHERE dashboard_user_email = $1 AND connected_email = $2',
+      [dashboardUserEmail, email]
+    );
+
     db.release();
 
     const refreshToken = rTok.rows[0]?.refresh_token;
@@ -3013,7 +3035,15 @@ Pravidla pro tvorbu "suggested_reply":
   - Podpis neduplikuj, pokud už v textu je.
 `;
 
-    const task = `Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+    //  Sestavení kontextu z FAQ pro Gmail
+    let faqContext = '';
+    if (rFaq.rowCount > 0) {
+      faqContext = 'Při generování odpovědi se inspiruj a čerpej informace z následující FAQ databáze:\n---\n';
+      faqContext += rFaq.rows.map(row => `Otázka: ${row.question}\nOdpověď: ${row.answer}`).join('\n\n');
+      faqContext += '\n---\n\n';
+    }
+
+    const task = `${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
 {
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
@@ -3497,6 +3527,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
