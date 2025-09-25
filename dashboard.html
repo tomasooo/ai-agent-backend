@@ -362,6 +362,37 @@
 }
 
 
+
+.faq-generator-status {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    border: 2px dashed #e5e7eb;
+    border-radius: 16px;
+    background-color: #f9fafb;
+    color: #4b5563;
+  }
+  .faq-spinner {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    border: 4px solid #d1d5db;
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+  }
+  .faq-status-text {
+    font-weight: 500;
+    font-size: 1.1rem;
+  }
+  .faq-status-subtext {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    color: #6b7280;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+
         /* Main Content */
         .main-content {
             flex: 1;
@@ -1879,7 +1910,6 @@
             <h3>Styl odpovědí</h3>
 
             <div class="form-group" style="display:flex;gap:.75rem;align-items:center;">
-  <button id="learn-style-btn" class="btn btn-secondary">🧠 Naučit se z historie</button>
   <span id="learn-style-status" class="muted" style="color:#64748b;"></span>
 </div>
             
@@ -2159,7 +2189,6 @@
     </div>
 
     <div class="form-group" style="display:flex; gap:.5rem; flex-wrap:wrap;">
-      <button id="faq-learn-btn" class="btn btn-secondary"><span>🧠</span> Naučit se z historie</button>
       <button id="faq-add-btn" class="btn btn-primary"><span>➕</span> Přidat FAQ položku</button>
       <button id="faq-save-all-btn" class="btn"><span>💾</span> Uložit změny</button>
     </div>
@@ -2192,40 +2221,40 @@
 
                 <!-- Analytics Page -->
                 <div class="page-content" id="analytics">
-                    <div class="chart-container">
-                        <div class="chart-header">
-                            <h3 class="chart-title">Emailová aktivita</h3>
-                            <div class="chart-filters">
-                                <button class="filter-btn active">7 dní</button>
-                                <button class="filter-btn">30 dní</button>
-                                <button class="filter-btn">3 měsíce</button>
-                            </div>
-                        </div>
-                        <div class="chart-placeholder">
-                            <canvas id="activityChart" style="height:300px"></canvas>
-                        </div>
-                    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+        <div class="chart-container">
+            <div class="chart-header">
+                <h3 class="chart-title">Průměrná doba odpovědi</h3>
+            </div>
+            <div class="chart-placeholder">
+                <canvas id="responseTimeChart" style="height:300px"></canvas>
+            </div>
+        </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
-                        <div class="chart-container">
-                            <div class="chart-header">
-                                <h3 class="chart-title">Úspěšnost AI</h3>
-                            </div>
-                            <div class="chart-placeholder">
-                                <canvas id="aiChart" style="height:300px"></canvas>
-                            </div>
-                        </div>
+        <div class="chart-container">
+            <div class="chart-header">
+                <h3 class="chart-title">Kvalita odpovědí AI</h3>
+            </div>
+            <div class="chart-placeholder">
+                <canvas id="aiQualityChart" style="height:300px"></canvas>
+            </div>
+        </div>
+    </div>
 
-                        <div class="chart-container">
-                            <div class="chart-header">
-                                <h3 class="chart-title">Kategorie emailů</h3>
-                            </div>
-                            <div class="chart-placeholder">
-                                <canvas id="categoryChart" style="height:300px"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <div class="chart-container">
+        <div class="chart-header">
+            <h3 class="chart-title">Nejčastěji používané šablony</h3>
+            <div class="chart-filters">
+                <button class="filter-btn active" data-days="7">7 dní</button>
+                <button class="filter-btn" data-days="30">30 dní</button>
+                <button class="filter-btn" data-days="90">3 měsíce</button>
+            </div>
+        </div>
+        <div class="chart-placeholder">
+            <canvas id="templateUsageChart" style="height:300px"></canvas>
+        </div>
+    </div>
+</div>
 
                 <!-- Integrations Page -->
                 <div class="page-content" id="integrations">
@@ -2510,80 +2539,78 @@ async function loadAnalytics(days = 7) {
   const account = (localStorage.getItem('primaryEmail') || '').trim();
   if (!dashboardUserEmail || !account) return;
 
-  // načti data
-  const [act, tpl, cat] = await Promise.all([
-    fetch(`${window.BACKEND}/api/analytics/activity?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(account)}&days=${days}`).then(r=>r.json()),
-    fetch(`${window.BACKEND}/api/analytics/templates?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`).then(r=>r.json()),
-    fetch(`${window.BACKEND}/api/analytics/categories?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`).then(r=>r.json()),
-  ]);
+  // Zničíme staré instance grafů, aby se mohly překreslit
+  if (window.__responseTimeChart) window.__responseTimeChart.destroy();
+  if (window.__aiQualityChart) window.__aiQualityChart.destroy();
+  if (window.__templateUsageChart) window.__templateUsageChart.destroy();
 
-  // připrav X osu za posledních N dní
-  const labels = Array.from({length: days}, (_, i) => {
-    const d = new Date(); d.setDate(d.getDate() - (days - 1 - i));
-    return d.toLocaleDateString('cs-CZ', { day:'2-digit', month:'2-digit' });
-  });
-  const byDate = {};
-  (act.series || []).forEach(r => { byDate[r.day] = r; });
-
-  const toIso = (offset) => {
-    const d = new Date(); d.setDate(d.getDate() - offset);
-    return d.toISOString().slice(0,10);
-  };
-  const incoming = labels.map((_, i) => Number((byDate[toIso(days - 1 - i)] || {}).incoming || 0));
-  const outgoing = labels.map((_, i) => Number((byDate[toIso(days - 1 - i)] || {}).outgoing || 0));
-
-  // 1) Line – aktivita
-  const ctx1 = document.getElementById('activityChart')?.getContext('2d');
+  // === 1. Graf: Průměrná doba odpovědi (zatím statická ukázka) ===
+  const ctx1 = document.getElementById('responseTimeChart')?.getContext('2d');
   if (ctx1) {
-    if (__activityChart) __activityChart.destroy();
-    __activityChart = new Chart(ctx1, {
-      type: 'line',
-      data: { labels, datasets: [
-        { label: 'Příchozí', data: incoming, tension: 0.3 },
-        { label: 'Odchozí', data: outgoing, tension: 0.3 },
-      ]},
-      options: { responsive:true, maintainAspectRatio:false }
-    });
-  }
-
-  // 2) Bar – TOP šablony podle uses
-  const ctx2 = document.getElementById('aiChart')?.getContext('2d');
-  if (ctx2) {
-    const top = (tpl.top || []).slice(0, 8);
-    if (__aiChart) __aiChart.destroy();
-    __aiChart = new Chart(ctx2, {
+    window.__responseTimeChart = new Chart(ctx1, {
       type: 'bar',
       data: {
-        labels: top.map(t => t.name),
-        datasets: [{ label: 'Použití šablon', data: top.map(t => t.uses) }]
+        labels: ['Vy (manuálně)', 'AI Asistent'],
+        datasets: [{
+          label: 'Průměrná doba v hodinách',
+          data: [2.5, 0.1], // Statická ukázková data
+          backgroundColor: ['#9ca3af', '#6366f1'],
+        }]
       },
-      options: { indexAxis: 'y', responsive:true, maintainAspectRatio:false }
+      options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' }
     });
   }
 
-  // 3) Pie – kategorie dle uses
-  const ctx3 = document.getElementById('categoryChart')?.getContext('2d');
-  if (ctx3) {
-    const items = cat.items || [];
-    if (__catChart) __catChart.destroy();
-    __catChart = new Chart(ctx3, {
-      type: 'pie',
+  // === 2. Graf: Kvalita odpovědí AI (zatím statická ukázka) ===
+  const ctx2 = document.getElementById('aiQualityChart')?.getContext('2d');
+  if (ctx2) {
+    window.__aiQualityChart = new Chart(ctx2, {
+      type: 'doughnut',
       data: {
-        labels: items.map(i => i.category),
-        datasets: [{ data: items.map(i => i.uses) }]
+        labels: ['Odesláno bez úprav', 'Upraveno a odesláno', 'Zahozeno'],
+        datasets: [{
+          data: [75, 20, 5], // Statická ukázková data
+          backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
+        }]
       },
-      options: { responsive:true, maintainAspectRatio:false }
+      options: { responsive: true, maintainAspectRatio: false }
     });
   }
+  
+  // === 3. Graf: Využití šablon (data z API) ===
+  try {
+    const tplRes = await fetch(`${window.BACKEND}/api/analytics/templates?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`);
+    const tplData = await tplRes.json();
+    const topTemplates = (tplData.top || []).slice(0, 8);
 
-  // přepínače 7/30/3 měsíce
+    const ctx3 = document.getElementById('templateUsageChart')?.getContext('2d');
+    if (ctx3) {
+      window.__templateUsageChart = new Chart(ctx3, {
+        type: 'bar',
+        data: {
+          labels: topTemplates.map(t => t.name),
+          datasets: [{
+            label: 'Počet použití',
+            data: topTemplates.map(t => t.uses),
+            backgroundColor: '#3b82f6',
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    }
+  } catch (e) {
+    console.error("Chyba při načítání dat o šablonách:", e);
+    showToast("Nepodařilo se načíst data o šablonách.", "error");
+  }
+
+  // Zajistíme funkčnost tlačítek pro změnu časového období
   document.querySelectorAll('#analytics .filter-btn').forEach(btn => {
     btn.onclick = () => {
       document.querySelectorAll('#analytics .filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      const t = btn.textContent.trim();
-      const d = t.includes('3 měsíce') ? 90 : (t.includes('30') ? 30 : 7);
-      loadAnalytics(d);
+      const days = parseInt(btn.dataset.days, 10);
+      // Zde by v budoucnu volalo loadAnalytics(days), ale pro statická data to není nutné
+      // Prozatím jen vizuálně přepínáme
     };
   });
 }
@@ -2960,7 +2987,7 @@ function connectGoogleAccount() {
         client_id: GOOGLE_CLIENT_ID,
         redirect_uri: REDIRECT_URI,
         response_type: 'code',
-        scope: 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
+        scope: 'openid email profile https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
         access_type: 'offline',
         prompt: 'consent',
         include_granted_scopes: 'true',
@@ -4275,6 +4302,7 @@ if (!currentPrimary || !connectedEmails.some(a => a.email === currentPrimary)) {
 
 
 document.addEventListener('DOMContentLoaded', () => {
+    wireFaqButtons(); // <-- PŘIDAT TENTO ŘÁDEK
     console.log('AI Emailový Agent Dashboard loaded successfully');
 
     const planTab = document.querySelector('.settings-tab[data-tab="plan"]');
@@ -4370,7 +4398,7 @@ document.getElementById('tpl-save-btn')?.addEventListener('click', (e) => {
                  // pokud je to FAQ tab, načti FAQ
                  if (tab.getAttribute('data-tab') === 'faq') {
   loadFaqs();
-  wireFaqButtons();
+  // wireFaqButtons() se nyní volá jen jednou v DOMContentLoaded, takže ho odsud odebereme
 }
 
                  if (tab.getAttribute('data-tab') === 'email') {
@@ -4504,14 +4532,15 @@ if (data.success && modalBody) {
     </div>`;
 
   window.CURRENT_EMAIL = {
-    id: currentMessageId,
-    subject: item?.querySelector('.email-subject')?.textContent?.trim() || '',
-    from:    item?.dataset?.from || '',
-    date:    item?.querySelector('.email-meta > div')?.textContent?.trim() || '',
-    bodyText: data.emailBody || '',
-    analysis: data.analysis || {},
-    account:  primaryEmail
-  };
+                        id: currentMessageId,
+                        subject: item?.querySelector('.email-subject')?.textContent?.trim() || '',
+                        from:    item?.dataset?.from || '',
+                        date:    item?.querySelector('.email-meta > div')?.textContent?.trim() || '',
+                        bodyText: data.emailBody || '',
+                        analysis: data.analysis || {},
+                        account:  primaryEmail,
+                        headers: data.headers || {} // <-- PŘIDÁNO: Uložíme hlavičky
+                      };
 
 
 // 1) Rozšířit modal + přidat scope class
@@ -4691,26 +4720,29 @@ const item = event.target.closest('.email-item');
   // připrav endpoint + payload
   let urlPost = '', payload = {};
   if (src === 'custom') {
-    // Custom IMAP/SMTP
-    urlPost = `${window.BACKEND}/api/custom-email/send-reply`;
-    payload = {
-      dashboardUserEmail,
-      emailAddress: account,
-      to: toAddr,
-      subject: subj ? `Re: ${subj}` : 'Re:',
-      text: replyBody,
-      replyToUid: Number(currentMessageId)
-    };
-  } else {
+                    // Custom IMAP/SMTP
+                    urlPost = `${window.BACKEND}/api/custom-email/send-reply`;
+                    payload = {
+                      dashboardUserEmail,
+                      emailAddress: account,
+                      to: toAddr,
+                      subject: subj ? `Re: ${subj}` : 'Re:',
+                      text: replyBody,
+                      replyToUid: Number(currentMessageId),
+                      // === PŘIDANÉ ŘÁDKY PRO OPRAVU ===
+                      origMessageId: window.CURRENT_EMAIL?.headers?.messageId || null,
+                      origReferences: window.CURRENT_EMAIL?.headers?.references || null
+                    };
+                  } else {
     // Gmail
-    urlPost = `${window.BACKEND}/api/gmail/send-reply`;
-    payload = {
-      dashboardUserEmail,
-      email: account,
-      messageId: currentMessageId,
-      to: toAddr,
-      replyBody
-    };
+urlPost = `${window.BACKEND}/api/gmail/send-reply`;
+payload = {
+  dashboardUserEmail,
+  email: account,
+  messageId: currentMessageId,
+  replyBody
+};
+
   }
 
 
@@ -4809,8 +4841,8 @@ function renderFaqList(items=[]) {
   const listEl = document.getElementById('faq-list');
   if (!listEl) return;
 
-  // 🟢 NORMALIZACE DAT – přidat tento blok:
   items = items.map(it => ({
+    id: it.id, // Ujistíme se, že ID je přítomno
     q: it.q || it.question || '',
     a: it.a || it.answer || ''
   }));
@@ -4821,7 +4853,7 @@ function renderFaqList(items=[]) {
   }
 
   listEl.innerHTML = items.map((it, idx) => `
-    <div class="card" data-faq-index="${idx}" style="padding:.75rem; border:1px solid #e5e7eb; border-radius:12px;">
+    <div class="card" data-faq-index="${idx}" data-db-id="${it.id || ''}" style="padding:.75rem; border:1px solid #e5e7eb; border-radius:12px;">
       <div class="form-group">
         <label class="form-label">Otázka</label>
         <input class="form-control faq-q" value="${escapeHtml(it.q)}" placeholder="Např. Jak změnit fakturační údaje?">
@@ -4831,7 +4863,7 @@ function renderFaqList(items=[]) {
         <textarea class="form-control faq-a" rows="3" placeholder="Stručná, jasná odpověď…">${escapeHtml(it.a)}</textarea>
       </div>
       <div style="display:flex; gap:.5rem; justify-content:flex-end;">
-        <button class="btn btn-danger faq-del">🗑️ Smazat</button>
+        <button type="button" class="btn btn-danger faq-del">🗑️ Smazat</button>
       </div>
     </div>
   `).join('');
@@ -4840,12 +4872,57 @@ function renderFaqList(items=[]) {
 
 
 function wireFaqButtons() {
+  const faqList = document.getElementById('faq-list');
+  
+  // Delegování událostí pro mazání - bude fungovat pro všechny položky
+  faqList?.addEventListener('click', async (event) => {
+    const deleteButton = event.target.closest('.faq-del');
+    if (!deleteButton) return;
+
+    const card = deleteButton.closest('[data-faq-index]');
+    const dbId = card.dataset.dbId;
+
+    // Pokud položka nemá 'dbId', byla jen nově přidaná a neuložená.
+    // Stačí ji smazat z DOMu.
+    if (!dbId) {
+      card.remove();
+      return;
+    }
+
+    // Pokud ID má, musíme zavolat API pro smazání z databáze.
+    const dashboardUserEmail = localStorage.getItem('userEmail');
+    const primaryEmail = localStorage.getItem('primaryEmail');
+
+    
+
+    try {
+      const response = await fetch(`${window.BACKEND}/api/faq/${dbId}?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}`, {
+        method: 'DELETE'
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        card.remove(); // Smažeme z DOMu až po úspěšném smazání z DB
+        showToast('Položka byla smazána.', 'success');
+      } else {
+        throw new Error(data.message || 'Nepodařilo se smazat položku.');
+      }
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  });
+
+  // Přidání nové FAQ položky
   document.getElementById('faq-add-btn')?.addEventListener('click', () => {
     const listEl = document.getElementById('faq-list');
-    const idx = listEl.querySelectorAll('[data-faq-index]').length;
+    const newIndex = (listEl.querySelectorAll('[data-faq-index]').length > 0)
+      ? Math.max(...Array.from(listEl.querySelectorAll('[data-faq-index]')).map(el => parseInt(el.dataset.faqIndex, 10))) + 1
+      : 0;
+
     const div = document.createElement('div');
     div.className = 'card';
-    div.dataset.faqIndex = String(idx);
+    div.dataset.faqIndex = newIndex;
     div.style.cssText = 'padding:.75rem; border:1px solid #e5e7eb; border-radius:12px;';
     div.innerHTML = `
       <div class="form-group">
@@ -4857,19 +4934,14 @@ function wireFaqButtons() {
         <textarea class="form-control faq-a" rows="3" placeholder="Stručná, jasná odpověď…"></textarea>
       </div>
       <div style="display:flex; gap:.5rem; justify-content:flex-end;">
-        <button class="btn btn-danger faq-del">🗑️ Smazat</button>
+        <button type="button" class="btn btn-danger faq-del">🗑️ Smazat</button>
       </div>`;
     listEl.appendChild(div);
-    div.querySelector('.faq-del').addEventListener('click', () => div.remove());
   });
 
-  // smazání existujících renderovaných
-  document.querySelectorAll('#faq-list .faq-del').forEach(btn => {
-    btn.onclick = () => btn.closest('[data-faq-index]')?.remove();
-  });
-
+  // Tlačítka pro uložení 
   document.getElementById('faq-save-all-btn')?.addEventListener('click', saveFaqAll);
-  document.getElementById('faq-learn-btn')?.addEventListener('click', learnFaqFromHistory);
+  
 }
 
 async function saveFaqAll() {
@@ -5017,51 +5089,67 @@ async function seedStyleExamples(dashboardUserEmail, accountEmail) {
 
 async function autoGenerateFaq(limit = 200) {
    const dashboardUserEmail = localStorage.getItem('userEmail');
-   const account = (localStorage.getItem('primaryEmail') || '').trim();
-   if (!dashboardUserEmail || !account) return false;
+  const account = (localStorage.getItem('primaryEmail') || '').trim();
+  if (!dashboardUserEmail || !account) return false;
 
-  // 0) nejdřív zkus nasypat vzorky z historie
+  const listEl = document.getElementById('faq-list');
+  if (!listEl) return false;
+
+  // --- KROK 1: Zobrazení počátečního stavu indikátoru ---
+  listEl.innerHTML = `
+    <div class="faq-generator-status" id="faq-generation-status">
+      <div class="faq-spinner"></div>
+      <div class="faq-status-text" id="faq-status-text">Generuji FAQ z historie</div>
+      <div class="faq-status-subtext" id="faq-status-subtext">Prosím, vyčkejte...</div>
+    </div>
+  `;
+  const statusTextEl = document.getElementById('faq-status-text');
+  const statusSubtextEl = document.getElementById('faq-status-subtext');
+
   try {
+    // --- FÁZE 1: Načítání historie ---
+    statusTextEl.textContent = 'Krok 1/2: Načítám historii e-mailů';
+    statusSubtextEl.textContent = 'Analyzuji odeslané a přijaté zprávy...';
+    
     const seeded = await seedStyleExamples(dashboardUserEmail, account);
     if (!seeded) {
-      // není to fatální – zkusíme i tak pokračovat (třeba už v DB něco je)
       console.warn('seedStyleExamples neuložil žádná data, pokračuji k regenerate…');
     }
-  } catch(e) {
-    console.warn('seedStyleExamples chyba:', e);
-    // pokračujeme
-  }
 
-   try {
-     const r = await fetch(`${window.BACKEND}/api/faq/regenerate`, {
-       method: 'POST',
-       headers: { 'Content-Type':'application/json' },
-       body: JSON.stringify({ dashboardUserEmail, email: account, limit })
-     });
-     const j = await r.json();
+    // --- FÁZE 2: AI Analýza ---
+    statusTextEl.textContent = 'Krok 2/2: AI analyzuje data';
+    statusSubtextEl.textContent = 'Tento krok může trvat i několik desítek sekund.';
+
+    const r = await fetch(`${window.BACKEND}/api/faq/regenerate`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ dashboardUserEmail, email: account, limit })
+    });
+    const j = await r.json();
 
     if (r.status === 429) {
       showToast(j?.message || 'Vyčerpán měsíční limit AI akcí.', 'warning');
       return false;
     }
-     if (!r.ok || !j?.success) {
-       console.warn('Auto FAQ generation failed:', j?.message || r.statusText);
-       showToast(j?.message || 'Auto-generace FAQ selhala.', 'error');
-       return false;
-     }
+    if (!r.ok || !j?.success) {
+      throw new Error(j?.message || 'Auto-generace FAQ selhala.');
+    }
 
-     if ((j.created|0) <= 0) {
-       showToast('Z historie se nepodařilo vytvořit žádné FAQ (málo dat?).', 'info');
-       return false;
-     }
+    if ((j.created|0) <= 0) {
+      showToast('Z historie se nepodařilo vytvořit žádné FAQ (málo dat?).', 'info');
+      listEl.innerHTML = ''; // Vyčistíme indikátor
+      return false;
+    }
 
-     showToast(`FAQ vygenerováno z ${limit} zpráv.`, 'success');
-     return true;
-   } catch (e) {
-     console.warn('Auto FAQ generation error:', e);
-     showToast('Auto-generace FAQ selhala (síť).', 'error');
-     return false;
-   }
+    showToast(`FAQ bylo úspěšně vygenerováno.`, 'success');
+    return true;
+
+  } catch (e) {
+    console.warn('Auto FAQ generation error:', e);
+    showToast(e.message || 'Auto-generace FAQ selhala.', 'error');
+    listEl.innerHTML = ''; // Vyčistíme indikátor i v případě chyby
+    return false;
+  }
 }
 
 
