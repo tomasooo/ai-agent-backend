@@ -2979,7 +2979,7 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
       [dashboardUserEmail, email]
     );
 
-    Načtení FAQ i pro Gmail účet
+    //Načtení FAQ i pro Gmail účet
     const rFaq = await db.query(
       'SELECT question, answer FROM faqs WHERE dashboard_user_email = $1 AND connected_email = $2',
       [dashboardUserEmail, email]
@@ -3527,6 +3527,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
