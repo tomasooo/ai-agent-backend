@@ -1226,11 +1226,11 @@ app.post('/api/auth/google', async (req, res) => {
 
         client = await pool.connect();
         await client.query(
-            `INSERT INTO dashboard_users (email, name)
-             VALUES ($1, $2)
-             ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name`,
-            [payload.email, payload.name]
-        );
+    `INSERT INTO dashboard_users (email, name, plan)
+     VALUES ($1, $2, 'Starter')
+     ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name`,
+    [payload.email, payload.name]
+);
 
         res.status(200).json({ success: true, user: payload });
     } catch (error) {
@@ -3541,6 +3541,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
