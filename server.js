@@ -1,6 +1,7 @@
 
 // server.js-test
 import express from 'express';
+import cron from 'node-cron';
 import cors from 'cors';
 import { OAuth2Client } from 'google-auth-library';
 import { Pool } from 'pg';
@@ -3439,40 +3440,38 @@ app.post('/api/settings', async (req, res) => {
 });
 
 
-// === NOVÝ ENDPOINT, KTERÝ BUDE VOLAT EXTERNÍ SLUŽBA ===
-app.get('/api/trigger-worker', async (req, res) => {
-    if (req.query.secret !== CRON_SECRET) return res.status(401).send('Neoprávněný přístup.');
-  console.log('Externí Cron Job spuštěn, zahajuji kontrolu emailů...');
-  res.status(202).send('Kontrola emailů zahájena.');
+// 
+// ===================================================================
+// === AUTOMATICKÝ EMAIL WORKER (SPAM + SCHVALOVÁNÍ) ================
+// ===================================================================
 
+async function runEmailWorker() {
+  console.log('🤖 Spouštím automatickou kontrolu emailů...');
   let dbClient;
   try {
     dbClient = await pool.connect();
-
-    // Vezmeme všechny propojené schránky s jejich nastavením
+    // Vezmeme všechny aktivní propojené schránky s jejich nastavením
     const { rows: accounts } = await dbClient.query(`
-      SELECT 
-        ca.email               AS connected_email,
+      SELECT
+        ca.email AS connected_email,
         ca.refresh_token,
         ca.dashboard_user_email,
-         ca.active,
+        ca.active,
         s.auto_reply,
         s.approval_required,
         s.spam_filter
       FROM connected_accounts ca
-      LEFT JOIN settings s
-        ON s.dashboard_user_email = ca.dashboard_user_email
-       AND s.connected_email = ca.email
-       WHERE ca.active = true 
+      JOIN settings s
+        ON s.dashboard_user_email = ca.dashboard_user_email AND s.connected_email = ca.email
+      WHERE ca.active = true
+        AND (s.approval_required = true OR s.spam_filter = true) -- Zpracuj jen účty, co mají něco zapnuté
     `);
 
     for (const acc of accounts) {
-      console.log(`Zpracovávám: ${acc.connected_email} (uživatel: ${acc.dashboard_user_email})`);
-
+      console.log(`   -> Zpracovávám: ${acc.connected_email}`);
       oauth2Client.setCredentials({ refresh_token: acc.refresh_token });
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
-      // label "ceka-na-schvaleni"
+      
       const labelsRes = await gmail.users.labels.list({ userId: 'me' });
       let approvalLabel = labelsRes.data.labels.find(l => l.name === 'ceka-na-schvaleni');
       if (!approvalLabel) {
@@ -3481,19 +3480,18 @@ app.get('/api/trigger-worker', async (req, res) => {
         })).data;
       }
 
-      // nové nepřečtené v inboxu
+      // Hledej nové nepřečtené v inboxu
       const listResponse = await gmail.users.messages.list({ userId: 'me', q: 'is:unread in:inbox' });
       const messages = listResponse.data.messages || [];
+      if (messages.length === 0) continue;
 
+      console.log(`      Nalezeno ${messages.length} nových zpráv.`);
       for (const msg of messages) {
         const msgResponse = await gmail.users.messages.get({ userId: 'me', id: msg.id });
         const subject = msgResponse.data.payload.headers.find(h => h.name === 'Subject')?.value || '';
 
-        const prompt = `Jsi AI asistent pro třídění emailů. Klasifikuj následující email. Vrať pouze JSON {"category": "spam"|"approval_required"|"routine"}.
-Důležité emaily od šéfa nebo klientů označ jako "approval_required". Běžné reklamy a zjevný spam "spam".
-Předmět: ${subject}
-Fragment: ${msgResponse.data.snippet}`;
-
+        const prompt = `Jsi AI asistent pro třídění emailů. Klasifikuj následující email. Vrať pouze JSON {"category": "spam"|"approval_required"|"routine"}. Důležité emaily od šéfa nebo klientů označ jako "approval_required". Běžné reklamy a zjevný spam "spam". Předmět: ${subject} Fragment: ${msgResponse.data.snippet}`;
+        
         const geminiResult = await model.generateContent(prompt);
         const analysisText = geminiResult.response.candidates[0].content.parts[0].text;
         const analysis = JSON.parse(analysisText.replace(/```json|```/g, ''));
@@ -3503,13 +3501,13 @@ Fragment: ${msgResponse.data.snippet}`;
             userId: 'me', id: msg.id,
             requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX'] }
           });
-          console.log(`"${subject}" → SPAM`);
+          console.log(`         "${subject}" → SPAM`);
         } else if (analysis.category === 'approval_required' && acc.approval_required) {
           await gmail.users.messages.modify({
             userId: 'me', id: msg.id,
-            requestBody: { addLabelIds: [approvalLabel.id], removeLabelIds: ['INBOX'] }
+            requestBody: { addLabelIds: [approvalLabel.id], removeLabelIds: ['INBOX', 'UNREAD'] }
           });
-          console.log(`"${subject}" → čeká na schválení`);
+          console.log(`         "${subject}" → čeká na schválení`);
         }
       }
     }
@@ -3517,8 +3515,24 @@ Fragment: ${msgResponse.data.snippet}`;
     console.error('Došlo k chybě v automatickém workeru:', err);
   } finally {
     if (dbClient) dbClient.release();
-    console.log('Automatická kontrola dokončena.');
+    console.log('✅ Automatická kontrola dokončena.');
   }
+}
+
+// Endpoint, který lze stále volat ručně pro testování (např. přes UptimeRobot)
+app.get('/api/trigger-worker', (req, res) => {
+  if (req.query.secret !== CRON_SECRET) return res.status(401).send('Neoprávněný přístup.');
+  
+  // Nespustí worker okamžitě, aby se předešlo duplicitnímu běhu, pokud je cron aktivní.
+  // Jen potvrdí, že by se spustil. Můžete odkomentovat, pokud chcete i manuální spouštění.
+  // runEmailWorker(); 
+  
+  res.status(200).send('Worker je aktivní a spouští se automaticky na serveru.');
+});
+
+// Automatické spouštění každých 15 minut
+cron.schedule('*/15 * * * *', () => {
+  runEmailWorker();
 });
 
 
@@ -3527,6 +3541,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
