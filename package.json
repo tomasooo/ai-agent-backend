@@ -24,6 +24,7 @@
     "jsonwebtoken": "^9.0.2",
     "libmime": "^5.3.7",
     "mailparser": "^3.7.4",
+    "node-cron": "^4.2.1",
     "nodemailer": "^7.0.6",
     "pg": "^8.16.3"
   }
