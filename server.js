@@ -401,6 +401,7 @@ async function setupDatabase() {
 
         // 1. Tabulka pro uživatele, kteří se přihlašují do naší aplikace
         await client.query(`
+        CREATE TABLE IF NOT EXISTS dashboard_users (
             email VARCHAR(255) PRIMARY KEY,
                 name VARCHAR(255),
                 plan VARCHAR(50) DEFAULT 'Starter',
@@ -413,7 +414,8 @@ async function setupDatabase() {
   ALTER TABLE dashboard_users
     ADD COLUMN IF NOT EXISTS password_hash TEXT,
     ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false,
-    ADD COLUMN IF NOT EXISTS verification_token TEXT
+    ADD COLUMN IF NOT EXISTS verification_token TEXT,
+    ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';
 `);
 
         // 2. Tabulka pro emaily, které si uživatelé připojí (původní "users")
@@ -440,8 +442,7 @@ async function setupDatabase() {
   END $$;
 `);
         
-        // Smazání staré tabulky users, pokud existuje (jen pro přechod)
-        // await client.query(`DROP TABLE IF EXISTS users;`);
+        
 
 
         // 3. Tabulka pro nastavení, nyní s vazbou na uživatele i připojený účet
@@ -3548,6 +3549,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
