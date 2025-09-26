@@ -2339,10 +2339,11 @@
                             </div>
                         </div>
                     </div>
+                    
                 </div>
 <!-- Admin Page -->
-
- <div class="admin-stats">
+ <div class="page-content" id="admin">
+<div class="admin-stats">
                         <div class="stat-card"><div class="stat-header"><span class="stat-title">Celkem uživatelů</span><span class="stat-icon">👥</span></div><div class="stat-value" id="admin-total-users">-</div></div>
                         <div class="stat-card"><div class="stat-header"><span class="stat-title">Platící zákazníci</span><span class="stat-icon">⭐</span></div><div class="stat-value" id="admin-paying-users">-</div></div>
                         <div class="stat-card"><div class="stat-header"><span class="stat-title">Připojené emaily</span><span class="stat-icon">📧</span></div><div class="stat-value" id="admin-connected-emails">-</div></div>
@@ -2380,9 +2381,10 @@
                                 </tbody>
                         </table>
                     </div>
-
+</div>
 
             </div>
+              
 
 
 
@@ -4495,24 +4497,33 @@ if (planTab) {
     }
 
     navLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
+       link.addEventListener('click', (e) => {
             e.preventDefault();
             navLinks.forEach(l => l.classList.remove('active'));
             link.classList.add('active');
+            
+           
             pageContents.forEach(page => page.classList.remove('active'));
+            
             const targetPageId = link.getAttribute('data-page');
             const targetElement = document.getElementById(targetPageId);
-            if (targetElement) targetElement.classList.add('active');
+            if (targetElement) {
+                targetElement.classList.add('active');
+            }
 
             if (pageTitle) {
-                const titles = { 'dashboard': 'Dashboard', 'emails': 'Správa emailů', 'templates': 'Šablony', 'settings': 'Nastavení', 'analytics': 'Analytika', 'integrations': 'Integrace' };
+                const titles = { 'dashboard': 'Dashboard', 'emails': 'Správa emailů', 'templates': 'Šablony', 'settings': 'Nastavení', 'analytics': 'Analytika', 'integrations': 'Integrace', 'admin': 'Admin' };
                 pageTitle.textContent = titles[targetPageId] || 'Dashboard';
             }
 
-            // ZMĚNA: Funkce se volají bez parametrů, vezmou si primární email z localStorage
+            // Načtení dat pro příslušnou stránku
             if (targetPageId === 'emails') fetchEmails();
             if (targetPageId === 'settings') loadSettings();
             if (targetPageId === 'analytics') loadAnalytics(7);
+            if (targetPageId === 'admin') {
+                loadAdminUsers();
+                loadActivityLog();
+            }
         });
     });
 
