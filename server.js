@@ -567,7 +567,18 @@ await client.query(`
   );
 `);
 
+await client.query(`
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id BIGSERIAL PRIMARY KEY,
+                timestamp TIMESTAMPTZ DEFAULT NOW(),
+                user_email VARCHAR(255),
+                action TEXT NOT NULL,
+                status VARCHAR(50) NOT NULL, -- 'success', 'error', 'info'
+                details JSONB
+            );
+        `);
 
+      
         
         console.log("✅ Databázové tabulky pro víceuživatelský provoz jsou připraveny.");
     } catch (err) {
@@ -629,6 +640,22 @@ async function getGmailClientFor(dashboardUserEmail, email) {
   } finally {
     db.release();
   }
+}
+
+
+async function logActivity(user_email, action, status, details = {}) {
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query(
+            'INSERT INTO audit_log (user_email, action, status, details) VALUES ($1, $2, $3, $4)',
+            [user_email, action, status, details]
+        );
+    } catch (e) {
+        console.error('Chyba při zápisu do audit_log:', e);
+    } finally {
+        if (client) client.release();
+    }
 }
 
 
@@ -3687,6 +3714,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
