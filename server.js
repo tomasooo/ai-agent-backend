@@ -2084,6 +2084,7 @@ app.post('/api/user/plan', async (req, res) => {
     }
 
     await client.query(`UPDATE dashboard_users SET plan = $1 WHERE email = $2`, [plan, email]);
+     await logActivity(email, `Upgrade na ${plan}`, 'success');
     res.json({ success: true, message: "Plán byl změněn." });
   } catch (err) {
     console.error("Chyba při ukládání tarifu:", err);
@@ -3709,11 +3710,30 @@ app.delete('/api/admin/users/:email', isAdmin, async (req, res) => {
 });
 
 
+// Endpoint pro načtení logu aktivit (pouze pro adminy)
+app.get('/api/admin/activity-log', isAdmin, async (req, res) => {
+    let client;
+    try {
+        client = await pool.connect();
+        const result = await client.query(
+            'SELECT timestamp, user_email, action, status FROM audit_log ORDER BY timestamp DESC LIMIT 50'
+        );
+        res.json({ success: true, log: result.rows });
+    } catch (e) {
+        res.status(500).json({ success: false, message: 'Nepodařilo se načíst log aktivit.' });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+
+
 setupDatabase().then(() => {
     app.listen(PORT, () => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
