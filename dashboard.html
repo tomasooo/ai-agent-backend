@@ -5668,25 +5668,28 @@ function initAdminEventListeners() {
 
     // Uložení změn v modálním okně
     document.getElementById('saveUserBtn')?.addEventListener('click', async () => {
-        const dashboardUserEmail = localStorage.getItem('userEmail');
+      const dashboardUserEmail = localStorage.getItem('userEmail');
         const email = document.getElementById('editEmail').value;
         const name = document.getElementById('editName').value;
         const role = document.getElementById('editRole').value;
 
         try {
-            const res = await fetch(`${window.BACKEND}/api/admin/users/${email}`, {
+            // ZDE JE OPRAVA: Přidali jsme dashboardUserEmail do URL jako query parametr
+            const url = `${window.BACKEND}/api/admin/users/${email}?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`;
+            
+            const res = await fetch(url, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, role, dashboardUserEmail })
+                body: JSON.stringify({ name, role }) // Z těla požadavku jsme ho odstranili
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.message);
             showToast('Uživatel upraven.', 'success');
-            editModal.classList.remove('show');
+            document.getElementById('editUserModal').classList.remove('show');
             loadAdminUsers(); // Znovu načteme tabulku s aktuálními daty
         } catch (err) {
             showToast(err.message, 'error');
-        }
+        } 
     });
 
     // Zavírání modálního okna
@@ -5807,3 +5810,4 @@ if (adminTabLink) {
 
 </body>
 </html>
+
