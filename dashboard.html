@@ -1502,6 +1502,24 @@
 /* ať zůstane jen pravá část s počtem */
 .templates-header { justify-content: flex-end; }
 
+
+
+/* Styly pro Admin Dashboard */
+        .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+        .admin-title { font-size: 2rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 0.75rem; }
+        .users-section { background: white; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0; overflow: hidden; }
+        .section-header { padding: 1.5rem 2rem; border-bottom: 1px solid #e2e8f0; }
+        .section-title { font-size: 1.3rem; font-weight: 600; color: #1e293b; }
+        .users-table { width: 100%; border-collapse: collapse; }
+        .users-table th, .users-table td { padding: 1rem 1.5rem; text-align: left; border-bottom: 1px solid #f1f5f9; }
+        .users-table th { background: #f8fafc; font-weight: 600; color: #374151; font-size: 0.875rem; }
+        .users-table tbody tr:hover { background: #f8fafc; }
+        .role-badge { padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
+        .role-admin { background: #fef3c7; color: #92400e; }
+        .role-user { background: #dbeafe; color: #1e40af; }
+
+
+
     </style>
 </head>
 <body>
@@ -1553,6 +1571,12 @@
                         <a href="#" class="nav-link" data-page="integrations">
                             <span class="nav-icon">🔗</span>
                             <span class="nav-text">Integrace</span>
+                        </a>
+                    </li>
+                    <li class="nav-item" id="admin-menu-item" style="display: none;">
+                        <a href="#" class="nav-link" data-page="admin">
+                            <span class="nav-icon">👑</span>
+                            <span class="nav-text">Admin</span>
                         </a>
                     </li>
                 </ul>
@@ -1696,7 +1720,7 @@
             <option value="all">Všechny stavy</option>
                     <option value="unread">📧 Nepřečtené</option>
                     <option value="processed">✅ Zpracované</option>
-                    <option value="pending">⏳ Čekající</option>
+                    <option value="approval">⏳ Čekající</option>
                     <option value="spam">🚫 Spam</option>
         </select>
         <select class="form-control" id="period-filter">
@@ -2298,6 +2322,37 @@
                     </div>
                 </div>
             </div>
+
+
+<!-- Admin Page -->
+
+<div class="page-content" id="admin">
+                <div class="admin-header">
+                    <h1 class="admin-title"><span>👑</span> Admin Dashboard</h1>
+                </div>
+                <div class="users-section">
+                    <div class="section-header">
+                        <h2 class="section-title">Správa uživatelů</h2>
+                    </div>
+                    <table class="users-table">
+                        <thead>
+                            <tr>
+                                <th>Email</th>
+                                <th>Jméno</th>
+                                <th>Plán</th>
+                                <th>Role</th>
+                                <th>Datum registrace</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminUsersTableBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+
+
+
         </main>
     </div>
 
@@ -3653,24 +3708,35 @@ function renderEmailList(emails, total) {
     if (!emailListContainer) return;
     emailListContainer.innerHTML = '';
     
+    const currentStatusFilter = document.getElementById('status-filter')?.value;
+    const isApprovalView = currentStatusFilter === 'approval';
+
     if (emails.length === 0) {
         emailListContainer.innerHTML = `<div class="empty-state"><h3>Nebyly nalezeny žádné emaily</h3><p>Zkuste změnit filtry nebo vyhledávání.</p></div>`;
         return;
     }
+
     emails.forEach(email => {
-        const sender = email.sender.split('<')[0].trim().replace(/"/g, '');
+        const sender = (email.sender || '').split('<')[0].trim().replace(/"/g, '') || email.sender;
+        
+        // Dynamické přidání schvalovacích tlačítek
+        const actionButtons = isApprovalView
+          ? `<div class="approval-actions" style="margin-top: 8px; display: flex; gap: 8px;">
+               <button class="btn btn-success btn-sm approve-btn" data-id="${email.id}" data-src="${email._src || 'gmail'}">✅ Schválit</button>
+               <button class="btn btn-danger btn-sm reject-btn" data-id="${email.id}" data-src="${email._src || 'gmail'}">❌ Zamítnout</button>
+             </div>`
+          : `<button class="btn btn-primary analyze-btn" data-message-id="${email.id}" style="margin-top: 5px;">Analyzovat 🤖</button>`;
+
         const emailHTML = `
-  <div class="email-item" data-id="${email.id}" data-src="${email._src || 'gmail'}">
+            <div class="email-item" data-id="${email.id}" data-src="${email._src || 'gmail'}" data-from="${escapeHtml(email.sender || '')}">
                 <div class="email-content" style="flex-grow: 1;">
-                    <div class="email-sender">${sender}</div>
-                    <div class="email-subject">${email.subject}</div>
-                    <div class="email-preview">${email.snippet}</div>
+                    <div class="email-sender">${escapeHtml(sender)}</div>
+                    <div class="email-subject">${escapeHtml(email.subject)}</div>
+                    <div class="email-preview">${escapeHtml(email.snippet)}</div>
                 </div>
                 <div class="email-meta" style="text-align: right; flex-shrink: 0;">
                     <div>${new Date(email.date).toLocaleDateString('cs-CZ')}</div>
-                    <button class="btn btn-primary analyze-btn" data-message-id="${email.id}" style="margin-top: 5px;">
-                        Analyzovat 🤖
-                    </button>
+                    ${actionButtons}
                 </div>
             </div>`;
         emailListContainer.insertAdjacentHTML('beforeend', emailHTML);
@@ -4304,6 +4370,22 @@ if (!currentPrimary || !connectedEmails.some(a => a.email === currentPrimary)) {
 document.addEventListener('DOMContentLoaded', () => {
     wireFaqButtons(); // <-- PŘIDAT TENTO ŘÁDEK
     console.log('AI Emailový Agent Dashboard loaded successfully');
+
+
+ const userRole = localStorage.getItem('userRole');
+    if (userRole === 'admin') {
+        const adminMenuItem = document.getElementById('admin-menu-item');
+        if (adminMenuItem) {
+            adminMenuItem.style.display = 'block';
+        }
+    }
+
+    const adminTabLink = document.querySelector('.nav-link[data-page="admin"]');
+    if (adminTabLink) {
+        adminTabLink.addEventListener('click', loadAdminUsers);
+    }
+
+
 
     const planTab = document.querySelector('.settings-tab[data-tab="plan"]');
 if (planTab) {
@@ -5309,6 +5391,47 @@ function syncProMeta(){
   erReplyBottom && (erReplyBottom.onclick = triggerAiFromDetail);
 })();
   
+
+// === NOVÁ FUNKCE PRO ADMIN SEKCI ===
+
+async function loadAdminUsers() {
+    const tableBody = document.getElementById('adminUsersTableBody');
+    if (!tableBody) return;
+    tableBody.innerHTML = '<tr><td colspan="5">Načítám data...</td></tr>';
+    
+    const dashboardUserEmail = localStorage.getItem('userEmail');
+
+    try {
+        const response = await fetch(`${window.BACKEND}/api/admin/users?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`);
+        const data = await response.json();
+
+        if (!data.success) {
+            throw new Error(data.message);
+        }
+
+        if (data.users.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5">Nenalezeni žádní uživatelé.</td></tr>';
+            return;
+        }
+
+        tableBody.innerHTML = data.users.map(user => `
+            <tr>
+                <td>${escapeHtml(user.email)}</td>
+                <td>${escapeHtml(user.name || '')}</td>
+                <td>${escapeHtml(user.plan)}</td>
+                <td>
+                    <span class="role-badge ${user.role === 'admin' ? 'role-admin' : 'role-user'}">${escapeHtml(user.role)}</span>
+                </td>
+                <td>${new Date(user.created_at).toLocaleDateString('cs-CZ')}</td>
+            </tr>
+        `).join('');
+
+    } catch (error) {
+        tableBody.innerHTML = `<tr><td colspan="5" style="color: red;">Chyba: ${error.message}</td></tr>`;
+    }
+}
+
+
 
 
 </script>
