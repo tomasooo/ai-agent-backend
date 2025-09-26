@@ -401,10 +401,10 @@ async function setupDatabase() {
 
         // 1. Tabulka pro uživatele, kteří se přihlašují do naší aplikace
         await client.query(`
-            CREATE TABLE IF NOT EXISTS dashboard_users (
-                email VARCHAR(255) PRIMARY KEY,
+            email VARCHAR(255) PRIMARY KEY,
                 name VARCHAR(255),
-                plan VARCHAR(50) DEFAULT 'Free',
+                plan VARCHAR(50) DEFAULT 'Starter',
+                role TEXT DEFAULT 'user', -- PŘIDÁNO: role s výchozí hodnotou 'user'
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         `);
@@ -1915,7 +1915,7 @@ app.post('/api/auth/login', async (req, res) => {
   const client = await pool.connect();
   try {
     const r = await client.query(
-      'SELECT email, name, password_hash FROM dashboard_users WHERE email = $1',
+      'SELECT email, name, plan, role, password_hash FROM dashboard_users WHERE email = $1',
       [email]
     );
     if (r.rowCount === 0 || !r.rows[0].password_hash) {
@@ -1924,7 +1924,7 @@ app.post('/api/auth/login', async (req, res) => {
     const ok = await bcrypt.compare(password, r.rows[0].password_hash);
     if (!ok) return res.status(401).json({ success: false, message: 'Nesprávný email nebo heslo.' });
 
-    return res.json({ success: true, user: { email: r.rows[0].email, name: r.rows[0].name }});
+     return res.json({ success: true, user: { email: r.rows[0].email, name: r.rows[0].name, role: r.rows[0].role, plan: r.rows[0].plan }});
   } catch (e) {
     console.error('LOGIN ERROR', e);
     return res.status(500).json({ success: false, message: 'Přihlášení selhalo.' });
@@ -3548,6 +3548,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
