@@ -3544,25 +3544,26 @@ async function runEmailWorker() {
         const analysis = JSON.parse(analysisText.replace(/```json|```/g, ''));
 
         if (analysis.category === 'spam' && acc.spam_filter) {
-          await gmail.users.messages.modify({
-            userId: 'me', id: msg.id,
-            requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX'] }
-          });
-          console.log(`         "${subject}" → SPAM`);
-        } else if (analysis.category === 'approval_required' && acc.approval_required) {
-          await gmail.users.messages.modify({
-            userId: 'me', id: msg.id,
-            requestBody: { addLabelIds: [approvalLabel.id], removeLabelIds: ['INBOX', 'UNREAD'] }
-          });
-          console.log(`         "${subject}" → čeká na schválení`);
-        } else {
-          // PŘIDÁNO: Zpracování rutinních emailů - označíme je jako přečtené
-          await gmail.users.messages.modify({
-            userId: 'me', id: msg.id,
-            requestBody: { removeLabelIds: ['UNREAD'] }
-          });
-          console.log(`         "${subject}" → rutinní, označeno jako přečtené`);
-        }
+  await gmail.users.messages.modify({
+    userId: 'me', id: msg.id,
+    requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX'] }
+  });
+  console.log(`         "${subject}" → SPAM`);
+} else if (analysis.category === 'approval_required' && acc.approval_required) {
+  await gmail.users.messages.modify({
+    userId: 'me', id: msg.id,
+    requestBody: { addLabelIds: [approvalLabel.id], removeLabelIds: ['INBOX', 'UNREAD'] }
+  });
+  console.log(`         "${subject}" → čeká na schválení`);
+} else {
+  // TATO ČÁST PŘERUŠÍ SMYČKU A ZASTAVÍ NÁKLADY
+  // Označí rutinní email jako přečtený, aby se neanalyzoval znovu
+  await gmail.users.messages.modify({
+    userId: 'me', id: msg.id,
+    requestBody: { removeLabelIds: ['UNREAD'] }
+  });
+  console.log(`         "${subject}" → rutinní, označeno jako přečtené`);
+}
       }
     }
   } catch (err) {
@@ -3744,6 +3745,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
