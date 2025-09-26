@@ -1505,19 +1505,37 @@
 
 
 /* Styly pro Admin Dashboard */
-        .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
-        .admin-title { font-size: 2rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 0.75rem; }
-        .users-section { background: white; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0; overflow: hidden; }
-        .section-header { padding: 1.5rem 2rem; border-bottom: 1px solid #e2e8f0; }
-        .section-title { font-size: 1.3rem; font-weight: 600; color: #1e293b; }
-        .users-table { width: 100%; border-collapse: collapse; }
-        .users-table th, .users-table td { padding: 1rem 1.5rem; text-align: left; border-bottom: 1px solid #f1f5f9; }
-        .users-table th { background: #f8fafc; font-weight: 600; color: #374151; font-size: 0.875rem; }
-        .users-table tbody tr:hover { background: #f8fafc; }
-        .role-badge { padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
-        .role-admin { background: #fef3c7; color: #92400e; }
-        .role-user { background: #dbeafe; color: #1e40af; }
-
+       .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    .admin-title { font-size: 2rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 0.75rem; }
+    .admin-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+    .stat-card { background: white; padding: 1.5rem; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0; }
+    .stat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .stat-title { font-size: 0.9rem; color: #64748b; font-weight: 500; }
+    .stat-icon { font-size: 1.5rem; padding: 8px; border-radius: 10px; background: #f1f5f9; }
+    .stat-value { font-size: 2rem; font-weight: 700; color: #1e293b; }
+    .users-section { background: white; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0; overflow: hidden; }
+    .section-header { padding: 1.5rem 2rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; flex-wrap: wrap; gap: 1rem; }
+    .section-title { font-size: 1.3rem; font-weight: 600; color: #1e293b; }
+    .search-filters { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+    .search-box { position: relative; }
+    .search-input { padding: 8px 12px 8px 35px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 0.9rem; width: 250px; }
+    .search-input:focus { outline: none; border-color: #667eea; }
+    .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+    .filter-select { padding: 8px 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 0.9rem; background: white; cursor: pointer; }
+    .users-table { width: 100%; border-collapse: collapse; }
+    .users-table th, .users-table td { padding: 1rem 1.5rem; text-align: left; border-bottom: 1px solid #f1f5f9; }
+    .users-table th { background: #f8fafc; font-weight: 600; color: #374151; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    .users-table tbody tr:hover { background: #f8fafc; }
+    .user-info-cell { display: flex; align-items: center; gap: 0.75rem; }
+    .user-avatar-small { width: 32px; height: 32px; border-radius: 50%; background: #667eea; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.8rem; font-weight: 600; }
+    .user-details { display: flex; flex-direction: column; }
+    .user-name { font-weight: 600; color: #1e293b; }
+    .user-email { font-size: 0.875rem; color: #64748b; }
+    .role-badge { padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
+    .role-admin { background: #fef3c7; color: #92400e; }
+    .role-user { background: #dbeafe; color: #1e40af; }
+    .action-buttons { display: flex; gap: 0.5rem; }
+    .btn-sm { padding: 4px 8px; font-size: 0.75rem; } 
 
 
     </style>
@@ -2326,30 +2344,68 @@
 
 
 <!-- Admin Page -->
-
 <div class="page-content" id="admin">
-                <div class="admin-header">
-                    <h1 class="admin-title"><span>👑</span> Admin Dashboard</h1>
-                </div>
-                <div class="users-section">
-                    <div class="section-header">
-                        <h2 class="section-title">Správa uživatelů</h2>
-                    </div>
-                    <table class="users-table">
-                        <thead>
-                            <tr>
-                                <th>Email</th>
-                                <th>Jméno</th>
-                                <th>Plán</th>
-                                <th>Role</th>
-                                <th>Datum registrace</th>
-                            </tr>
-                        </thead>
-                        <tbody id="adminUsersTableBody">
-                            </tbody>
-                    </table>
-                </div>
+    <div class="admin-stats">
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-title">Celkem uživatelů</span>
+                <span class="stat-icon">👥</span>
             </div>
+            <div class="stat-value" id="admin-total-users">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-title">Platící zákazníci</span>
+                <span class="stat-icon">⭐</span>
+            </div>
+            <div class="stat-value" id="admin-paying-users">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-title">Připojené emaily</span>
+                <span class="stat-icon">📧</span>
+            </div>
+            <div class="stat-value" id="admin-connected-emails">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-title">AI akce dnes</span>
+                <span class="stat-icon">🤖</span>
+            </div>
+            <div class="stat-value" id="admin-ai-today">-</div>
+        </div>
+    </div>
+    <div class="users-section">
+        <div class="section-header">
+            <h2 class="section-title">Správa uživatelů</h2>
+            <div class="search-filters">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="search" class="search-input" placeholder="Hledat uživatele..." id="userSearch">
+                </div>
+                <select class="filter-select" id="roleFilter">
+                    <option value="all">Všechny role</option>
+                    <option value="admin">Admin</option>
+                    <option value="user">Uživatel</option>
+                </select>
+            </div>
+        </div>
+        <table class="users-table">
+            <thead>
+                <tr>
+                    <th>Uživatel</th>
+                    <th>Plán</th>
+                    <th>Role</th>
+                    <th>Datum registrace</th>
+                    <th>Akce</th>
+                </tr>
+            </thead>
+            <tbody id="adminUsersTableBody">
+                </tbody>
+        </table>
+    </div>
+</div>
+
 
 
 
@@ -5403,6 +5459,7 @@ async function loadAdminUsers() {
     const dashboardUserEmail = localStorage.getItem('userEmail');
 
     try {
+        // Získáme data ze serveru (endpoint, který jsme vytvořili dříve)
         const response = await fetch(`${window.BACKEND}/api/admin/users?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`);
         const data = await response.json();
 
@@ -5410,22 +5467,50 @@ async function loadAdminUsers() {
             throw new Error(data.message);
         }
 
-        if (data.users.length === 0) {
+        const users = data.users || [];
+
+        // Naplnění statistických karet
+        document.getElementById('admin-total-users').textContent = users.length;
+        document.getElementById('admin-paying-users').textContent = users.filter(u => u.plan !== 'Starter').length;
+        // Ostatní statistiky zde můžeme v budoucnu doplnit z dalších API volání
+        document.getElementById('admin-connected-emails').textContent = '-';
+        document.getElementById('admin-ai-today').textContent = '-';
+
+        if (users.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="5">Nenalezeni žádní uživatelé.</td></tr>';
             return;
         }
 
-        tableBody.innerHTML = data.users.map(user => `
-            <tr>
-                <td>${escapeHtml(user.email)}</td>
-                <td>${escapeHtml(user.name || '')}</td>
-                <td>${escapeHtml(user.plan)}</td>
-                <td>
-                    <span class="role-badge ${user.role === 'admin' ? 'role-admin' : 'role-user'}">${escapeHtml(user.role)}</span>
-                </td>
-                <td>${new Date(user.created_at).toLocaleDateString('cs-CZ')}</td>
-            </tr>
-        `).join('');
+        // Vykreslení tabulky s uživateli
+        tableBody.innerHTML = users.map(user => {
+            const nameParts = (user.name || '').split(' ');
+            const initials = (nameParts.length > 1 ? nameParts[0][0] + nameParts[nameParts.length - 1][0] : (user.name || 'U').substring(0, 2)).toUpperCase();
+
+            return `
+                <tr>
+                    <td>
+                        <div class="user-info-cell">
+                            <div class="user-avatar-small">${initials}</div>
+                            <div class="user-details">
+                                <span class="user-name">${escapeHtml(user.name || '')}</span>
+                                <span class="user-email">${escapeHtml(user.email)}</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(user.plan)}</td>
+                    <td>
+                        <span class="role-badge ${user.role === 'admin' ? 'role-admin' : 'role-user'}">${escapeHtml(user.role)}</span>
+                    </td>
+                    <td>${new Date(user.created_at).toLocaleDateString('cs-CZ')}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary btn-sm">Upravit</button>
+                            <button class="btn btn-danger btn-sm">Smazat</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
 
     } catch (error) {
         tableBody.innerHTML = `<tr><td colspan="5" style="color: red;">Chyba: ${error.message}</td></tr>`;
@@ -5489,4 +5574,3 @@ async function loadAdminUsers() {
 
 </body>
 </html>
-
