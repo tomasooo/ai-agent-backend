@@ -3555,6 +3555,13 @@ async function runEmailWorker() {
             requestBody: { addLabelIds: [approvalLabel.id], removeLabelIds: ['INBOX', 'UNREAD'] }
           });
           console.log(`         "${subject}" → čeká na schválení`);
+        } else {
+          // PŘIDÁNO: Zpracování rutinních emailů - označíme je jako přečtené
+          await gmail.users.messages.modify({
+            userId: 'me', id: msg.id,
+            requestBody: { removeLabelIds: ['UNREAD'] }
+          });
+          console.log(`         "${subject}" → rutinní, označeno jako přečtené`);
         }
       }
     }
@@ -3737,6 +3744,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
