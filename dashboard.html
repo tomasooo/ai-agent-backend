@@ -1067,7 +1067,7 @@
         
         .page-container {
     width: 100%;
-    max-width: 18000px; /* ZDE MĚŇTE POŽADOVANOU ŠÍŘKU */
+    max-width: 1500px; /* ZDE MĚŇTE POŽADOVANOU ŠÍŘKU */
     margin: 0 auto;    /* Toto vycentruje obsah na stránce */
 }
 
@@ -2340,71 +2340,77 @@
                         </div>
                     </div>
                 </div>
-            </div>
-
-
 <!-- Admin Page -->
 <div class="page-content" id="admin">
-    <div class="admin-stats">
-        <div class="stat-card">
-            <div class="stat-header">
-                <span class="stat-title">Celkem uživatelů</span>
-                <span class="stat-icon">👥</span>
-            </div>
-            <div class="stat-value" id="admin-total-users">-</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-header">
-                <span class="stat-title">Platící zákazníci</span>
-                <span class="stat-icon">⭐</span>
-            </div>
-            <div class="stat-value" id="admin-paying-users">-</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-header">
-                <span class="stat-title">Připojené emaily</span>
-                <span class="stat-icon">📧</span>
-            </div>
-            <div class="stat-value" id="admin-connected-emails">-</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-header">
-                <span class="stat-title">AI akce dnes</span>
-                <span class="stat-icon">🤖</span>
-            </div>
-            <div class="stat-value" id="admin-ai-today">-</div>
-        </div>
-    </div>
-    <div class="users-section">
-        <div class="section-header">
-            <h2 class="section-title">Správa uživatelů</h2>
-            <div class="search-filters">
-                <div class="search-box">
-                    <span class="search-icon">🔍</span>
-                    <input type="search" class="search-input" placeholder="Hledat uživatele..." id="userSearch">
+    <div class="page-container">
+        <div class="admin-stats">
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Celkem uživatelů</span>
+                    <span class="stat-icon">👥</span>
                 </div>
-                <select class="filter-select" id="roleFilter">
-                    <option value="all">Všechny role</option>
-                    <option value="admin">Admin</option>
-                    <option value="user">Uživatel</option>
-                </select>
+                <div class="stat-value" id="admin-total-users">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Platící zákazníci</span>
+                    <span class="stat-icon">⭐</span>
+                </div>
+                <div class="stat-value" id="admin-paying-users">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Připojené emaily</span>
+                    <span class="stat-icon">📧</span>
+                </div>
+                <div class="stat-value" id="admin-connected-emails">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">AI akce dnes</span>
+                    <span class="stat-icon">🤖</span>
+                </div>
+                <div class="stat-value" id="admin-ai-today">-</div>
             </div>
         </div>
-        <table class="users-table">
-            <thead>
-                <tr>
-                    <th>Uživatel</th>
-                    <th>Plán</th>
-                    <th>Role</th>
-                    <th>Datum registrace</th>
-                    <th>Akce</th>
-                </tr>
-            </thead>
-            <tbody id="adminUsersTableBody">
+        
+        <div class="users-section">
+            <div class="section-header">
+                <h2 class="section-title">Správa uživatelů</h2>
+                <div class="search-filters">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="search" class="search-input" placeholder="Hledat uživatele..." id="userSearch">
+                    </div>
+                    <select class="filter-select" id="roleFilter">
+                        <option value="all">Všechny role</option>
+                        <option value="admin">Admin</option>
+                        <option value="user">Uživatel</option>
+                    </select>
+                </div>
+            </div>
+            <table class="users-table">
+                <thead>
+                    <tr>
+                        <th>Uživatel</th>
+                        <th>Plán</th>
+                        <th>Role</th>
+                        <th>Datum registrace</th>
+                        <th>Akce</th>
+                    </tr>
+                </thead>
+                <tbody id="adminUsersTableBody">
                 </tbody>
-        </table>
+            </table>
+        </div>
     </div>
 </div>
+
+
+
+            </div>
+
+
 
 
 
