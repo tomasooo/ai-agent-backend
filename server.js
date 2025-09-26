@@ -1223,17 +1223,24 @@ app.post('/api/auth/google', async (req, res) => {
             idToken: token,
             audience: GOOGLE_CLIENT_ID,
         });
-        const payload = ticket.getPayload(); // obsahuje email + name
+        const payload = ticket.getPayload();
 
         client = await pool.connect();
+        // Vytvoříme uživatele, pokud neexistuje (s výchozí rolí 'user')
         await client.query(
-    `INSERT INTO dashboard_users (email, name, plan)
-     VALUES ($1, $2, 'Starter')
-     ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name`,
-    [payload.email, payload.name]
-);
+            `INSERT INTO dashboard_users (email, name, plan, role)
+             VALUES ($1, $2, 'Starter', 'user')
+             ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name`,
+            [payload.email, payload.name]
+        );
+        
+        // NOVĚ: Načteme kompletního uživatele z databáze, abychom získali jeho roli
+        const userResult = await client.query(
+            'SELECT email, name, plan, role FROM dashboard_users WHERE email = $1',
+            [payload.email]
+        );
 
-        res.status(200).json({ success: true, user: payload });
+        res.status(200).json({ success: true, user: userResult.rows[0] });
     } catch (error) {
         console.error("Chyba při ověřování přihlašovacího tokenu:", error);
         res.status(401).json({ success: false, message: 'Ověření selhalo.' });
@@ -3597,6 +3604,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
