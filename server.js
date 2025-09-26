@@ -3457,6 +3457,7 @@ async function runEmailWorker() {
         ca.refresh_token,
         ca.dashboard_user_email,
         ca.active,
+        ca.created_at, -- PŘIDÁNO ZDE
         s.auto_reply,
         s.approval_required,
         s.spam_filter
@@ -3464,7 +3465,7 @@ async function runEmailWorker() {
       JOIN settings s
         ON s.dashboard_user_email = ca.dashboard_user_email AND s.connected_email = ca.email
       WHERE ca.active = true
-        AND (s.approval_required = true OR s.spam_filter = true) -- Zpracuj jen účty, co mají něco zapnuté
+        AND (s.approval_required = true OR s.spam_filter = true)
     `);
 
     for (const acc of accounts) {
@@ -3480,8 +3481,14 @@ async function runEmailWorker() {
         })).data;
       }
 
-      // Hledej nové nepřečtené v inboxu
-      const listResponse = await gmail.users.messages.list({ userId: 'me', q: 'is:unread in:inbox' });
+      // --- PŘIDANÁ LOGIKA PRO FILTR PODLE DATA ---
+     
+      const afterTimestamp = Math.floor(new Date(acc.created_at).getTime() / 1000);
+      const searchQuery = `is:unread in:inbox after:${afterTimestamp}`;
+      // --- KONEC LOGIKY ---
+
+      // Hledej nové nepřečtené v inboxu s časovým omezením
+      const listResponse = await gmail.users.messages.list({ userId: 'me', q: searchQuery });
       const messages = listResponse.data.messages || [];
       if (messages.length === 0) continue;
 
@@ -3541,6 +3548,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
