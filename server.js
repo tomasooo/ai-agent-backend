@@ -3580,11 +3580,51 @@ const isAdmin = async (req, res, next) => {
 
 // Endpoint pro načtení všech uživatelů, chráněný isAdmin middlewarem
 app.get('/api/admin/users', isAdmin, async (req, res) => {
-    let client;
+   let client;
     try {
         client = await pool.connect();
-        const result = await client.query('SELECT email, name, plan, role, created_at FROM dashboard_users ORDER BY created_at DESC');
-        res.json({ success: true, users: result.rows });
+        const { search, role } = req.query;
+
+        // Načtení statistik
+        const statsResult = await client.query(`
+            SELECT
+                (SELECT COUNT(*) FROM dashboard_users) AS total_users,
+                (SELECT COUNT(*) FROM dashboard_users WHERE plan != 'Starter') AS paying_users,
+                ((SELECT COUNT(*) FROM connected_accounts) + (SELECT COUNT(*) FROM custom_accounts)) AS connected_emails,
+                (SELECT SUM(ai_actions_used) FROM usage_counters WHERE period_start = date_trunc('month', NOW()::date)) AS ai_this_month
+        `);
+
+        // Načtení seznamu uživatelů s filtrováním
+        let usersQuery = 'SELECT email, name, plan, role, created_at FROM dashboard_users';
+        const params = [];
+        const conditions = [];
+
+        if (search) {
+            params.push(`%${search}%`);
+            conditions.push(`(name ILIKE $${params.length} OR email ILIKE $${params.length})`);
+        }
+        if (role && role !== 'all') {
+            params.push(role);
+            conditions.push(`role = $${params.length}`);
+        }
+
+        if (conditions.length > 0) {
+            usersQuery += ' WHERE ' + conditions.join(' AND ');
+        }
+        usersQuery += ' ORDER BY created_at DESC';
+
+        const usersResult = await client.query(usersQuery, params);
+        
+        res.json({ 
+            success: true, 
+            stats: {
+                totalUsers: statsResult.rows[0].total_users || 0,
+                payingUsers: statsResult.rows[0].paying_users || 0,
+                connectedEmails: statsResult.rows[0].connected_emails || 0,
+                aiActionsThisMonth: statsResult.rows[0].ai_this_month || 0
+            },
+            users: usersResult.rows 
+        });
     } catch (e) {
         console.error('Chyba při načítání uživatelů:', e);
         res.status(500).json({ success: false, message: 'Nepodařilo se načíst uživatele.' });
@@ -3593,10 +3633,53 @@ app.get('/api/admin/users', isAdmin, async (req, res) => {
     }
 });
 
+// Endpoint pro úpravu uživatele
+app.put('/api/admin/users/:email', isAdmin, async (req, res) => {
+    const targetEmail = req.params.email;
+    const { name, role } = req.body;
+    
+    if (!name || !role) {
+        return res.status(400).json({ success: false, message: 'Chybí jméno nebo role.' });
+    }
+    
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query(
+            'UPDATE dashboard_users SET name = $1, role = $2 WHERE email = $3',
+            [name, role, targetEmail]
+        );
+        res.json({ success: true, message: 'Uživatel byl aktualizován.' });
+    } catch (e) {
+        res.status(500).json({ success: false, message: 'Aktualizace selhala.' });
+    } finally {
+        if (client) client.release();
+    }
+});
 
 
 
+// Endpoint pro smazání uživatele
+app.delete('/api/admin/users/:email', isAdmin, async (req, res) => {
+    const targetEmail = req.params.email;
+    const { dashboardUserEmail } = req.query; // Admin, který provádí akci
 
+    if (targetEmail.toLowerCase() === dashboardUserEmail.toLowerCase()) {
+        return res.status(400).json({ success: false, message: 'Nemůžete smazat sami sebe.' });
+    }
+    
+    let client;
+    try {
+        client = await pool.connect();
+        // Díky 'ON DELETE CASCADE' v databázi se smažou i všechna propojená data (účty, FAQ, atd.)
+        await client.query('DELETE FROM dashboard_users WHERE email = $1', [targetEmail]);
+        res.json({ success: true, message: 'Uživatel byl smazán.' });
+    } catch (e) {
+        res.status(500).json({ success: false, message: 'Smazání selhalo.' });
+    } finally {
+        if (client) client.release();
+    }
+});
 
 
 setupDatabase().then(() => {
@@ -3604,6 +3687,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
