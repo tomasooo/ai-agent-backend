@@ -2417,6 +2417,39 @@
 
 
         </main>
+
+
+        <div class="modal-overlay" id="editUserModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="modal-title"><span>✏️</span> Upravit uživatele</h2>
+                <button class="modal-close" data-close-modal>&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="editUserForm">
+                    <div class="form-group">
+                        <label class="form-label">Jméno</label>
+                        <input type="text" class="form-control" id="editName" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email (pouze pro čtení)</label>
+                        <input type="email" class="form-control" id="editEmail" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Role</label>
+                        <select class="form-control" id="editRole">
+                            <option value="user">Uživatel</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close-modal>Zrušit</button>
+                <button class="btn btn-primary" id="saveUserBtn">💾 Uložit změny</button>
+            </div>
+        </div>
+    </div>
     </div>
 
     <!-- Toast Notification -->
@@ -4431,9 +4464,9 @@ if (!currentPrimary || !connectedEmails.some(a => a.email === currentPrimary)) {
 
 
 document.addEventListener('DOMContentLoaded', () => {
-    wireFaqButtons(); // <-- PŘIDAT TENTO ŘÁDEK
+    wireFaqButtons(); 
     console.log('AI Emailový Agent Dashboard loaded successfully');
-
+    initAdminEventListeners();
 
  const userRole = localStorage.getItem('userRole');
     if (userRole === 'admin') {
@@ -5457,6 +5490,8 @@ function syncProMeta(){
 
 // === NOVÁ FUNKCE PRO ADMIN SEKCI ===
 
+
+
 async function loadAdminUsers() {
     const tableBody = document.getElementById('adminUsersTableBody');
     if (!tableBody) return;
@@ -5523,7 +5558,159 @@ async function loadAdminUsers() {
     }
 }
 
+// Globální proměnná pro ukládání načtených uživatelů
+let allAdminUsers = [];
 
+// Funkce pro vykreslení tabulky na základě dat
+function renderAdminUsersTable(users) {
+    const tableBody = document.getElementById('adminUsersTableBody');
+    if (!tableBody) return;
+
+    if (users.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem;">Nenalezeni žádní uživatelé.</td></tr>';
+        return;
+    }
+
+    tableBody.innerHTML = users.map(user => {
+        const nameParts = (user.name || '').split(' ');
+        const initials = (nameParts.length > 1 ? nameParts[0][0] + nameParts[nameParts.length - 1][0] : (user.name || 'U').substring(0, 2)).toUpperCase();
+
+        return `
+            <tr data-email="${escapeHtml(user.email)}">
+                <td>
+                    <div class="user-info-cell">
+                        <div class="user-avatar-small">${initials}</div>
+                        <div class="user-details">
+                            <span class="user-name">${escapeHtml(user.name || '')}</span>
+                            <span class="user-email">${escapeHtml(user.email)}</span>
+                        </div>
+                    </div>
+                </td>
+                <td>${escapeHtml(user.plan)}</td>
+                <td><span class="role-badge ${user.role === 'admin' ? 'role-admin' : 'role-user'}">${escapeHtml(user.role)}</span></td>
+                <td>${new Date(user.created_at).toLocaleDateString('cs-CZ')}</td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="btn btn-secondary btn-sm edit-user-btn">Upravit</button>
+                        <button class="btn btn-danger btn-sm delete-user-btn">Smazat</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Hlavní funkce pro načtení a filtrování dat
+async function loadAdminUsers() {
+    const tableBody = document.getElementById('adminUsersTableBody');
+    if (!tableBody) return;
+    tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Načítám data...</td></tr>';
+    
+    const dashboardUserEmail = localStorage.getItem('userEmail');
+    const searchTerm = document.getElementById('userSearch').value;
+    const roleFilter = document.getElementById('roleFilter').value;
+
+    try {
+        const url = new URL(`${window.BACKEND}/api/admin/users`);
+        url.searchParams.set('dashboardUserEmail', dashboardUserEmail);
+        if (searchTerm) url.searchParams.set('search', searchTerm);
+        if (roleFilter !== 'all') url.searchParams.set('role', roleFilter);
+
+        const response = await fetch(url);
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message);
+
+        allAdminUsers = data.users || [];
+
+        // Naplnění statistik
+        const stats = data.stats || {};
+        document.getElementById('admin-total-users').textContent = stats.totalUsers || 0;
+        document.getElementById('admin-paying-users').textContent = stats.payingUsers || 0;
+        document.getElementById('admin-connected-emails').textContent = stats.connectedEmails || 0;
+        document.getElementById('admin-ai-today').textContent = stats.aiActionsThisMonth || 0; // Změněno na "tento měsíc"
+        
+        renderAdminUsersTable(allAdminUsers);
+    } catch (error) {
+        tableBody.innerHTML = `<tr><td colspan="5" style="color: red; text-align: center;">Chyba: ${error.message}</td></tr>`;
+    }
+}
+
+// Funkce pro inicializaci všech posluchačů událostí v admin sekci
+function initAdminEventListeners() {
+    const userSearch = document.getElementById('userSearch');
+    const roleFilter = document.getElementById('roleFilter');
+    const tableBody = document.getElementById('adminUsersTableBody');
+    const editModal = document.getElementById('editUserModal');
+
+    // Filtry
+    userSearch?.addEventListener('input', () => loadAdminUsers());
+    roleFilter?.addEventListener('change', () => loadAdminUsers());
+
+    // Kliknutí na tlačítka v tabulce (Upravit / Smazat)
+    tableBody?.addEventListener('click', async (e) => {
+        const dashboardUserEmail = localStorage.getItem('userEmail');
+        
+        // Smazání uživatele
+        if (e.target.classList.contains('delete-user-btn')) {
+            const row = e.target.closest('tr');
+            const emailToDelete = row.dataset.email;
+            
+                try {
+                    const res = await fetch(`${window.BACKEND}/api/admin/users/${emailToDelete}?dashboardUserEmail=${dashboardUserEmail}`, { method: 'DELETE' });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.message);
+                    showToast('Uživatel smazán.', 'success');
+                    row.remove();
+                } catch (err) {
+                    showToast(err.message, 'error');
+                }
+            
+        }
+
+        // Úprava uživatele
+        if (e.target.classList.contains('edit-user-btn')) {
+            const row = e.target.closest('tr');
+            const emailToEdit = row.dataset.email;
+            const user = allAdminUsers.find(u => u.email === emailToEdit);
+            if (user && editModal) {
+                document.getElementById('editName').value = user.name;
+                document.getElementById('editEmail').value = user.email;
+                document.getElementById('editRole').value = user.role;
+                editModal.classList.add('show');
+            }
+        }
+    });
+
+    // Uložení změn v modálním okně
+    document.getElementById('saveUserBtn')?.addEventListener('click', async () => {
+        const dashboardUserEmail = localStorage.getItem('userEmail');
+        const email = document.getElementById('editEmail').value;
+        const name = document.getElementById('editName').value;
+        const role = document.getElementById('editRole').value;
+
+        try {
+            const res = await fetch(`${window.BACKEND}/api/admin/users/${email}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, role, dashboardUserEmail })
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message);
+            showToast('Uživatel upraven.', 'success');
+            editModal.classList.remove('show');
+            loadAdminUsers(); // Znovu načteme tabulku s aktuálními daty
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    });
+
+    // Zavírání modálního okna
+    editModal?.addEventListener('click', (e) => {
+        if (e.target.hasAttribute('data-close-modal') || e.target === editModal) {
+            editModal.classList.remove('show');
+        }
+    });
+}
 
 
 </script>
