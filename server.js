@@ -3544,11 +3544,60 @@ cron.schedule('*/15 * * * *', () => {
 });
 
 
+
+// --- ADMIN SEKCE ---
+// Middleware pro ověření, zda je uživatel admin
+const isAdmin = async (req, res, next) => {
+    // V reálné aplikaci byste ověřovali JWT token z hlavičky Authorization
+    // Pro jednoduchost teď budeme kontrolovat roli podle emailu v query
+    const { dashboardUserEmail } = req.query;
+    if (!dashboardUserEmail) {
+        return res.status(401).json({ success: false, message: 'Chybí autentizace.' });
+    }
+
+    let client;
+    try {
+        client = await pool.connect();
+        const r = await client.query('SELECT role FROM dashboard_users WHERE email = $1', [dashboardUserEmail]);
+        if (r.rowCount > 0 && r.rows[0].role === 'admin') {
+            next(); // Uživatel je admin, pokračuj
+        } else {
+            res.status(403).json({ success: false, message: 'Přístup odepřen.' });
+        }
+    } catch (e) {
+        res.status(500).json({ success: false, message: 'Chyba serveru.' });
+    } finally {
+        if (client) client.release();
+    }
+};
+
+// Endpoint pro načtení všech uživatelů, chráněný isAdmin middlewarem
+app.get('/api/admin/users', isAdmin, async (req, res) => {
+    let client;
+    try {
+        client = await pool.connect();
+        const result = await client.query('SELECT email, name, plan, role, created_at FROM dashboard_users ORDER BY created_at DESC');
+        res.json({ success: true, users: result.rows });
+    } catch (e) {
+        console.error('Chyba při načítání uživatelů:', e);
+        res.status(500).json({ success: false, message: 'Nepodařilo se načíst uživatele.' });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+
+
+
+
+
+
 setupDatabase().then(() => {
     app.listen(PORT, () => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
