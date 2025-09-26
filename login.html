@@ -873,6 +873,7 @@
       if (!data.success) throw new Error(data.message || 'Ověření selhalo.');
       localStorage.setItem('userName', data.user.name);
       localStorage.setItem('userEmail', data.user.email);
+      localStorage.setItem('userRole', data.user.role);
       localStorage.setItem('userPicture', data.user.picture || '');
       window.location.href = 'dashboard.html';
     })
@@ -987,6 +988,7 @@
 
       localStorage.setItem('userName', data.user.name);
       localStorage.setItem('userEmail', data.user.email);
+      localStorage.setItem('userRole', data.user.role);
       window.location.href = 'dashboard.html';
     } catch (err) {
       console.error(err);
