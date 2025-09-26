@@ -868,7 +868,7 @@ if (!imapOk) {
       smtpHost, Number(smtpPort), !!smtpSecure,
       encSecret(baseUsername), encSecret(password)
     ]);
-
+    await logActivity(dashboardUserEmail, 'Připojení Custom účtu', 'success', { connectedEmail: emailAddress });
     return res.json({ success:true, message:'Účet připojen.' });
   } catch (e) {
     console.error(e);
@@ -1261,12 +1261,12 @@ app.post('/api/auth/google', async (req, res) => {
             [payload.email, payload.name]
         );
         
-        // NOVĚ: Načteme kompletního uživatele z databáze, abychom získali jeho roli
+        
         const userResult = await client.query(
             'SELECT email, name, plan, role FROM dashboard_users WHERE email = $1',
             [payload.email]
         );
-
+        await logActivity(payload.email, 'Přihlášení (Google)', 'success');
         res.status(200).json({ success: true, user: userResult.rows[0] });
     } catch (error) {
         console.error("Chyba při ověřování přihlašovacího tokenu:", error);
@@ -1958,7 +1958,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
     const ok = await bcrypt.compare(password, r.rows[0].password_hash);
     if (!ok) return res.status(401).json({ success: false, message: 'Nesprávný email nebo heslo.' });
-
+      await logActivity(email, 'Přihlášení (heslo)', 'success');
      return res.json({ success: true, user: { email: r.rows[0].email, name: r.rows[0].name, role: r.rows[0].role, plan: r.rows[0].plan }});
   } catch (e) {
     console.error('LOGIN ERROR', e);
@@ -2037,6 +2037,7 @@ if (!canAdd.ok) {
         res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success&new-email=${encodeURIComponent(connectedEmail)}`);
     } catch (error) {
         console.error("Chyba při zpracování OAuth callbacku:", error.message);
+        await logActivity(dashboardUserEmail, 'Připojení Gmail účtu', 'success', { connectedEmail });
         res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=error`);
     } finally {
         if (client) client.release();
@@ -2399,7 +2400,8 @@ if (originalMessageId) {
   // za Subject je vhodné tyto dva řádky vsunout před MIME-Version – ale pořadí v poli nevadí
   lines.splice(3, 0, `In-Reply-To: ${originalMessageId}`, `References: ${refs}`);
 }
-
+     
+await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Gmail)', 'success', { to: originalFrom, account: email });
 const raw = Buffer.from(lines.join('\n')).toString('base64url');
 
 await gmail.users.messages.send({
@@ -2970,6 +2972,7 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
 
   } catch (e) {
     console.error('[custom-email/send-reply] Kritická chyba při odesílání:', e);
+    await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Custom)', 'success', { to, account: emailAddress });
     return res.status(500).json({ success: false, message: e?.message || 'Odeslání selhalo.' });
   }
 });
@@ -3115,11 +3118,12 @@ ${String(emailBody).slice(0, 3000)}
     if (req.query?.debug === '1') {
       debugOut.styleProfile = styleProfile;
     }
-
+    await logActivity(dashboardUserEmail, 'AI analýza emailu', 'success', { account: email });
     return res.json({ success: true, analysis, emailBody, ...debugOut });
 
   } catch (error) {
     console.error("Chyba při analýze emailu:", error);
+    await logActivity(dashboardUserEmail, 'Chyba AI analýzy', 'error', { account: email, error: error.message });
     return res.status(500).json({ success: false, message: "Nepodařilo se analyzovat email." });
   }
 });
@@ -3733,6 +3737,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
