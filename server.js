@@ -398,16 +398,18 @@ async function chatJson({ model, system, user, client, dashboardUserEmail }) {
   });
 
   const txt = resp.choices?.[0]?.message?.content?.trim() || '{}';
+  const totalTokens = (resp?.usage?.total_tokens != null) ? Number(resp.usage.total_tokens) : 0;
 
-  // získání počtu tokenů
-  const totalTokens = (resp?.usage?.total_tokens != null)
-    ? Number(resp.usage.total_tokens)
-    : 0;
-
-  // uložení do DB
-  await tryConsumeAiAction(client, dashboardUserEmail, totalTokens);
+  // ✅ Jen pokud máme DB client a dashboardUserEmail
+  if (client && dashboardUserEmail) {
+    await tryConsumeAiAction(client, dashboardUserEmail, totalTokens);
+  }
 
   return txt;
+}
+
+if (client && dashboardUserEmail) {
+  await tryConsumeAiAction(client, dashboardUserEmail, totalTokens);
 }
 
 async function chatText({ model, system, user, client, dashboardUserEmail }) {
@@ -2851,10 +2853,12 @@ ${String(emailBody).slice(0, 3000)}
 `;
 
     const raw = await chatJson({
-  model: EMAIL_MODEL,
-  system: systemInstruction,
-  user: task
-});
+   model: EMAIL_MODEL,
+   system: systemInstruction,
+   user: task,
+   client: db,                      
+   dashboardUserEmail               
+ });
     
 
    let analysis = {};
@@ -2863,10 +2867,12 @@ ${String(emailBody).slice(0, 3000)}
     } catch {
       // fallback: požádáme model, aby opravil výstup na validní JSON
       const fixed = await chatJson({
-        model: DEFAULT_MODEL,
-        system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
-        user: `Oprav na validní JSON:\n${raw}`
-      });
+   model: DEFAULT_MODEL,
+   system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
+   user: `Oprav na validní JSON:\n${raw}`,
+   client: db,
+   dashboardUserEmail
+ });
       analysis = JSON.parse(stripJsonFence(String(fixed)));
     }
 
@@ -3057,13 +3063,14 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
 app.post('/api/gmail/analyze-email', async (req, res) => {
   // Pokud FE poslal parametry custom účtu, rovnou použij náš custom handler
   const { dashboardUserEmail, emailAddress, uid, messageId } = req.body || {};
+  const email = (req.body && req.body.email) || undefined;
   if (!messageId && emailAddress && uid) {
     // FE poslal custom data omylem na /api/gmail/analyze-email -> obsloužíme
     return handleCustomAnalyzeEmail(req, res);
   }
 
   try {
-     const { email } = req.body;
+    
     if (!dashboardUserEmail || !email || !messageId) {
       return res.status(400).json({ success: false, message: "Chybí data." });
     }
@@ -3167,10 +3174,11 @@ ${String(emailBody).slice(0, 3000)}
 ---`;
 
     const prompt = `${systemInstruction}\n${task}`;
-    const raw = await chatJson({
-   model: EMAIL_MODEL,
-   system: systemInstruction,   // už existující proměnná se style profile
-   user: task                   // už existující proměnná s textem e-mailu a instrukcí na JSON výstup
+     model: EMAIL_MODEL,
+  system: systemInstruction,
+  user: task,
+  client: db,
+  dashboardUserEmail                
  });
  let analysis = JSON.parse(raw);
       
@@ -3831,6 +3839,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
