@@ -2835,7 +2835,7 @@ ${String(emailBody).slice(0, 3000)}
         analysis,
         emailBody,
         headers: { messageId, references }, // <-- PŘIDÁNO
-        ...debugOut
+        debugOut
     });
   } catch (e) {
     console.error(e);
@@ -3756,6 +3756,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
