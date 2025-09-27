@@ -3171,12 +3171,10 @@ ${String(emailBody).slice(0, 3000)}
 
    // volitelná proměnná 'prompt' klidně ani nepotřebuješ
 const raw = await chatJson({
-  model: EMAIL_MODEL,
-  system: systemInstruction,
-  user: task,
-  client: db,
-  dashboardUserEmail
-});
+   model: EMAIL_MODEL,
+   system: systemInstruction,
+   user: task
+ });
 const analysis = JSON.parse(stripJsonFence(String(raw)));
       
     
@@ -3836,6 +3834,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
