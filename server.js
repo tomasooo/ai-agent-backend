@@ -2217,7 +2217,7 @@ async function canAddConnectedAccount(client, dashboardUserEmail) {
 
 
 
-async function tryConsumeAiAction(client, dashboardUserEmail) {
+async function tryConsumeAiAction(client, dashboardUserEmail, tokens = 0) {
   const limits = await getPlanLimits(client, dashboardUserEmail);
   await ensureUsageRow(client, dashboardUserEmail);
   const period = currentPeriodStartDateUTC();
@@ -3825,6 +3825,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
