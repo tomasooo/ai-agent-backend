@@ -3607,9 +3607,9 @@ app.get('/api/trigger-worker', (req, res) => {
 });
 
 // Automatické spouštění každých 15 minut
-cron.schedule('*/15 * * * *', () => {
-  runEmailWorker();
-});
+//cron.schedule('*/15 * * * *', () => {
+//  runEmailWorker();
+//});
 
 
 
@@ -3766,6 +3766,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
