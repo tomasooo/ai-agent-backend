@@ -3552,9 +3552,16 @@ async function runEmailWorker() {
 
         const prompt = `Jsi AI asistent pro třídění emailů. Klasifikuj následující email. Vrať pouze JSON {"category": "spam"|"approval_required"|"routine"}. Důležité emaily od šéfa nebo klientů označ jako "approval_required". Běžné reklamy a zjevný spam "spam". Předmět: ${subject} Fragment: ${msgResponse.data.snippet}`;
         
-        const geminiResult = await model.generateContent(prompt);
-        const analysisText = geminiResult.response.candidates[0].content.parts[0].text;
-        const analysis = JSON.parse(analysisText.replace(/```json|```/g, ''));
+       const raw = await chatJson({
+  model: EMAIL_MODEL,
+ 
+  system: typeof systemInstruction !== 'undefined' ? systemInstruction : undefined,
+  user: prompt
+});
+const analysis = JSON.parse(
+  (typeof raw === 'string' ? raw : String(raw)).replace(/```json|```/g, '').trim()
+);
+
 
         if (analysis.category === 'spam' && acc.spam_filter) {
   await gmail.users.messages.modify({
@@ -3758,6 +3765,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
