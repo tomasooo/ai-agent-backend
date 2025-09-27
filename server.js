@@ -29,7 +29,7 @@ const ORIGINS = [
   'https://ai-agent-frontend-9nrf.onrender.com',
   'http://localhost:5500',
   'http://127.0.0.1:5500',
-  ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()) : []),
+   ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()) : []),
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
 ];
 
@@ -3171,14 +3171,15 @@ Text e-mailu:
 ${String(emailBody).slice(0, 3000)}
 ---`;
 
-    const prompt = `${systemInstruction}\n${task}`;
-     model: EMAIL_MODEL,
+   // volitelná proměnná 'prompt' klidně ani nepotřebuješ
+const raw = await chatJson({
+  model: EMAIL_MODEL,
   system: systemInstruction,
   user: task,
   client: db,
-  dashboardUserEmail                
- });
- let analysis = JSON.parse(raw);
+  dashboardUserEmail
+});
+const analysis = JSON.parse(stripJsonFence(String(raw)));
       
     
 
@@ -3837,6 +3838,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
