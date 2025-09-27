@@ -591,6 +591,12 @@ await client.query(`
   );
 `);
 
+await client.query(`
+  ALTER TABLE usage_counters
+    ADD COLUMN IF NOT EXISTS tokens_used BIGINT DEFAULT 0;
+`);
+      
+
         await client.query(`
   CREATE TABLE IF NOT EXISTS templates (
     id SERIAL PRIMARY KEY,
@@ -3825,6 +3831,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
