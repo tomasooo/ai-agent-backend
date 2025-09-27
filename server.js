@@ -425,7 +425,9 @@ async function chatText({ model, system, user, client, dashboardUserEmail }) {
     ? Number(resp.usage.total_tokens)
     : 0;
 
-  await tryConsumeAiAction(client, dashboardUserEmail, totalTokens);
+ if (client && dashboardUserEmail) {
+   await tryConsumeAiAction(client, dashboardUserEmail, totalTokens);
+ }
 
   return txt;
 }
@@ -3834,6 +3836,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
