@@ -402,15 +402,13 @@ async function chatJson({ model, system, user, client, dashboardUserEmail }) {
 
   // ✅ Jen pokud máme DB client a dashboardUserEmail
   if (client && dashboardUserEmail) {
-    await tryConsumeAiAction(client, dashboardUserEmail, totalTokens);
-  }
+  await tryConsumeAiAction(client, dashboardUserEmail, totalTokens);
+}
 
   return txt;
 }
 
-if (client && dashboardUserEmail) {
-  await tryConsumeAiAction(client, dashboardUserEmail, totalTokens);
-}
+
 
 async function chatText({ model, system, user, client, dashboardUserEmail }) {
   const resp = await openai.chat.completions.create({
@@ -3839,6 +3837,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
