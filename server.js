@@ -2809,9 +2809,12 @@ ${String(emailBody).slice(0, 3000)}
 ---
 `;
 
-    const geminiResult = await model.generateContent(`${systemInstruction}\n${task}`);
-    const raw = geminiResult?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const cleaned = raw.replace(/```json|```/g, '').trim();
+    const raw = await chatJson({
+  model: EMAIL_MODEL,
+  system: systemInstruction,
+  user: task
+});
+    
 
     let analysis = {};
     try {
@@ -2830,13 +2833,12 @@ ${String(emailBody).slice(0, 3000)}
       debugOut.styleProfile = styleProfile;
     }
 
-     return res.json({
-        success: true,
-        analysis,
-        emailBody,
-        headers: { messageId, references }, // <-- PŘIDÁNO
-        debugOut
-    });
+    return res.json({
+  success: true,
+  analysis,
+  emailBody,
+  debugOut
+});
   } catch (e) {
     console.error(e);
     return res.status(500).json({ success:false, message:'Analýza selhala.' });
@@ -3756,6 +3758,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
