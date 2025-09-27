@@ -6,7 +6,7 @@ import cors from 'cors';
 import { OAuth2Client } from 'google-auth-library';
 import { Pool } from 'pg';
 import { google } from 'googleapis';
-import { VertexAI } from '@google-cloud/vertexai';
+import OpenAI from 'openai';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
@@ -46,8 +46,6 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL;
 const DATABASE_URL = process.env.DATABASE_URL;
-const PROJECT_ID = process.env.GOOGLE_PROJECT_ID;
-const LOCATION = 'us-central1';
 const CRON_SECRET = process.env.CRON_SECRET;
 console.log("DEBUG: Načtená DATABASE_URL je:", DATABASE_URL);
 const SERVER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
@@ -369,15 +367,14 @@ app.use(cors({
   optionsSuccessStatus: 204,
 }));
 
-if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL || !PROJECT_ID || !CRON_SECRET) {
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL || !CRON_SECRET || !process.env.OPENAI_API_KEY) {
     console.error("Chyba: Chybí potřebné proměnné prostředí!");
     process.exit(1);
 }
-// Dekódování JSON klíče z proměnné prostředí
-const vertex_ai = new VertexAI({project: PROJECT_ID, location: LOCATION});
-const model = vertex_ai.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-});
+// OpenAI (ChatGPT API)
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const EMAIL_MODEL = process.env.EMAIL_MODEL || 'gpt-5-mini';   // pro odpovídání na emaily
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-5-nano'; // pro vše ostatní
 
 
 
@@ -390,6 +387,29 @@ const pool = new Pool({
 });
 
 
+async function chatJson({ model, system, user }) {
+  const resp = await openai.chat.completions.create({
+    model,
+    messages: [
+      system ? { role: 'system', content: system } : null,
+      { role: 'user', content: user }
+    ].filter(Boolean),
+    response_format: { type: 'json_object' }
+  });
+  const txt = resp.choices?.[0]?.message?.content?.trim() || '{}';
+  return txt;
+}
+
+async function chatText({ model, system, user }) {
+  const resp = await openai.chat.completions.create({
+    model,
+    messages: [
+      system ? { role: 'system', content: system } : null,
+      { role: 'user', content: user }
+    ]
+  });
+  return resp.choices?.[0]?.message?.content?.trim() || '';
+}
 
 
 
@@ -1637,9 +1657,12 @@ Speciální pravidla (CZ):
 
       let inferred = {};
       try {
-        const ai = await model.generateContent(promptVars);
-        const raw = ai?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-        inferred = JSON.parse(stripJsonFence(raw) || '{}');
+        const raw = await chatJson({
+    model: DEFAULT_MODEL,
+    system: systemInstruction,
+    user: promptVars
+  });
+  inferred = JSON.parse(raw || '{}');
       } catch (err) {
         console.warn('AI variable fill failed, skipping.', err?.message);
       }
@@ -1713,8 +1736,11 @@ Odpověz pouze textem, bez vysvětlivek a bez markdownu.`;
 
         let aiText = '';
         try {
-          const out = await model.generateContent(prompt);
-          aiText = (out?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+          aiText = await chatText({
+    model: EMAIL_MODEL,   // odpovídání na emaily = GPT-5 mini
+    system: systemInstruction,
+    user: prompt
+  });
         } catch (err) {
           console.warn('AI slot generation failed, leaving empty.', err?.message);
         }
@@ -3097,21 +3123,13 @@ ${String(emailBody).slice(0, 3000)}
 ---`;
 
     const prompt = `${systemInstruction}\n${task}`;
-    const geminiResult = await model.generateContent(prompt);
-
-    const raw = geminiResult?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const cleaned = raw.replace(/```json|```/g, '').trim();
-
-    let analysis;
-    try {
-      analysis = JSON.parse(cleaned);
-    } catch {
-      const fix = await model.generateContent(
-        `Oprav tento text na validní JSON se strukturou { "summary": "", "sentiment": "", "suggested_reply": "" }:\n${raw}`
-      );
-      analysis = JSON.parse(
-        fix.response.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim()
-      );
+    const raw = await chatJson({
+   model: EMAIL_MODEL,
+   system: systemInstruction,   // už existující proměnná se style profile
+   user: task                   // už existující proměnná s textem e-mailu a instrukcí na JSON výstup
+ });
+ let analysis = JSON.parse(raw);
+      
     }
 
     const debugOut = {};
@@ -3119,7 +3137,7 @@ ${String(emailBody).slice(0, 3000)}
       debugOut.styleProfile = styleProfile;
     }
     await logActivity(dashboardUserEmail, 'AI analýza emailu', 'success', { account: email });
-    return res.json({ success: true, analysis, emailBody, ...debugOut });
+    return res.json({ success: true, analysis, emailBody, debugOut });
 
   } catch (error) {
     console.error("Chyba při analýze emailu:", error);
@@ -3350,15 +3368,8 @@ Vzorky (JSON řádky):
 ${examples.map(e => JSON.stringify(e)).join('\n').slice(0, 15000)}
     `.trim();
 
-    const out = await model.generateContent(prompt);
-    const raw = out?.response?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
-    let faqs = [];
-    try { faqs = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
-    catch {
-      // oprav JSON
-      const fix = await model.generateContent(`Oprav na validní JSON pole Q/A:\n${raw}`);
-      faqs = JSON.parse(fix.response.candidates[0].content.parts[0].text.replace(/```json|```/g,'').trim());
-    }
+    const raw = await chatJson({ model: DEFAULT_MODEL, user: prompt });
+    const faqs = JSON.parse(raw);
 
     // Ulož: smaž staré a vlož nové (pro daný účet)
     const db2 = await pool.connect();
@@ -3745,6 +3756,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
