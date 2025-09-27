@@ -3130,7 +3130,7 @@ ${String(emailBody).slice(0, 3000)}
  });
  let analysis = JSON.parse(raw);
       
-    }
+    
 
     const debugOut = {};
     if (req.query?.debug === '1') {
@@ -3756,6 +3756,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
