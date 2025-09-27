@@ -1491,8 +1491,8 @@ app.get('/api/style-profile', async (req, res) => {
     const profile = {
       default_tone: 'Profesionální',
       default_length: 'Adaptivní',
-      common_greetings: [...new Set(greetings)].slice(0, 5),
-      common_endings:  [...new Set(endings)].slice(0, 5),
+      common_greetings: Array.from(new Set(greetings)).slice(0, 5),
+      common_endings:  Array.from(new Set(endings)).slice(0, 5),
       // sem si můžeš později přidat další statistiky
     };
 
@@ -2816,16 +2816,17 @@ ${String(emailBody).slice(0, 3000)}
 });
     
 
-    let analysis = {};
+   let analysis = {};
     try {
-      analysis = JSON.parse(cleaned);
+      analysis = JSON.parse(stripJsonFence(String(raw)));
     } catch {
-      const fix = await model.generateContent(
-        `Oprav na validní JSON { "summary":"", "sentiment":"", "suggested_reply":"" }:\n${raw}`
-      );
-      analysis = JSON.parse(
-        fix.response.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim()
-      );
+      // fallback: požádáme model, aby opravil výstup na validní JSON
+      const fixed = await chatJson({
+        model: DEFAULT_MODEL,
+        system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
+        user: `Oprav na validní JSON:\n${raw}`
+      });
+      analysis = JSON.parse(stripJsonFence(String(fixed)));
     }
 
     const debugOut = {};
@@ -3765,6 +3766,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
