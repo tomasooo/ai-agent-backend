@@ -387,7 +387,7 @@ const pool = new Pool({
 });
 
 
-async function chatJson({ model, system, user }) {
+async function chatJson({ model, system, user, client, dashboardUserEmail }) {
   const resp = await openai.chat.completions.create({
     model,
     messages: [
@@ -396,19 +396,38 @@ async function chatJson({ model, system, user }) {
     ].filter(Boolean),
     response_format: { type: 'json_object' }
   });
+
   const txt = resp.choices?.[0]?.message?.content?.trim() || '{}';
+
+  // získání počtu tokenů
+  const totalTokens = (resp?.usage?.total_tokens != null)
+    ? Number(resp.usage.total_tokens)
+    : 0;
+
+  // uložení do DB
+  await tryConsumeAiAction(client, dashboardUserEmail, totalTokens);
+
   return txt;
 }
 
-async function chatText({ model, system, user }) {
+async function chatText({ model, system, user, client, dashboardUserEmail }) {
   const resp = await openai.chat.completions.create({
     model,
     messages: [
       system ? { role: 'system', content: system } : null,
       { role: 'user', content: user }
-    ]
+    ].filter(Boolean)
   });
-  return resp.choices?.[0]?.message?.content?.trim() || '';
+
+  const txt = resp.choices?.[0]?.message?.content?.trim() || '';
+
+  const totalTokens = (resp?.usage?.total_tokens != null)
+    ? Number(resp.usage.total_tokens)
+    : 0;
+
+  await tryConsumeAiAction(client, dashboardUserEmail, totalTokens);
+
+  return txt;
 }
 
 
@@ -565,8 +584,8 @@ await client.query(`
 await client.query(`
   CREATE TABLE IF NOT EXISTS usage_counters (
     dashboard_user_email VARCHAR(255) NOT NULL,
-    period_start DATE NOT NULL,                  -- první den měsíce (UTC)
-    ai_actions_used INT NOT NULL DEFAULT 0,      -- počet provedených AI akcí v období
+    period_start DATE NOT NULL,                  
+    ai_actions_used INT NOT NULL DEFAULT 0,      
     PRIMARY KEY (dashboard_user_email, period_start),
     FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
   );
@@ -2173,8 +2192,8 @@ async function getPlanLimits(client, dashboardUserEmail) {
 async function ensureUsageRow(client, dashboardUserEmail) {
   const period = currentPeriodStartDateUTC();
   await client.query(`
-    INSERT INTO usage_counters (dashboard_user_email, period_start, ai_actions_used)
-    VALUES ($1,$2,0)
+    INSERT INTO usage_counters (dashboard_user_email, period_start, ai_actions_used, tokens_used)
+    VALUES ($1, $2, 0, 0)
     ON CONFLICT (dashboard_user_email, period_start) DO NOTHING
   `, [dashboardUserEmail, period]);
 }
@@ -2196,23 +2215,39 @@ async function canAddConnectedAccount(client, dashboardUserEmail) {
   return { ok: count < limits.max_accounts, max: limits.max_accounts, have: count };
 }
 
+
+
 async function tryConsumeAiAction(client, dashboardUserEmail) {
   const limits = await getPlanLimits(client, dashboardUserEmail);
   await ensureUsageRow(client, dashboardUserEmail);
   const period = currentPeriodStartDateUTC();
+
   const r = await client.query(`
-    SELECT ai_actions_used FROM usage_counters WHERE dashboard_user_email = $1 AND period_start = $2
-  `, [dashboardUserEmail, period]);
-  const used = r.rowCount ? r.rows[0].ai_actions_used : 0;
-  if (used >= limits.monthly_ai_actions) {
-    return { ok: false, used, limit: limits.monthly_ai_actions };
-  }
-  await client.query(`
-    UPDATE usage_counters
-    SET ai_actions_used = ai_actions_used + 1
+    SELECT ai_actions_used, COALESCE(tokens_used, 0) AS tokens_used
+    FROM usage_counters
     WHERE dashboard_user_email = $1 AND period_start = $2
   `, [dashboardUserEmail, period]);
-  return { ok: true, used: used + 1, limit: limits.monthly_ai_actions };
+
+  const usedActions = r.rowCount ? r.rows[0].ai_actions_used : 0;
+  const usedTokens = r.rowCount ? r.rows[0].tokens_used : 0;
+
+  if (usedActions >= limits.monthly_ai_actions) {
+    return { ok: false, used: usedActions, limit: limits.monthly_ai_actions, tokens_used: usedTokens };
+  }
+
+  await client.query(`
+    UPDATE usage_counters
+    SET ai_actions_used = ai_actions_used + 1,
+        tokens_used = COALESCE(tokens_used, 0) + $3
+    WHERE dashboard_user_email = $1 AND period_start = $2
+  `, [dashboardUserEmail, period, Number(tokens) || 0]);
+
+  return {
+    ok: true,
+    used: usedActions + 1,
+    limit: limits.monthly_ai_actions,
+    tokens_used: usedTokens + (Number(tokens) || 0)
+  };
 }
 
 
@@ -3645,57 +3680,77 @@ const isAdmin = async (req, res, next) => {
 
 // Endpoint pro načtení všech uživatelů, chráněný isAdmin middlewarem
 app.get('/api/admin/users', isAdmin, async (req, res) => {
-   let client;
-    try {
-        client = await pool.connect();
-        const { search, role } = req.query;
+  let client;
+  try {
+    client = await pool.connect();
+    const { search, role } = req.query;
 
-        // Načtení statistik
-        const statsResult = await client.query(`
-            SELECT
-                (SELECT COUNT(*) FROM dashboard_users) AS total_users,
-                (SELECT COUNT(*) FROM dashboard_users WHERE plan != 'Starter') AS paying_users,
-                ((SELECT COUNT(*) FROM connected_accounts) + (SELECT COUNT(*) FROM custom_accounts)) AS connected_emails,
-                (SELECT SUM(ai_actions_used) FROM usage_counters WHERE period_start = date_trunc('month', NOW()::date)) AS ai_this_month
-        `);
+    // Statistika (včetně tokenů za aktuální měsíc)
+    const statsResult = await client.query(`
+      SELECT
+        (SELECT COUNT(*) FROM dashboard_users) AS total_users,
+        (SELECT COUNT(*) FROM dashboard_users WHERE plan != 'Starter') AS paying_users,
+        ((SELECT COUNT(*) FROM connected_accounts) + (SELECT COUNT(*) FROM custom_accounts)) AS connected_emails,
+        (SELECT COALESCE(SUM(ai_actions_used), 0)
+           FROM usage_counters
+          WHERE period_start = date_trunc('month', NOW()::date)) AS ai_this_month,
+        (SELECT COALESCE(SUM(tokens_used), 0)
+           FROM usage_counters
+          WHERE period_start = date_trunc('month', NOW()::date)) AS tokens_this_month
+    `);
 
-        // Načtení seznamu uživatelů s filtrováním
-        let usersQuery = 'SELECT email, name, plan, role, created_at FROM dashboard_users';
-        const params = [];
-        const conditions = [];
-
-        if (search) {
-            params.push(`%${search}%`);
-            conditions.push(`(name ILIKE $${params.length} OR email ILIKE $${params.length})`);
-        }
-        if (role && role !== 'all') {
-            params.push(role);
-            conditions.push(`role = $${params.length}`);
-        }
-
-        if (conditions.length > 0) {
-            usersQuery += ' WHERE ' + conditions.join(' AND ');
-        }
-        usersQuery += ' ORDER BY created_at DESC';
-
-        const usersResult = await client.query(usersQuery, params);
-        
-        res.json({ 
-            success: true, 
-            stats: {
-                totalUsers: statsResult.rows[0].total_users || 0,
-                payingUsers: statsResult.rows[0].paying_users || 0,
-                connectedEmails: statsResult.rows[0].connected_emails || 0,
-                aiActionsThisMonth: statsResult.rows[0].ai_this_month || 0
-            },
-            users: usersResult.rows 
-        });
-    } catch (e) {
-        console.error('Chyba při načítání uživatelů:', e);
-        res.status(500).json({ success: false, message: 'Nepodařilo se načíst uživatele.' });
-    } finally {
-        if (client) client.release();
+    // Sestavení WHERE filtrů pro uživatele
+    const params = [];
+    const where = [];
+    if (search) {
+      params.push(`%${search}%`);
+      where.push(`(u.email ILIKE $${params.length} OR u.name ILIKE $${params.length})`);
     }
+    if (role) {
+      params.push(role);
+      where.push(`u.role = $${params.length}`);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    // Uživatelé + join na usage_counters pro aktuální měsíc
+    const usersQuery = `
+      SELECT
+        u.email,
+        u.name,
+        u.plan,
+        u.role,
+        u.created_at,
+        COALESCE(uc.ai_actions_used, 0) AS ai_actions_used,
+        COALESCE(uc.tokens_used, 0)     AS tokens_used
+      FROM dashboard_users u
+      LEFT JOIN usage_counters uc
+        ON uc.dashboard_user_email = u.email
+       AND uc.period_start = date_trunc('month', NOW()::date)
+      ${whereSql}
+      ORDER BY u.created_at DESC
+      LIMIT 500
+    `;
+
+    const usersResult = await client.query(usersQuery, params);
+
+    res.json({
+      success: true,
+      stats: {
+        totalUsers: Number(statsResult.rows[0].total_users || 0),
+        payingUsers: Number(statsResult.rows[0].paying_users || 0),
+        connectedEmails: Number(statsResult.rows[0].connected_emails || 0),
+        aiActionsThisMonth: Number(statsResult.rows[0].ai_this_month || 0),
+        tokensThisMonth: Number(statsResult.rows[0].tokens_this_month || 0)
+      },
+      users: usersResult.rows
+    });
+
+  } catch (e) {
+    console.error('Chyba při /api/admin/users:', e);
+    res.status(500).json({ success: false, message: 'Chyba při načítání uživatelů.' });
+  } finally {
+    if (client) client.release();
+  }
 });
 
 // Endpoint pro úpravu uživatele
@@ -3770,6 +3825,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
