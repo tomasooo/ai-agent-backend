@@ -2853,9 +2853,7 @@ ${String(emailBody).slice(0, 3000)}
     const raw = await chatJson({
    model: EMAIL_MODEL,
    system: systemInstruction,
-   user: task,
-   client: db,                      
-   dashboardUserEmail               
+   user: task
  });
     
 
@@ -2867,9 +2865,7 @@ ${String(emailBody).slice(0, 3000)}
       const fixed = await chatJson({
    model: DEFAULT_MODEL,
    system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
-   user: `Oprav na validní JSON:\n${raw}`,
-   client: db,
-   dashboardUserEmail
+   user: `Oprav na validní JSON:\n${raw}`
  });
       analysis = JSON.parse(stripJsonFence(String(fixed)));
     }
@@ -3838,6 +3834,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
