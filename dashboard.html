@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="cs">
 <head>
@@ -2358,9 +2359,19 @@
                             </div>
                         </div>
                         <table class="users-table">
-                            <thead><tr><th>Uživatel</th><th>Plán</th><th>Role</th><th>Datum registrace</th><th>Akce</th></tr></thead>
-                            <tbody id="adminUsersTableBody"></tbody>
-                        </table>
+                        <thead>
+  <tr>
+    <th>Uživatel</th>
+    <th>Plán</th>
+    <th>Role</th>
+    <th>Datum registrace</th>
+    <th>AI akce (m)</th>
+    <th>Tokeny (m)</th>
+    <th>Akce</th>
+  </tr>
+</thead>
+<tbody id="adminUsersTableBody"></tbody>
+</table>
                     </div>
                     <div class="users-section" style="margin-top: 2rem;">
                         <div class="section-header">
@@ -5473,75 +5484,10 @@ function syncProMeta(){
 })();
   
 
-// === NOVÁ FUNKCE PRO ADMIN SEKCI ===
 
 
 
-async function loadAdminUsers() {
-    const tableBody = document.getElementById('adminUsersTableBody');
-    if (!tableBody) return;
-    tableBody.innerHTML = '<tr><td colspan="5">Načítám data...</td></tr>';
-    
-    const dashboardUserEmail = localStorage.getItem('userEmail');
 
-    try {
-        // Získáme data ze serveru (endpoint, který jsme vytvořili dříve)
-        const response = await fetch(`${window.BACKEND}/api/admin/users?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`);
-        const data = await response.json();
-
-        if (!data.success) {
-            throw new Error(data.message);
-        }
-
-        const users = data.users || [];
-
-        // Naplnění statistických karet
-        document.getElementById('admin-total-users').textContent = users.length;
-        document.getElementById('admin-paying-users').textContent = users.filter(u => u.plan !== 'Starter').length;
-        // Ostatní statistiky zde můžeme v budoucnu doplnit z dalších API volání
-        document.getElementById('admin-connected-emails').textContent = '-';
-        document.getElementById('admin-ai-today').textContent = '-';
-
-        if (users.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="5">Nenalezeni žádní uživatelé.</td></tr>';
-            return;
-        }
-
-        // Vykreslení tabulky s uživateli
-        tableBody.innerHTML = users.map(user => {
-            const nameParts = (user.name || '').split(' ');
-            const initials = (nameParts.length > 1 ? nameParts[0][0] + nameParts[nameParts.length - 1][0] : (user.name || 'U').substring(0, 2)).toUpperCase();
-
-            return `
-                <tr>
-                    <td>
-                        <div class="user-info-cell">
-                            <div class="user-avatar-small">${initials}</div>
-                            <div class="user-details">
-                                <span class="user-name">${escapeHtml(user.name || '')}</span>
-                                <span class="user-email">${escapeHtml(user.email)}</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td>${escapeHtml(user.plan)}</td>
-                    <td>
-                        <span class="role-badge ${user.role === 'admin' ? 'role-admin' : 'role-user'}">${escapeHtml(user.role)}</span>
-                    </td>
-                    <td>${new Date(user.created_at).toLocaleDateString('cs-CZ')}</td>
-                    <td>
-                        <div class="action-buttons">
-                            <button class="btn btn-secondary btn-sm">Upravit</button>
-                            <button class="btn btn-danger btn-sm">Smazat</button>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
-    } catch (error) {
-        tableBody.innerHTML = `<tr><td colspan="5" style="color: red;">Chyba: ${error.message}</td></tr>`;
-    }
-}
 
 // Globální proměnná pro ukládání načtených uživatelů
 let allAdminUsers = [];
@@ -5549,40 +5495,47 @@ let allAdminUsers = [];
 // Funkce pro vykreslení tabulky na základě dat
 function renderAdminUsersTable(users) {
     const tableBody = document.getElementById('adminUsersTableBody');
-    if (!tableBody) return;
+  if (!tableBody) return;
 
-    if (users.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem;">Nenalezeni žádní uživatelé.</td></tr>';
-        return;
-    }
+  if (users.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:2rem;">Nenalezeni žádní uživatelé.</td></tr>';
+    return;
+  }
 
-    tableBody.innerHTML = users.map(user => {
-        const nameParts = (user.name || '').split(' ');
-        const initials = (nameParts.length > 1 ? nameParts[0][0] + nameParts[nameParts.length - 1][0] : (user.name || 'U').substring(0, 2)).toUpperCase();
+  tableBody.innerHTML = users.map(user => {
+    const nameParts = (user.name || '').split(' ');
+    const initials = (nameParts.length > 1
+      ? nameParts[0][0] + nameParts[nameParts.length - 1][0]
+      : (user.name || 'U').substring(0, 2)).toUpperCase();
 
-        return `
-            <tr data-email="${escapeHtml(user.email)}">
-                <td>
-                    <div class="user-info-cell">
-                        <div class="user-avatar-small">${initials}</div>
-                        <div class="user-details">
-                            <span class="user-name">${escapeHtml(user.name || '')}</span>
-                            <span class="user-email">${escapeHtml(user.email)}</span>
-                        </div>
-                    </div>
-                </td>
-                <td>${escapeHtml(user.plan)}</td>
-                <td><span class="role-badge ${user.role === 'admin' ? 'role-admin' : 'role-user'}">${escapeHtml(user.role)}</span></td>
-                <td>${new Date(user.created_at).toLocaleDateString('cs-CZ')}</td>
-                <td>
-                    <div class="action-buttons">
-                        <button class="btn btn-secondary btn-sm edit-user-btn">Upravit</button>
-                        <button class="btn btn-danger btn-sm delete-user-btn">Smazat</button>
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
+    const aiMonth = Number(user.ai_actions_used ?? 0);
+    const tokensMonth = Number(user.tokens_used ?? 0);
+
+    return `
+      <tr data-email="${escapeHtml(user.email)}">
+        <td>
+          <div class="user-info-cell">
+            <div class="user-avatar-small">${initials}</div>
+            <div class="user-details">
+              <span class="user-name">${escapeHtml(user.name || '')}</span>
+              <span class="user-email">${escapeHtml(user.email)}</span>
+            </div>
+          </div>
+        </td>
+        <td>${escapeHtml(user.plan || '')}</td>
+        <td><span class="role-badge ${user.role === 'admin' ? 'role-admin' : 'role-user'}">${escapeHtml(user.role)}</span></td>
+        <td>${new Date(user.created_at).toLocaleDateString('cs-CZ')}</td>
+        <td style="text-align:right;">${aiMonth}</td>
+        <td style="text-align:right;">${tokensMonth.toLocaleString('cs-CZ')}</td>
+        <td>
+          <div class="action-buttons">
+            <button class="btn btn-secondary btn-sm edit-user-btn">Upravit</button>
+            <button class="btn btn-danger btn-sm delete-user-btn">Smazat</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 // Hlavní funkce pro načtení a filtrování dat
