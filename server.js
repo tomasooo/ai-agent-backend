@@ -19,7 +19,7 @@ import libmime from 'libmime';
 import dns from 'dns';
 const { decodeWords } = libmime;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
-
+const DISABLE_AI_WORKER = process.env.DISABLE_AI_WORKER === '1' || true; // true = natvrdo vypnuto
 
 
 const app = express();
@@ -3500,6 +3500,10 @@ app.post('/api/settings', async (req, res) => {
 // ===================================================================
 
 async function runEmailWorker() {
+  if (DISABLE_AI_WORKER) {
+    console.log('⚠️  runEmailWorker() je zakázaný (DISABLE_AI_WORKER).');
+    return;
+  }
   console.log('🤖 Spouštím automatickou kontrolu emailů...');
   let dbClient;
   try {
@@ -3766,6 +3770,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
