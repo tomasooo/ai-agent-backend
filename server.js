@@ -400,9 +400,9 @@ async function chatJson({ model, system, user, client, dashboardUserEmail }) {
   const txt = resp.choices?.[0]?.message?.content?.trim() || '{}';
   const totalTokens = (resp?.usage?.total_tokens != null) ? Number(resp.usage.total_tokens) : 0;
 
-  // ✅ Jen pokud máme DB client a dashboardUserEmail
+
   if (client && dashboardUserEmail) {
-  await tryConsumeAiAction(client, dashboardUserEmail, totalTokens);
+  await addTokens(client, dashboardUserEmail, totalTokens);
 }
 
   return txt;
@@ -426,7 +426,7 @@ async function chatText({ model, system, user, client, dashboardUserEmail }) {
     : 0;
 
  if (client && dashboardUserEmail) {
-   await tryConsumeAiAction(client, dashboardUserEmail, totalTokens);
+   await addTokens(client, dashboardUserEmail, totalTokens);
  }
 
   return txt;
@@ -2258,7 +2258,16 @@ async function tryConsumeAiAction(client, dashboardUserEmail, tokens = 0) {
   };
 }
 
-
+async function addTokens(client, dashboardUserEmail, tokens = 0) {
+  const period = currentPeriodStartDateUTC();
+  await ensureUsageRow(client, dashboardUserEmail);
+  await client.query(`
+    UPDATE usage_counters
+       SET tokens_used = COALESCE(tokens_used, 0) + $3
+     WHERE dashboard_user_email = $1
+       AND period_start = $2
+  `, [dashboardUserEmail, period, Number(tokens) || 0]);
+}
 
 
 
@@ -3834,6 +3843,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
