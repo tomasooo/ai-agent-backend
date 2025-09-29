@@ -2877,13 +2877,13 @@ ${String(emailBody).slice(0, 3000)}
       analysis = JSON.parse(stripJsonFence(String(raw)));
     } catch {
       // fallback: požádáme model, aby opravil výstup na validní JSON
-      const fixed = await chatJson({
-   model: DEFAULT_MODEL,
-   system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
-   user: `Oprav na validní JSON:\n${raw}`
-   client: db,
-   dashboardUserEmail
- });
+     const fixed = await chatJson({
+  model: DEFAULT_MODEL,
+  system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
+  user: `Oprav na validní JSON:\n${raw}`,
+  client: db,
+  dashboardUserEmail
+});
       analysis = JSON.parse(stripJsonFence(String(fixed)));
     }
 
@@ -3855,6 +3855,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
