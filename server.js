@@ -1739,13 +1739,13 @@ Speciální pravidla (CZ):
 
     // 2) AI sloty [[AI: ...]]
     const aiSlotRegex = /\[\[\s*AI\s*:(.*?)\]\]/gs;
-    const slots = [...filled.matchAll(aiSlotRegex)];
-    if (slots.length) {
-      for (const m of slots) {
-        const whole = m[0];
-        const instr = (m[1] || '').trim();
+const slots = [...filled.matchAll(aiSlotRegex)];
+if (slots.length) {
+  for (const m of slots) {
+    const whole = m[0];
+    const instr = (m[1] || '').trim();
 
-        const prompt =
+    const prompt =
 `${systemInstruction}
 Úkol: ${instr}
 ---
@@ -1761,21 +1761,22 @@ Podpis (pokud je vhodné, přidej až úplně na konec odpovědi): ${styleProfil
 
 Odpověz pouze textem, bez vysvětlivek a bez markdownu.`;
 
-        let aiText = '';
-        try {
-          model: EMAIL_MODEL,
-          system: systemInstruction,
-          user: prompt,
-          client,                 
-          dashboardUserEmail
-  });
-        } catch (err) {
-          console.warn('AI slot generation failed, leaving empty.', err?.message);
-        }
-
-        filled = filled.replace(whole, aiText);
-      }
+    let aiText = '';
+    try {
+      aiText = await chatText({
+        model: EMAIL_MODEL,
+        system: systemInstruction,
+        user: prompt,
+        client,
+        dashboardUserEmail
+      });
+    } catch (err) {
+      console.warn('AI slot generation failed, leaving empty.', err?.message);
     }
+
+    filled = filled.replace(whole, aiText || '');
+  }
+}
 
     return res.json({ success: true, rendered: filled });
   } catch (e) {
@@ -3854,6 +3855,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
