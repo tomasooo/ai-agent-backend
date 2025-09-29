@@ -2776,7 +2776,7 @@ async function handleCustomAnalyzeEmail(req, res) {
       WHERE dashboard_user_email=$1 AND connected_email=$2
     `, [dashboardUserEmail, emailAddress]);
 
-    db.release();
+    
 
     if (!rAcc.rowCount) {
       return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
@@ -3855,6 +3855,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
