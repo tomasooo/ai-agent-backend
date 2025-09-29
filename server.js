@@ -1763,10 +1763,11 @@ Odpověz pouze textem, bez vysvětlivek a bez markdownu.`;
 
         let aiText = '';
         try {
-          aiText = await chatText({
-    model: EMAIL_MODEL,   // odpovídání na emaily = GPT-5 mini
-    system: systemInstruction,
-    user: prompt
+          model: EMAIL_MODEL,
+          system: systemInstruction,
+          user: prompt,
+          client,                 
+          dashboardUserEmail
   });
         } catch (err) {
           console.warn('AI slot generation failed, leaving empty.', err?.message);
@@ -2863,8 +2864,10 @@ ${String(emailBody).slice(0, 3000)}
 
     const raw = await chatJson({
    model: EMAIL_MODEL,
-   system: systemInstruction,
-   user: task
+  system: systemInstruction,
+  user: task,
+  client: db,
+  dashboardUserEmail
  });
     
 
@@ -2877,6 +2880,8 @@ ${String(emailBody).slice(0, 3000)}
    model: DEFAULT_MODEL,
    system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
    user: `Oprav na validní JSON:\n${raw}`
+   client: db,
+   dashboardUserEmail
  });
       analysis = JSON.parse(stripJsonFence(String(fixed)));
     }
@@ -3847,6 +3852,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
