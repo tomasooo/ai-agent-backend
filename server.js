@@ -2739,6 +2739,7 @@ app.get('/api/gmail/message-body', async (req, res) => {
 
 
 async function handleCustomAnalyzeEmail(req, res) {
+  let db;
   try {
     // podpora POST (body) i GET (query)
     const src = req.method === 'GET' ? (req.query || {}) : (req.body || {});
@@ -2749,10 +2750,9 @@ async function handleCustomAnalyzeEmail(req, res) {
     }
 
     // načíst limity
-    const db = await pool.connect();
+    db = await pool.connect();
     const consume = await tryConsumeAiAction(db, dashboardUserEmail);
     if (!consume.ok) {
-      db.release();
       return res.status(429).json({ success:false, message:`Vyčerpán měsíční limit AI akcí (${consume.limit}).` });
     }
 
@@ -2904,6 +2904,8 @@ ${String(emailBody).slice(0, 3000)}
   } catch (e) {
     console.error(e);
     return res.status(500).json({ success:false, message:'Analýza selhala.' });
+} finally {
+  try { db?.release?.(); } catch {}
   }
 }
 
@@ -3852,6 +3854,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
