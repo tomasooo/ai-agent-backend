@@ -2888,9 +2888,13 @@ ${String(emailBody).slice(0, 3000)}
 
     return res.json({
   success: true,
-  analysis,
-  emailBody,
-  debugOut
+      analysis,
+      emailBody,
+      headers: {
+        messageId,          
+        references         
+      },
+      debugOut
 });
   } catch (e) {
     console.error(e);
@@ -3843,6 +3847,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
