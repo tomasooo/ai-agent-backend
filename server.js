@@ -2663,20 +2663,20 @@ app.get('/api/gmail/emails', async (req, res) => {
       oauth2Client.setCredentials({ refresh_token: refreshToken });
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-      const queryParts = [];
-      if (status === 'unread') queryParts.push('is:unread');
-      if (status === 'spam') queryParts.push('in:spam');
-      if (period === 'today') queryParts.push('newer_than:1d');
-      if (period === 'week') queryParts.push('newer_than:7d');
-      if (searchQuery) queryParts.push(String(searchQuery));
-      const finalQuery = queryParts.join(' ');
+      const queryParts = ['-in:spam', '-in:trash', 'in:inbox']; // nikdy nevracej spam/koš
+if (status === 'unread') queryParts.push('is:unread');
+if (period === 'today') queryParts.push('newer_than:1d');
+if (period === 'week') queryParts.push('newer_than:7d');
+if (searchQuery) queryParts.push(String(searchQuery));
+const finalQuery = queryParts.join(' ');
 
-      const listResponse = await gmail.users.messages.list({
-        userId: 'me',
-        maxResults: 10,
-        q: finalQuery
-      });
-
+     const listResponse = await gmail.users.messages.list({
+  userId: 'me',
+  q: finalQuery,
+  labelIds: ['INBOX'],          // jen Doručená
+  includeSpamTrash: false,      // nikdy spam/koš
+  maxResults: 50
+});
       const messageIds = listResponse.data.messages || [];
       if (messageIds.length === 0) {
         return res.json({ success: true, emails: [], total: 0 });
@@ -2729,12 +2729,16 @@ await imap.mailboxOpen('INBOX');
 
       const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 500);
       for await (let msg of imap.fetch(
-        { seq: `${startSeq}:*` },
-        { uid: true, envelope: true, internalDate: true, flags: true }
-      )) {
+  { seq: `${startSeq}:*` },
+  { uid: true, envelope: true, internalDate: true, flags: true }
+)) {
         // unread
         if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
 
+ const spamFlag = (msg.headers?.get('x-spam-flag') || '').toString().toLowerCase();
+  const spamStatus = (msg.headers?.get('x-spam-status') || '').toString().toLowerCase();
+  if (spamFlag.includes('yes') || spamStatus.startsWith('yes')) continue;
+        
         // period
         const d = msg.internalDate;
         if (period === 'today' && (!d || d < startOfToday)) continue;
@@ -3951,6 +3955,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
