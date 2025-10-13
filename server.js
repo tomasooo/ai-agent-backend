@@ -752,6 +752,102 @@ app.get('/api/gmail/sent-replies', async (req, res) => {
 });
 
 
+app.get('/api/unread', async (req, res) => {
+  try {
+    const provider = (process.env.MAIL_PROVIDER || 'gmail').toLowerCase();
+
+    if (provider === 'gmail') {
+      const oAuth2 = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_REDIRECT_URI
+      );
+      oAuth2.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+
+      const gmail = google.gmail({ version: 'v1', auth: oAuth2 });
+
+      const list = await gmail.users.messages.list({
+        userId: 'me',
+        labelIds: ['UNREAD', 'INBOX'],
+        includeSpamTrash: false,
+        maxResults: 50,
+      });
+
+      const ids = (list.data.messages || []).map(m => m.id);
+      const messages = await Promise.all(ids.map(async (id) => {
+        const { data } = await gmail.users.messages.get({
+          userId: 'me',
+          id,
+          format: 'metadata',
+          metadataHeaders: ['From', 'Subject', 'Date']
+        });
+        const headers = Object.fromEntries(
+          (data.payload?.headers || []).map(h => [h.name.toLowerCase(), h.value])
+        );
+        return {
+          id,
+          subject: headers['subject'] || '(bez předmětu)',
+          from: headers['from'] || '',
+          date: headers['date'] || '',
+          snippet: data.snippet || '',
+          provider: 'gmail'
+        };
+      }));
+
+      return res.json({ messages });
+    }
+
+    // ===== Custom IMAP e-mail =====
+    if (provider === 'imap') {
+      const client = new ImapFlow({
+        host: process.env.IMAP_HOST,
+        port: Number(process.env.IMAP_PORT || 993),
+        secure: String(process.env.IMAP_SECURE ?? 'true') === 'true',
+        auth: {
+          user: process.env.IMAP_USER,
+          pass: process.env.IMAP_PASS
+        }
+      });
+
+      await client.connect();
+      let lock = await client.getMailboxLock('INBOX'); // čti jen doručenou poštu
+      const messages = [];
+      try {
+        const uids = await client.search({ seen: false });
+        for await (let msg of client.fetch(uids, { envelope: true, internalDate: true, headers: true })) {
+          const spamFlag = (msg.headers.get('x-spam-flag') || '').toString().toLowerCase();
+          const spamStatus = (msg.headers.get('x-spam-status') || '').toString().toLowerCase();
+          if (spamFlag.includes('yes') || spamStatus.startsWith('yes')) continue;
+
+          messages.push({
+            id: String(msg.uid),
+            subject: msg.envelope?.subject || '(bez předmětu)',
+            from: msg.envelope?.from?.map(a => a.address).join(', ') || '',
+            date: msg.internalDate?.toISOString?.() || '',
+            snippet: '',
+            provider: 'imap'
+          });
+          if (messages.length >= 50) break;
+        }
+      } finally {
+        lock.release();
+        await client.logout();
+      }
+
+      return res.json({ messages });
+    }
+
+    res.status(400).json({ error: 'Neznámý MAIL_PROVIDER (gmail nebo imap).' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Nepodařilo se načíst nepřečtené e-maily.' });
+  }
+});
+
+
+
+
+
 
 
 function extractEmail(s = '') {
@@ -3855,6 +3951,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
