@@ -814,19 +814,36 @@ app.get('/api/unread', async (req, res) => {
       const messages = [];
       try {
         const uids = await client.search({ seen: false });
-        for await (let msg of client.fetch(uids, { envelope: true, internalDate: true, headers: true })) {
-          const spamFlag = (msg.headers.get('x-spam-flag') || '').toString().toLowerCase();
-          const spamStatus = (msg.headers.get('x-spam-status') || '').toString().toLowerCase();
-          if (spamFlag.includes('yes') || spamStatus.startsWith('yes')) continue;
+for await (let msg of client.fetch(uids, { envelope: true, internalDate: true, headers: true })) {
+  // 1) Filtrování nepřečtených už máš výš přes search({ seen: false })
 
-          messages.push({
-            id: String(msg.uid),
-            subject: msg.envelope?.subject || '(bez předmětu)',
-            from: msg.envelope?.from?.map(a => a.address).join(', ') || '',
-            date: msg.internalDate?.toISOString?.() || '',
-            snippet: '',
-            provider: 'imap'
-          });
+  // 2) Serverové spam značky
+  const spamFlag = (msg.headers.get('x-spam-flag') || '').toString().toLowerCase();
+  const spamStatus = (msg.headers.get('x-spam-status') || '').toString().toLowerCase();
+  if (spamFlag.includes('yes') || spamStatus.startsWith('yes')) continue;
+
+  // 3) Dekódovaný předmět (z =?UTF-8?...?= atd.)
+  const rawSubject = msg.envelope?.subject || '';
+  const subjectDecoded = decodeWords(String(rawSubject));
+
+  // 4) Lokální pravidlo: prefix "*****SPAM*****" (případně i [SPAM])
+  //    → přeskoč zprávu, ať se v UI neukáže
+  const customSpamPrefixes = (process.env.CUSTOM_SPAM_SUBJECT_PREFIXES || '*****SPAM*****,[SPAM]').split(',')
+    .map(s => s.trim()).filter(Boolean);
+
+  const matchesCustomSpam = customSpamPrefixes.some(prefix =>
+    new RegExp(`^\\s*${prefix.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`, 'i').test(subjectDecoded)
+  );
+  if (matchesCustomSpam) continue;
+
+  messages.push({
+    id: String(msg.uid),
+    subject: subjectDecoded || '(bez předmětu)',
+    from: msg.envelope?.from?.map(a => a.address).join(', ') || '',
+    date: msg.internalDate?.toISOString?.() || '',
+    snippet: '',
+    provider: 'imap'
+  });
           if (messages.length >= 50) break;
         }
       } finally {
@@ -3955,6 +3972,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
