@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="cs">
 <head>
@@ -2983,7 +2984,43 @@ function renderTplHelp() {
   document.getElementById('btn-insert-ai')?.addEventListener('click', () => {
     insertAtCursor('tpl-content', '[[AI: Napiš dvě věty empatického uznání problému a navrhni další konkrétní krok.]]');
   });
-  document.getElementById('btn-insert-example')?.addEventListener('click', () => { /* ... zůstává tvoje ... */ });
+  document.getElementById('btn-insert-example')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  const nameEl = document.getElementById('tpl-name');
+  const catEl = document.getElementById('tpl-category');
+  const contentEl = document.getElementById('tpl-content');
+  if (!contentEl) return;
+
+  if (nameEl) nameEl.value = 'Odpověď na reklamaci — potvrzení přijetí';
+  if (catEl)  catEl.value = 'Podpora';
+
+  const example =
+`Dobrý den {{recipientName}},
+
+děkujeme za zprávu ohledně objednávky {{orderId}}. Mrzí nás vzniklé potíže.
+
+[[AI: Stručně a empaticky shrň důvod reklamace podle emailu a přidej 1–2 věty s ujištěním.]]
+
+Pro rychlé vyřízení prosím pošlete fotografie poškození a číslo účtu pro případné vrácení peněz.
+Číslo reklamace: {{caseId}}
+
+Děkujeme a brzy se ozveme s dalším postupem.
+S pozdravem
+{{senderName}}
+{{senderSignature}}`;
+
+  if ((contentEl.value || '').trim().length) {
+    contentEl.value = contentEl.value.replace(/\s*$/, '') + '\n\n---\n' + example;
+  } else {
+    contentEl.value = example;
+  }
+
+  contentEl.focus();
+  const pos = contentEl.value.length;
+  contentEl.setSelectionRange(pos, pos);
+  validateTemplateVariables?.();
+  showToast?.('Ukázková šablona vložena. Uprav ji a ulož.', 'success');
+});
 
   // === Hint podle kurzoru v textarea ===
   const ta = document.getElementById('tpl-content');
@@ -4510,6 +4547,7 @@ if (planTab) {
     navLinks.forEach(link => {
        link.addEventListener('click', (e) => {
             e.preventDefault();
+            
             navLinks.forEach(l => l.classList.remove('active'));
             link.classList.add('active');
             
