@@ -4970,7 +4970,8 @@ payload = {
   if (data.success) {
     showToast(data.message, 'success');
     hideAnalysisModal();
-    afterSuccessfulSend(); // (nechej – inkrementuje uses u šablony)
+    afterSuccessfulSend();
+    await fetchEmails();// okamžitý refresh seznamu emailů po odeslání
     const tplId = window.__lastUsedTemplateId;
 if (tplId) {
   fetch(`https://ai-email-server-stejdesign.onrender.com/api/templates/${tplId}/increment-use`, {
