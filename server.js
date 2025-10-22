@@ -4102,11 +4102,12 @@ app.delete('/api/admin/users/:email', isAdmin, async (req, res) => {
         return res.status(400).json({ success: false, message: 'Nemůžete smazat sami sebe.' });
     }
     
-   let client;
+      let client;
     try {
         client = await pool.connect();
         // Díky 'ON DELETE CASCADE' v databázi se smažou i všechna propojená data (účty, FAQ, atd.)
         await client.query('DELETE FROM dashboard_users WHERE email = $1', [targetEmail]);
+
         return res.json({ success: true, message: 'Uživatel byl smazán.' });
     } catch (e) {
         console.error('Chyba při mazání uživatele:', e);
@@ -4115,6 +4116,7 @@ app.delete('/api/admin/users/:email', isAdmin, async (req, res) => {
         if (client) client.release();
     }
 });
+
 
 
 // Endpoint pro načtení logu aktivit (pouze pro adminy)
@@ -4140,6 +4142,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
