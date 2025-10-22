@@ -4118,30 +4118,35 @@ app.delete('/api/admin/users/:email', isAdmin, async (req, res) => {
 });
 
 
-
 // Endpoint pro načtení logu aktivit (pouze pro adminy)
-app.get('/api/admin/activity-log', isAdmin, async (req, res) => {
-    let client;
-    try {
-        client = await pool.connect();
-        const result = await client.query(
-            'SELECT timestamp, user_email, action, status FROM audit_log ORDER BY timestamp DESC LIMIT 50'
-        );
-        res.json({ success: true, log: result.rows });
-    } catch (e) {
-        res.status(500).json({ success: false, message: 'Nepodařilo se načíst log aktivit.' });
-    } finally {
-        if (client) client.release();
-    }
+app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
+  let client;
+  try {
+    const { limit = 200, offset = 0 } = req.query || {};
+    client = await pool.connect();
+    const r = await client.query(
+      `SELECT id, timestamp, user_email, action, status, details
+         FROM audit_log
+        ORDER BY timestamp DESC
+        LIMIT $1 OFFSET $2`,
+      [Math.min(Number(limit) || 200, 1000), Math.max(Number(offset) || 0, 0)]
+    );
+    return res.json({ success: true, items: r.rows });
+  } catch (e) {
+    console.error('Chyba při čtení audit_log:', e);
+    return res.status(500).json({ success: false, message: 'Nepodařilo se načíst log.' });
+  } finally {
+    if (client) client.release();
+  }
+});
+
+// Spuštění serveru
+app.listen(PORT, () => {
+  console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
 
 
 
-setupDatabase().then(() => {
-    app.listen(PORT, () => {
-        console.log(`✅ Backend server běží na portu ${PORT}`);
-    });
-});
 
 
 
