@@ -19,7 +19,7 @@ import libmime from 'libmime';
 import dns from 'dns';
 const { decodeWords } = libmime;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
-const DISABLE_AI_WORKER = process.env.DISABLE_AI_WORKER === '1' || true; // true = natvrdo vypnuto
+const DISABLE_AI_WORKER = process.env.DISABLE_AI_WORKER === '1' || false; // false = výchozí běží
 
 
 const app = express();
@@ -3676,10 +3676,112 @@ app.post('/api/settings', async (req, res) => {
 });
 
 
+
+
+
+
+
+
 // 
 // ===================================================================
 // === AUTOMATICKÝ EMAIL WORKER (SPAM + SCHVALOVÁNÍ) ================
 // ===================================================================
+
+async function runImapWorker() {
+  // načti všechny aktivní custom účty
+  const db = await pool.connect();
+  let accounts = [];
+  try {
+    const r = await db.query(`
+      SELECT dashboard_user_email, email_address, imap_host, imap_port, imap_secure,
+             enc_username, enc_password,
+             s.auto_reply, s.approval_required, s.spam_filter
+      FROM custom_accounts ca
+      JOIN settings s
+        ON s.dashboard_user_email = ca.dashboard_user_email
+       AND s.connected_email = ca.email_address
+      WHERE ca.active = true
+        AND (s.approval_required = true OR s.spam_filter = true OR s.auto_reply = true)
+    `);
+    accounts = r.rows || [];
+  } finally {
+    db.release();
+  }
+
+  for (const acc of accounts) {
+    console.log(`   -> IMAP: ${acc.email_address}`);
+    const user = decSecret(acc.enc_username);
+    const pass = decSecret(acc.enc_password);
+
+    const imap = new ImapFlow({
+      host: acc.imap_host,
+      port: Number(acc.imap_port || 993),
+      secure: !!acc.imap_secure,
+      auth: { user, pass }
+    });
+
+    try {
+      await imap.connect();
+      await imap.mailboxOpen('INBOX');
+
+      // vezmeme posledních ~200 zpráv, ať to netahá celou schránku
+      const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 200);
+      for await (const msg of imap.fetch({ seq: `${startSeq}:*` }, { uid: true, envelope: true, internalDate: true, headers: true, flags: true })) {
+        // ber jen nepřečtené
+        if (msg.flags?.has?.('\\Seen')) continue;
+
+        // 1) Spam podle hlaviček
+        if (acc.spam_filter && isSpamByHeadersMap(msg.headers)) {
+          // nepřesouvej nic, jen přeskoč – hlavní cíl je NEODPOVÍDAT
+          continue;
+        }
+
+        // 2) Subject / From
+        const rawSubject = msg.envelope?.subject || '';
+        const subject = decodeWords(String(rawSubject));
+        const fromAddr = (msg.envelope?.from?.[0]?.address || '').trim();
+
+        // 3) Stáhni tělo (kvůli rutině/approval heuristice)
+        const { content } = await imap.download(msg.uid, null, { uid: true });
+        const chunks = [];
+        for await (const c of content) chunks.push(c);
+        const parsed = await simpleParser(Buffer.concat(chunks));
+        const bodyText = parsed.text || (parsed.html ? parsed.html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g,'').trim() : '') || '';
+
+        // 4) Heuristiky approval/routine
+        const whitelist = (process.env.EMAIL_WHITELIST || '').split(',').map(s=>s.trim()).filter(Boolean);
+        if (acc.approval_required && looksImportant(fromAddr, subject, bodyText, whitelist)) {
+          // volitelné: přesuň do složky "ceka-na-schvaleni"
+          try { await imap.messageMove(msg.uid, 'ceka-na-schvaleni', { uid: true }); } catch {}
+          continue;
+        }
+
+        if (acc.auto_reply && looksRoutine(subject, bodyText)) {
+          // Odpověď přes render + tvůj endpoint /api/custom-email/send-reply
+          // (má správné In-Reply-To/References a uloží kopii do Sent)
+          // -> pošli jen, pokud to tak chceš (jinak jen označ jako \\Seen)
+          // 1) Volání renderu si udělej stejně jako ve FE
+          // 2) Pak zavolej /api/custom-email/send-reply s origMessageId/origReferences/replyToUid
+          // Pozn.: endpoint i práce s message-id už u tebe existují.
+          // (Pro stručnost zde neukazuji volání fetch – endpoint už máš implementovaný.)
+        }
+
+        // Nechceš-li teď posílat odpovědi automaticky, tak aspoň:
+        await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(()=>{});
+      }
+    } catch (e) {
+      console.error('[IMAP worker] chyba:', e?.message || e);
+    } finally {
+      try { if (imap.connected) await imap.logout(); } catch {}
+    }
+  }
+}
+
+
+
+
+
+
 
 async function runEmailWorker() {
   if (DISABLE_AI_WORKER) {
@@ -3724,52 +3826,116 @@ async function runEmailWorker() {
       // --- PŘIDANÁ LOGIKA PRO FILTR PODLE DATA ---
      
       const afterTimestamp = Math.floor(new Date(acc.created_at).getTime() / 1000);
-      const searchQuery = `is:unread in:inbox after:${afterTimestamp}`;
-      // --- KONEC LOGIKY ---
+     const searchQuery = [
+  'is:unread',
+  'in:inbox',
+  '-in:spam',
+  '-in:trash',
+  '-category:promotions',
+  '-category:social',
+  `after:${afterTimestamp}`
+].join(' ');
 
-      // Hledej nové nepřečtené v inboxu s časovým omezením
-      const listResponse = await gmail.users.messages.list({ userId: 'me', q: searchQuery });
+const listResponse = await gmail.users.messages.list({
+  userId: 'me',
+  q: searchQuery,
+  labelIds: ['INBOX'],
+  includeSpamTrash: false
+});
       const messages = listResponse.data.messages || [];
       if (messages.length === 0) continue;
 
       console.log(`      Nalezeno ${messages.length} nových zpráv.`);
+
+      function headerVal(headers, name) {
+  return (headers.find(h => h.name?.toLowerCase() === name.toLowerCase())?.value || '').toString();
+}
+
+function hasListUnsub(headers) {
+  return !!headerVal(headers, 'list-unsubscribe');
+}
+
+function hasPrecedenceBulk(headers) {
+  const v = headerVal(headers, 'precedence').toLowerCase();
+  return /bulk|list|bulkmail/.test(v);
+}
+
+function looksLikeSpam(subject, snippet, headers) {
+  const s = `${subject} ${snippet}`.toLowerCase();
+  const promoTokens = ['unsubscribe','newsletter','promo','reklama','sleva','akce','kup nyní','% sleva','sale'];
+  if (promoTokens.some(t => s.includes(t))) return true;
+  if (hasListUnsub(headers)) return true;
+  if (hasPrecedenceBulk(headers)) return true;
+  if (/\b\d{2,3}[ ,.\u00A0]?(kč|czk|eur|€|\$)\b/i.test(s)) return true;
+  return false;
+}
+
+function looksImportant(from, subject, snippet, whitelist = []) {
+  const s = `${subject} ${snippet}`.toLowerCase();
+  if (whitelist.some(w => from.toLowerCase().includes(w))) return true;
+  if (/\b(urgent|důležité|reklamace|stížnost|smlouva|faktura|deadline|kritické)\b/i.test(s)) return true;
+  return false;
+}
+
+function looksRoutine(subject, snippet) {
+  const s = `${subject} ${snippet}`.toLowerCase();
+  if (/\?/.test(s)) return true;
+  if (/\b(dotaz|info|prosím o|cenu|dostupnost|objednávka|termín)\b/i.test(s)) return true;
+  return false;
+}
+
+function extractEmail(addr) {
+  const m = String(addr || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  return m ? m[0] : (addr || '');
+}
       for (const msg of messages) {
-        const msgResponse = await gmail.users.messages.get({ userId: 'me', id: msg.id });
-        const subject = msgResponse.data.payload.headers.find(h => h.name === 'Subject')?.value || '';
+       const msgResponse = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'full' });
+const headers = msgResponse.data.payload?.headers || [];
+const subject = headerVal(headers, 'Subject') || '';
+const fromHdr = headerVal(headers, 'From') || '';
+const from = extractEmail(fromHdr);
+const snippet = (msgResponse.data.snippet || '').slice(0, 1200);
 
-        const prompt = `Jsi AI asistent pro třídění emailů. Klasifikuj následující email. Vrať pouze JSON {"category": "spam"|"approval_required"|"routine"}. Důležité emaily od šéfa nebo klientů označ jako "approval_required". Běžné reklamy a zjevný spam "spam". Předmět: ${subject} Fragment: ${msgResponse.data.snippet}`;
-        
-       const raw = await chatJson({
-  model: EMAIL_MODEL,
- 
-  system: typeof systemInstruction !== 'undefined' ? systemInstruction : undefined,
-  user: prompt
-});
-const analysis = JSON.parse(
-  (typeof raw === 'string' ? raw : String(raw)).replace(/```json|```/g, '').trim()
-);
-
-
-        if (analysis.category === 'spam' && acc.spam_filter) {
+// 1) SPAM / reklama
+if (acc.spam_filter && looksLikeSpam(subject, snippet, headers)) {
   await gmail.users.messages.modify({
     userId: 'me', id: msg.id,
-    requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX'] }
+    requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX','UNREAD'] }
   });
-  console.log(`         "${subject}" → SPAM`);
-} else if (analysis.category === 'approval_required' && acc.approval_required) {
+  console.log(`         "${subject}" → SPAM (heuristika)`);
+  continue;
+}
+
+// 2) Ke schválení (důležité)
+const accountWhitelist = (process.env.EMAIL_WHITELIST || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
+if (acc.approval_required && looksImportant(from, subject, snippet, accountWhitelist)) {
   await gmail.users.messages.modify({
     userId: 'me', id: msg.id,
-    requestBody: { addLabelIds: [approvalLabel.id], removeLabelIds: ['INBOX', 'UNREAD'] }
+    requestBody: { addLabelIds: [approvalLabel.id], removeLabelIds: ['INBOX','UNREAD'] }
   });
-  console.log(`         "${subject}" → čeká na schválení`);
-} else {
-  // TATO ČÁST PŘERUŠÍ SMYČKU A ZASTAVÍ NÁKLADY
-  // Označí rutinní email jako přečtený, aby se neanalyzoval znovu
+  console.log(`         "${subject}" → čeká na schválení (heuristika)`);
+  continue;
+}
+
+// 3) Rutinní → pouze označ jako přečtené (odpověď řešíš ručně/na schválení UI, anebo ji můžeš hned poslat přes render)
+if (acc.auto_reply && looksRoutine(subject, snippet)) {
   await gmail.users.messages.modify({
     userId: 'me', id: msg.id,
     requestBody: { removeLabelIds: ['UNREAD'] }
   });
-  console.log(`         "${subject}" → rutinní, označeno jako přečtené`);
+  console.log(`         "${subject}" → rutinní (označeno jako přečtené).`);
+  continue;
+}
+
+// 4) Jinak jen odznačit UNREAD (neutrální)
+await gmail.users.messages.modify({
+  userId: 'me', id: msg.id,
+  requestBody: { removeLabelIds: ['UNREAD'] }
+});
+console.log(`         "${subject}" → neutrální (označeno jako přečtené).`);
+
 }
       }
     }
@@ -3793,9 +3959,10 @@ app.get('/api/trigger-worker', (req, res) => {
 });
 
 // Automatické spouštění každých 15 minut
-//cron.schedule('*/15 * * * *', () => {
-//  runEmailWorker();
-//});
+cron.schedule('*/15 * * * *', () => {
+  runEmailWorker();
+  runImapWorker();
+});
 
 
 
@@ -3972,6 +4139,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
