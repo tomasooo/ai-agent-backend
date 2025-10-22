@@ -3949,13 +3949,13 @@ console.log(`         "${subject}" → neutrální (označeno jako přečtené).
 
 // Endpoint, který lze stále volat ručně pro testování (např. přes UptimeRobot)
 app.get('/api/trigger-worker', (req, res) => {
-  if (req.query.secret !== CRON_SECRET) return res.status(401).send('Neoprávněný přístup.');
-  
-  // Nespustí worker okamžitě, aby se předešlo duplicitnímu běhu, pokud je cron aktivní.
-  // Jen potvrdí, že by se spustil. Můžete odkomentovat, pokud chcete i manuální spouštění.
-  // runEmailWorker(); 
-  
-  res.status(200).send('Worker je aktivní a spouští se automaticky na serveru.');
+  if (req.query.secret !== CRON_SECRET) {
+    return res.status(401).send('Neoprávněný přístup.');
+  }
+
+  // runEmailWorker(); // odkomentuj, pokud chceš worker spouštět i ručně
+
+  return res.status(200).send('Worker je aktivní a spouští se automaticky na serveru.');
 });
 
 // Automatické spouštění každých 15 minut
@@ -4142,6 +4142,7 @@ setupDatabase().then(() => {
         console.log(`✅ Backend server běží na portu ${PORT}`);
     });
 });
+
 
 
 
