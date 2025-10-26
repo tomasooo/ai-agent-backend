@@ -3304,7 +3304,7 @@ function openCustomConnect() {
         body: JSON.stringify({
           dashboardUserEmail, email: emailAddress,
           tone:'Formální', length:'Střední (1 odstavec)', signature:'Společnost Senzoor',
-          auto_reply:true, approval_required:true, spam_filter:true
+          auto_reply:false, approval_required:true, spam_filter:true
         })
       });
 
@@ -3862,6 +3862,57 @@ function renderEmailList(emails, total) {
         emailListContainer.insertAdjacentHTML('beforeend', emailHTML);
     });
 }
+
+
+
+
+// --- Akce schválení/odmítnutí pro maily v režimu "Čekající" ---
+document.getElementById('email-list-container')?.addEventListener('click', async (e) => {
+  const approveBtn = e.target.closest('.approve-btn');
+  const rejectBtn  = e.target.closest('.reject-btn');
+  if (!approveBtn && !rejectBtn) return;
+
+  const row = e.target.closest('.email-item');
+  const messageId = row?.dataset.id;
+  const src = row?.dataset.src || 'gmail';
+
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  const accountEmail       = localStorage.getItem('primaryEmail');
+
+  try {
+    if (!messageId) throw new Error('Chybí ID zprávy.');
+    if (src !== 'gmail') throw new Error('Schvalování je aktuálně podporováno pro Gmail.');
+
+    const url = approveBtn
+      ? `${window.BACKEND}/api/gmail/approval/approve`
+      : `${window.BACKEND}/api/gmail/approval/reject`;
+
+    const r = await fetch(url, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ dashboardUserEmail, email: accountEmail, messageId })
+    });
+    const j = await r.json();
+    if (!r.ok || !j.success) throw new Error(j.message || 'Akce selhala.');
+
+    // UX: odstranit položku ze seznamu a ohlásit výsledek
+    row.remove();
+    showToast(approveBtn ? 'Schváleno – přesunuto do Doručené.' : 'Zamítnuto – archivováno.', 'success');
+  } catch (err) {
+    showToast(err.message || 'Chyba akce.', 'error');
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
 
 // ZMĚNA: Funkce nyní načítá nastavení pro aktuálně vybraný primární email
 async function loadSettings() {
