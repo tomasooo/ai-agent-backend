@@ -2668,57 +2668,77 @@ app.get('/api/gmail/emails', async (req, res) => {
     }
 
     // === Gmail větev ===
-    if (!isCustom) {
-      console.log(`[emails] Gmail account: ${email}`);
-      const refreshToken = acc.rows[0].refresh_token;
-      if (!refreshToken) {
-        return res.status(404).json({ success: false, message: "Pro tento email u tohoto uživatele nebyl nalezen token." });
-      }
+    // === Gmail větev ===
+if (!isCustom) {
+  console.log(`[emails] Gmail account: ${email}`);
+  const refreshToken = acc.rows[0].refresh_token;
+  if (!refreshToken) {
+    return res.status(404).json({ success: false, message: "Pro tento email u tohoto uživatele nebyl nalezen token." });
+  }
 
-      db.release(); db = null; // DB už netřeba
+  db.release(); db = null; // DB už netřeba
 
-      oauth2Client.setCredentials({ refresh_token: refreshToken });
-      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+  oauth2Client.setCredentials({ refresh_token: refreshToken });
+  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-      const queryParts = ['-in:spam', '-in:trash', 'in:inbox']; // nikdy nevracej spam/koš
-if (status === 'unread') queryParts.push('is:unread');
-if (period === 'today') queryParts.push('newer_than:1d');
-if (period === 'week') queryParts.push('newer_than:7d');
-if (searchQuery) queryParts.push(String(searchQuery));
-const finalQuery = queryParts.join(' ');
+  // --- NOVĚ: podpora status=approval ---
+  let labelIds = [];
+  const queryParts = ['-in:spam', '-in:trash']; // nikdy nevracej spam/koš
 
-     const listResponse = await gmail.users.messages.list({
-  userId: 'me',
-  q: finalQuery,
-  labelIds: ['INBOX'],          // jen Doručená
-  includeSpamTrash: false,      // nikdy spam/koš
-  maxResults: 50
-});
-      const messageIds = listResponse.data.messages || [];
-      if (messageIds.length === 0) {
-        return res.json({ success: true, emails: [], total: 0 });
-      }
-
-      const emails = await Promise.all(messageIds.map(async (m) => {
-        const mr = await gmail.users.messages.get({
-          userId: 'me',
-          id: m.id,
-          format: 'metadata',
-          metadataHeaders: ['Subject', 'From', 'Date']
-        });
-        const headers = mr.data.payload.headers || [];
-        const getHeader = (n) => headers.find(h => h.name === n)?.value || '';
-        return {
-          id: m.id,
-          snippet: mr.data.snippet,
-          sender: (getHeader('From').match(/<([^>]+)>/)?.[1] || getHeader('From')).trim().replace(/^mailto:/i, ''),
-          subject: getHeader('Subject'),
-          date: getHeader('Date')
-        };
-      }));
-
-      return res.json({ success: true, emails, total: listResponse.data.resultSizeEstimate });
+  if (status === 'approval') {
+    // najdi (nebo vytvoř) label "ceka-na-schvaleni"
+    const labelsList = await gmail.users.labels.list({ userId: 'me' });
+    const approvalLabel = labelsList.data.labels?.find(l => l.name === 'ceka-na-schvaleni');
+    if (!approvalLabel) {
+      // pokud label neexistuje, vrátíme prázdno (worker ho standardně zakládá)
+      return res.json({ success: true, emails: [], total: 0 });
     }
+    labelIds = [approvalLabel.id]; // dotazujeme výhradně čekající
+  } else {
+    // standardní INBOX dotaz
+    queryParts.push('in:inbox');
+    if (status === 'unread') queryParts.push('is:unread');
+    if (period === 'today') queryParts.push('newer_than:1d');
+    if (period === 'week')  queryParts.push('newer_than:7d');
+  }
+  if (searchQuery) queryParts.push(String(searchQuery));
+  const finalQuery = queryParts.join(' ');
+
+  const listResponse = await gmail.users.messages.list({
+    userId: 'me',
+    q: finalQuery,
+    // --- ZMĚNA: nepoužívat natvrdo ['INBOX'] ---
+    labelIds,                 // prázdné = default (INBOX přes 'in:inbox' v q), jinak 'ceka-na-schvaleni'
+    includeSpamTrash: false,
+    maxResults: 50
+  });
+
+  const messageIds = listResponse.data.messages || [];
+  if (messageIds.length === 0) {
+    return res.json({ success: true, emails: [], total: 0 });
+  }
+
+  const emails = await Promise.all(messageIds.map(async (m) => {
+    const mr = await gmail.users.messages.get({
+      userId: 'me',
+      id: m.id,
+      format: 'metadata',
+      metadataHeaders: ['Subject', 'From', 'Date']
+    });
+    const headers = mr.data.payload.headers || [];
+    const getHeader = (n) => headers.find(h => h.name === n)?.value || '';
+    return {
+      id: m.id,
+      snippet: mr.data.snippet,
+      sender: (getHeader('From').match(/<([^>]+)>/)?.[1] || getHeader('From')).trim().replace(/^mailto:/i, ''),
+      subject: getHeader('Subject'),
+      date: getHeader('Date')
+    };
+  }));
+
+  return res.json({ success: true, emails, total: listResponse.data.resultSizeEstimate });
+}
+
 
     // === Custom IMAP větev ===
     console.log(`[emails] CUSTOM account: ${email}`);
@@ -3089,6 +3109,66 @@ app.get('/api/custom-email/message-body', async (req, res) => {
 });
 
 
+
+app.post('/api/gmail/approval/approve', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, messageId } = req.body || {};
+    if (!dashboardUserEmail || !email || !messageId) return res.status(400).json({ success:false, message:'Chybí data.' });
+
+    // Gmail klient
+    const db = await pool.connect();
+    const rt = await db.query('SELECT refresh_token FROM connected_accounts WHERE email=$1 AND dashboard_user_email=$2', [email, dashboardUserEmail]);
+    db.release();
+    oauth2Client.setCredentials({ refresh_token: rt.rows[0]?.refresh_token });
+    const gmail = google.gmail({ version:'v1', auth:oauth2Client });
+
+    const labelsList = await gmail.users.labels.list({ userId:'me' });
+    const approvalLabel = labelsList.data.labels.find(l => l.name === 'ceka-na-schvaleni');
+
+    await gmail.users.messages.modify({
+      userId:'me', id: messageId,
+      requestBody: {
+        removeLabelIds: approvalLabel ? [approvalLabel.id] : [],
+        addLabelIds: ['INBOX','UNREAD'] // ať na tebe v INBOXu „čeká“
+      }
+    });
+
+    return res.json({ success:true });
+  } catch (e) {
+    console.error('/api/gmail/approval/approve', e);
+    return res.status(500).json({ success:false, message:'Schválení selhalo.' });
+  }
+});
+
+// Zamítnout: odebrat z fronty a archivovat (mimo INBOX), případně označit jako přečtené
+app.post('/api/gmail/approval/reject', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, messageId } = req.body || {};
+    if (!dashboardUserEmail || !email || !messageId) return res.status(400).json({ success:false, message:'Chybí data.' });
+
+    const db = await pool.connect();
+    const rt = await db.query('SELECT refresh_token FROM connected_accounts WHERE email=$1 AND dashboard_user_email=$2', [email, dashboardUserEmail]);
+    db.release();
+    oauth2Client.setCredentials({ refresh_token: rt.rows[0]?.refresh_token });
+    const gmail = google.gmail({ version:'v1', auth:oauth2Client });
+
+    const labelsList = await gmail.users.labels.list({ userId:'me' });
+    const approvalLabel = labelsList.data.labels.find(l => l.name === 'ceka-na-schvaleni');
+
+    await gmail.users.messages.modify({
+      userId:'me', id: messageId,
+      requestBody: {
+        removeLabelIds: approvalLabel ? [approvalLabel.id, 'INBOX'] : ['INBOX'],
+        addLabelIds: [] // archiv (bez INBOXu); volitelně: nic dalšího
+      }
+    });
+
+    return res.json({ success:true });
+  } catch (e) {
+    console.error('/api/gmail/approval/reject', e);
+    return res.status(500).json({ success:false, message:'Zamítnutí selhalo.' });
+  }
+});
 
 
 
@@ -4144,6 +4224,7 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
