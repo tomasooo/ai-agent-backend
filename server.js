@@ -911,6 +911,83 @@ function decodeHeader(str = '') {
   }
 }
 
+function headerMapValue(headers, name) {
+  if (!headers || !name) return '';
+  const lower = String(name).toLowerCase();
+
+  if (typeof headers.get === 'function') {
+    const direct = headers.get(name) ?? headers.get(lower);
+    if (direct == null) return '';
+    if (Array.isArray(direct)) return direct.map(v => String(v || '')).join(', ');
+    return String(direct || '');
+  }
+
+  if (Array.isArray(headers)) {
+    const found = headers.find((h) => (h?.name || '').toLowerCase() === lower);
+    return found ? String(found.value || '') : '';
+  }
+
+  if (typeof headers === 'object') {
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === lower) {
+        const val = headers[key];
+        if (Array.isArray(val)) return val.map(v => String(v || '')).join(', ');
+        return val == null ? '' : String(val || '');
+      }
+    }
+  }
+
+  return '';
+}
+
+function htmlToPlainText(html = '') {
+  return String(html || '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>(?=\s*<)/gi, '\n')
+    .replace(/<br\s*\/?>(?!\n)/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\u00a0/g, ' ')
+    .trim();
+}
+
+function isSpamByHeadersMap(headers) {
+  const listUnsub = headerMapValue(headers, 'List-Unsubscribe');
+  if (listUnsub) return true;
+
+  const precedence = headerMapValue(headers, 'Precedence').toLowerCase();
+  if (precedence.includes('bulk') || precedence.includes('list')) return true;
+
+  const autoSubmitted = headerMapValue(headers, 'Auto-Submitted').toLowerCase();
+  if (autoSubmitted && autoSubmitted !== 'no') return true;
+
+  const spamFlag = headerMapValue(headers, 'X-Spam-Flag').toLowerCase();
+  if (spamFlag.includes('yes')) return true;
+
+  return false;
+}
+
+function firstLineSnippet(text = '', max = 280) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, Math.max(0, max));
+}
+
+function toMetadataObject(metadata) {
+  if (!metadata) return {};
+  if (typeof metadata === 'object' && metadata !== null) return metadata;
+  try {
+    return JSON.parse(metadata);
+  } catch {
+    return {};
+  }
+}
+
+
+
+
 
 
 async function resolveIPv4(host) {
@@ -1577,7 +1654,7 @@ app.get('/api/auth/has-password', async (req, res) => {
     console.error(e);
     return res.status(500).json({ success: false, message: 'Chyba dotazu.' });
   } finally {
-    client.release();
+    if (client) client.release();
   }
 });
 
@@ -3374,11 +3451,267 @@ app.post('/api/gmail/pending-replies/:id/reject', async (req, res) => {
     await logActivity(dashboardUserEmail, 'Zamítnutí AI odpovědi', 'success', { account: email, message: pending.subject });
 
     return res.json({ success: true });
-  } catch (e) {
-    console.error('[pending-replies] reject error:', e);
+  } catch (e) {console.error('[pending-replies] reject error:', e);
     return res.status(500).json({ success: false, message: 'Zamítnutí odpovědi selhalo.' });
   } finally {
     client.release();
+  }
+});
+
+app.get('/api/custom-email/pending-replies', async (req, res) => {
+  const { dashboardUserEmail, emailAddress } = req.query || {};
+  if (!dashboardUserEmail || !emailAddress) {
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo emailAddress.' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    const { rows } = await client.query(`
+      SELECT id, message_id, thread_id, external_message_id, references_header,
+             subject, sender, snippet, original_body, reply_body,
+             summary, sentiment, status, metadata, created_at, last_generated_at, sent_at
+        FROM pending_replies
+       WHERE dashboard_user_email=$1
+         AND connected_email=$2
+         AND provider='custom'
+         AND status='pending'
+       ORDER BY created_at DESC
+    `, [dashboardUserEmail, emailAddress]);
+
+    return res.json({ success: true, pending: rows });
+  } catch (e) {
+    console.error('[custom pending] list error:', e);
+    return res.status(500).json({ success: false, message: 'Nepodařilo se načíst frontu ke schválení.' });
+  } finally {
+    if (client) client.release();
+  }
+});
+
+async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pending }) {
+  const db = await pool.connect();
+  let accountDetails;
+  try {
+    const rAcc = await db.query(`
+      SELECT smtp_host, smtp_port, smtp_secure, imap_host, imap_port, imap_secure,
+             enc_username, enc_password, active
+        FROM custom_accounts
+       WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
+       LIMIT 1
+    `, [dashboardUserEmail, emailAddress]);
+    if (!rAcc.rowCount) {
+      throw new Error('Custom účet nenalezen.');
+    }
+    accountDetails = rAcc.rows[0];
+  } finally {
+    db.release();
+  }
+
+  const user = decSecret(accountDetails.enc_username);
+  const pass = decSecret(accountDetails.enc_password);
+  const metadata = toMetadataObject(pending.metadata);
+
+  const toRaw = pending.sender || metadata.sender || '';
+  const toAddress = extractEmail(toRaw);
+  const toName = parseNameFromFromHeader(toRaw);
+  const fromName = metadata.fromName ? String(metadata.fromName) : '';
+  const subjectBase = pending.subject?.trim() || '(bez předmětu)';
+  const replySubject = subjectBase.toLowerCase().startsWith('re:') ? subjectBase : `Re: ${subjectBase}`;
+  const fromHeader = fromName ? `${libmime.encodeWord(fromName, 'B', 'utf-8')} <${emailAddress}>` : emailAddress;
+  const toHeader = toName ? `${libmime.encodeWord(toName, 'B', 'utf-8')} <${toAddress}>` : toAddress;
+
+  const origMessageId = metadata.origMessageId || pending.external_message_id || '';
+  const origReferences = metadata.origReferences || pending.references_header || '';
+  const referencesCombined = origMessageId
+    ? `${(origReferences || '').trim()} ${origMessageId}`.trim()
+    : (origReferences || '').trim();
+
+  const lines = [
+    `From: ${fromHeader}`,
+    `To: ${toHeader}`,
+    `Subject: ${libmime.encodeWord(replySubject, 'B', 'utf-8')}`
+  ];
+
+  if (origMessageId) {
+    lines.push(`In-Reply-To: ${origMessageId}`);
+    if (referencesCombined) lines.push(`References: ${referencesCombined}`);
+  } else if (referencesCombined) {
+    lines.push(`References: ${referencesCombined}`);
+  }
+
+  lines.push(
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=utf-8',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    pending.reply_body
+  );
+
+  const rawMessage = lines.join('\r\n');
+
+  const transporter = nodemailer.createTransport({
+    host: accountDetails.smtp_host,
+    port: Number(accountDetails.smtp_port),
+    secure: !!accountDetails.smtp_secure,
+    auth: { user, pass },
+    tls: { rejectUnauthorized: false }
+  });
+
+  await transporter.sendMail({ from: fromHeader, to: toHeader, raw: rawMessage });
+
+  const imapClient = createImapClient({
+    host: accountDetails.imap_host,
+    port: Number(accountDetails.imap_port || 993),
+    secure: !!accountDetails.imap_secure,
+    auth: { user, pass }
+  });
+
+  try {
+    await imapClient.connect();
+    await imapClient.mailboxOpen('INBOX');
+    const replyUid = metadata.replyToUid || metadata.uid || metadata.messageUid;
+    if (replyUid) {
+      await imapClient.messageFlagsAdd(String(replyUid), ['\\Seen', '\\Answered'], { uid: true }).catch(() => {});
+      await imapClient.messageFlagsRemove(String(replyUid), ['\\Flagged'], { uid: true }).catch(() => {});
+    }
+
+    const mailboxes = await imapClient.list();
+    let sentMailbox = mailboxes.find((m) => m && m.specialUse === '\\Sent');
+    if (!sentMailbox) {
+      sentMailbox = mailboxes.find((m) => (m && m.path) && m.path.toLowerCase().includes('sent'));
+    }
+    if (sentMailbox) {
+      await imapClient.append(sentMailbox.path, rawMessage, ['\\Seen']).catch(() => {});
+    }
+  } catch (imapErr) {
+    console.warn('[custom pending] IMAP update selhala:', imapErr?.message || imapErr);
+  } finally {
+    try { if (imapClient.connected) await imapClient.logout(); } catch {}
+  }
+
+  await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Custom schváleno)', 'success', { account: emailAddress, to: toAddress });
+
+  return { toAddress };
+}
+
+app.post('/api/custom-email/pending-replies/:id/approve', async (req, res) => {
+  const id = Number(req.params.id);
+  const { dashboardUserEmail, emailAddress } = req.body || {};
+  if (!id || !dashboardUserEmail || !emailAddress) {
+    return res.status(400).json({ success: false, message: 'Chybí povinná data.' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    const { rows } = await client.query(`
+      SELECT *
+        FROM pending_replies
+       WHERE id=$1 AND dashboard_user_email=$2 AND connected_email=$3 AND provider='custom'
+    `, [id, dashboardUserEmail, emailAddress]);
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Záznam nenalezen.' });
+    }
+
+    const pending = rows[0];
+    if (pending.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'Tento návrh už byl zpracován.' });
+    }
+
+    await sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pending });
+
+    await client.query(`
+      UPDATE pending_replies
+         SET status='sent', sent_at=NOW()
+       WHERE id=$1
+    `, [id]);
+
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[custom pending] approve error:', e);
+    return res.status(500).json({ success: false, message: 'Odeslání schválené odpovědi selhalo.' });
+  } finally {
+    if (client) client.release();
+  }
+});
+
+app.post('/api/custom-email/pending-replies/:id/reject', async (req, res) => {
+  const id = Number(req.params.id);
+  const { dashboardUserEmail, emailAddress } = req.body || {};
+  if (!id || !dashboardUserEmail || !emailAddress) {
+    return res.status(400).json({ success: false, message: 'Chybí povinná data.' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    const { rows } = await client.query(`
+      SELECT *
+        FROM pending_replies
+       WHERE id=$1 AND dashboard_user_email=$2 AND connected_email=$3 AND provider='custom'
+    `, [id, dashboardUserEmail, emailAddress]);
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Záznam nenalezen.' });
+    }
+
+    const pending = rows[0];
+    if (pending.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'Tento návrh už byl zpracován.' });
+    }
+
+    const metadata = toMetadataObject(pending.metadata);
+
+    try {
+      const rAcc = await client.query(`
+        SELECT imap_host, imap_port, imap_secure, enc_username, enc_password
+          FROM custom_accounts
+         WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
+         LIMIT 1
+      `, [dashboardUserEmail, emailAddress]);
+
+      if (rAcc.rowCount) {
+        const account = rAcc.rows[0];
+        const user = decSecret(account.enc_username);
+        const pass = decSecret(account.enc_password);
+        const imapClient = createImapClient({
+          host: account.imap_host,
+          port: Number(account.imap_port || 993),
+          secure: !!account.imap_secure,
+          auth: { user, pass }
+        });
+        try {
+          await imapClient.connect();
+          await imapClient.mailboxOpen('INBOX');
+          const replyUid = metadata.replyToUid || metadata.uid || metadata.messageUid;
+          if (replyUid) {
+            await imapClient.messageFlagsRemove(String(replyUid), ['\\Flagged'], { uid: true }).catch(() => {});
+          }
+        } catch (imapErr) {
+          console.warn('[custom pending] Nepodařilo se odebrat příznak:', imapErr?.message || imapErr);
+        } finally {
+          try { if (imapClient.connected) await imapClient.logout(); } catch {}
+        }
+      }
+    } catch (metaErr) {
+      console.warn('[custom pending] IMAP cleanup selhala:', metaErr?.message || metaErr);
+    }
+
+    await client.query(`
+      UPDATE pending_replies
+         SET status='rejected'
+       WHERE id=$1
+    `, [id]);
+
+    await logActivity(dashboardUserEmail, 'Zamítnutí AI odpovědi (Custom)', 'success', { account: emailAddress, message: pending.subject });
+
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[custom pending] reject error:', e);
+    return res.status(500).json({ success: false, message: 'Zamítnutí odpovědi selhalo.' });
+  } finally {
+    if (client) client.release();
   }
 });
 
@@ -3980,22 +4313,24 @@ app.post('/api/settings', async (req, res) => {
 // ===================================================================
 
 async function runImapWorker() {
-  // načti všechny aktivní custom účty
   const db = await pool.connect();
   let accounts = [];
   try {
     const r = await db.query(`
       SELECT dashboard_user_email, email_address, imap_host, imap_port, imap_secure,
              enc_username, enc_password,
-             s.auto_reply, s.approval_required, s.spam_filter
-      FROM custom_accounts ca
-      JOIN settings s
-        ON s.dashboard_user_email = ca.dashboard_user_email
-       AND s.connected_email = ca.email_address
-      WHERE ca.active = true
-        AND (s.approval_required = true OR s.spam_filter = true OR s.auto_reply = true)
+             s.auto_reply, s.approval_required, s.spam_filter,
+             s.tone, s.length, s.signature
+        FROM custom_accounts ca
+        JOIN settings s
+          ON s.dashboard_user_email = ca.dashboard_user_email
+         AND s.connected_email = ca.email_address
+       WHERE ca.active = true
+         AND (s.approval_required = true OR s.spam_filter = true OR s.auto_reply = true)
     `);
     accounts = r.rows || [];
+  } catch (e) {
+    console.error('[IMAP worker] načtení účtů selhalo:', e?.message || e);
   } finally {
     db.release();
   }
@@ -4005,69 +4340,230 @@ async function runImapWorker() {
     const user = decSecret(acc.enc_username);
     const pass = decSecret(acc.enc_password);
 
-    const imap = new ImapFlow({
+    const imap = createImapClient({
       host: acc.imap_host,
       port: Number(acc.imap_port || 993),
       secure: !!acc.imap_secure,
       auth: { user, pass }
     });
 
+    let dbClient;
     try {
       await imap.connect();
       await imap.mailboxOpen('INBOX');
 
-      // vezmeme posledních ~200 zpráv, ať to netahá celou schránku
+      dbClient = await pool.connect();
+
+      const faqRows = (await dbClient.query(`
+        SELECT question, answer
+          FROM faqs
+         WHERE dashboard_user_email=$1 AND connected_email=$2
+      `, [acc.dashboard_user_email, acc.email_address])).rows || [];
+
+      let faqContext = '';
+      if (faqRows.length) {
+        faqContext = 'Při generování odpovědi se inspiruj a čerpej informace z následující FAQ databáze:\n---\n';
+        faqContext += faqRows.map(row => `Otázka: ${row.question}\nOdpověď: ${row.answer}`).join('\n\n');
+        faqContext += '\n---\n\n';
+      }
+
+      const styleProfile = {
+        tone: acc.tone || 'Formální',
+        length: acc.length || 'Střední (1 odstavec)',
+        signature: acc.signature || '',
+        language: 'cs-CZ'
+      };
+
+      const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
+Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu,
+použij rozumný default, ale profil má přednost.
+
+STYLE_PROFILE:
+${JSON.stringify(styleProfile, null, 2)}
+
+Pravidla pro tvorbu "suggested_reply":
+- Dodrž tón (tone) ze STYLE_PROFILE:
+  - "Formální" = spisovný, zdvořilý, bez slangových výrazů.
+  - "Neformální" = přátelský, uvolněný tón.
+- Dodrž délku (length) ze STYLE_PROFILE:
+  - "Krátká" = 1–2 věty.
+  - "Střední" = 1 odstavec (cca 3–6 vět).
+  - "Dlouhá" = více odstavců, podrobnější.
+- Pokud STYLE_PROFILE.signature není prázdný:
+  - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
+  - Podpis neduplikuj, pokud už v textu je.
+`;
+
+      const buildTask = (bodyText) => `${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+{
+  "summary": "stručné shrnutí",
+  "sentiment": "pozitivní|neutrální|negativní",
+  "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše"
+}
+Bez jakéhokoli dalšího textu mimo JSON. Odpovědi piš česky.
+
+Text e-mailu:
+---
+${String(bodyText).slice(0, 3000)}
+---`;
+
       const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 200);
       for await (const msg of imap.fetch({ seq: `${startSeq}:*` }, { uid: true, envelope: true, internalDate: true, headers: true, flags: true })) {
-        // ber jen nepřečtené
         if (msg.flags?.has?.('\\Seen')) continue;
 
-        // 1) Spam podle hlaviček
         if (acc.spam_filter && isSpamByHeadersMap(msg.headers)) {
-          // nepřesouvej nic, jen přeskoč – hlavní cíl je NEODPOVÍDAT
           continue;
         }
 
-        // 2) Subject / From
         const rawSubject = msg.envelope?.subject || '';
         const subject = decodeWords(String(rawSubject));
         const fromAddr = (msg.envelope?.from?.[0]?.address || '').trim();
 
-        // 3) Stáhni tělo (kvůli rutině/approval heuristice)
         const { content } = await imap.download(msg.uid, null, { uid: true });
         const chunks = [];
         for await (const c of content) chunks.push(c);
         const parsed = await simpleParser(Buffer.concat(chunks));
-        const bodyText = parsed.text || (parsed.html ? parsed.html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g,'').trim() : '') || '';
+        const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
 
-        // 4) Heuristiky approval/routine
-        const whitelist = (process.env.EMAIL_WHITELIST || '').split(',').map(s=>s.trim()).filter(Boolean);
-        if (acc.approval_required && looksImportant(fromAddr, subject, bodyText, whitelist)) {
-          // volitelné: přesuň do složky "ceka-na-schvaleni"
-          try { await imap.messageMove(msg.uid, 'ceka-na-schvaleni', { uid: true }); } catch {}
+        if (!bodyText || !bodyText.trim()) {
           continue;
         }
 
-        if (acc.auto_reply && looksRoutine(subject, bodyText)) {
-          // Odpověď přes render + tvůj endpoint /api/custom-email/send-reply
-          // (má správné In-Reply-To/References a uloží kopii do Sent)
-          // -> pošli jen, pokud to tak chceš (jinak jen označ jako \\Seen)
-          // 1) Volání renderu si udělej stejně jako ve FE
-          // 2) Pak zavolej /api/custom-email/send-reply s origMessageId/origReferences/replyToUid
-          // Pozn.: endpoint i práce s message-id už u tebe existují.
-          // (Pro stručnost zde neukazuji volání fetch – endpoint už máš implementovaný.)
+        if (!acc.approval_required) {
+          await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => {});
+          continue;
         }
 
-        // Nechceš-li teď posílat odpovědi automaticky, tak aspoň:
-        await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(()=>{});
+        const pendingKey = String(msg.uid);
+        const alreadyPending = await dbClient.query(`
+          SELECT 1
+            FROM pending_replies
+           WHERE dashboard_user_email=$1
+             AND connected_email=$2
+             AND provider='custom'
+             AND message_id=$3
+        `, [acc.dashboard_user_email, acc.email_address, pendingKey]);
+        if (alreadyPending.rowCount > 0) {
+          continue;
+        }
+
+        const consume = await tryConsumeAiAction(dbClient, acc.dashboard_user_email);
+        if (!consume.ok) {
+          console.warn(`[IMAP worker] ${acc.email_address}: vyčerpán limit AI akcí.`);
+          continue;
+        }
+
+        let rawAnalysis;
+        try {
+          rawAnalysis = await chatJson({
+            model: EMAIL_MODEL,
+            system: systemInstruction,
+            user: buildTask(bodyText),
+            client: dbClient,
+            dashboardUserEmail: acc.dashboard_user_email
+          });
+        } catch (aiErr) {
+          console.error('[IMAP worker] AI požadavek selhal:', aiErr);
+          continue;
+        }
+
+        let analysis = {};
+        try {
+          analysis = JSON.parse(stripJsonFence(String(rawAnalysis)));
+        } catch (parseErr) {
+          try {
+            const fixed = await chatJson({
+              model: DEFAULT_MODEL,
+              system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
+              user: `Oprav na validní JSON:\n${rawAnalysis}`,
+              client: dbClient,
+              dashboardUserEmail: acc.dashboard_user_email
+            });
+            analysis = JSON.parse(stripJsonFence(String(fixed)));
+          } catch (fixErr) {
+            console.error('[IMAP worker] AI JSON parse selhal:', fixErr);
+            continue;
+          }
+        }
+
+        const replyBody = String(analysis?.suggested_reply || '').trim();
+        if (!replyBody) {
+          console.warn('[IMAP worker] AI nevrátila návrh odpovědi, přeskočeno.');
+          continue;
+        }
+
+        const referencesHeader = headerMapValue(msg.headers, 'References')
+          || (Array.isArray(parsed.references) ? parsed.references.join(' ') : String(parsed.references || ''));
+        const messageIdHeader = parsed.messageId || headerMapValue(msg.headers, 'Message-ID');
+
+        const metadata = {
+          replyToUid: msg.uid,
+          mailbox: imap.mailbox?.path || 'INBOX',
+          origMessageId: messageIdHeader || '',
+          origReferences: referencesHeader || '',
+          senderName: parseNameFromFromHeader(parsed.from?.text || ''),
+          internalDate: msg.internalDate?.toISOString?.() || new Date().toISOString()
+        };
+
+        await dbClient.query(`
+          INSERT INTO pending_replies (
+            dashboard_user_email,
+            connected_email,
+            provider,
+            message_id,
+            thread_id,
+            external_message_id,
+            references_header,
+            subject,
+            sender,
+            snippet,
+            original_body,
+            reply_body,
+            summary,
+            sentiment,
+            metadata
+          ) VALUES (
+            $1,$2,'custom',$3,NULL,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+          )
+          ON CONFLICT (dashboard_user_email, connected_email, provider, message_id)
+          DO UPDATE SET
+            reply_body = EXCLUDED.reply_body,
+            summary = EXCLUDED.summary,
+            sentiment = EXCLUDED.sentiment,
+            snippet = EXCLUDED.snippet,
+            original_body = EXCLUDED.original_body,
+            status = 'pending',
+            metadata = EXCLUDED.metadata,
+            last_generated_at = NOW();
+        `, [
+          acc.dashboard_user_email,
+          acc.email_address,
+          pendingKey,
+          messageIdHeader || null,
+          referencesHeader || null,
+          subject || null,
+          parsed.from?.text || fromAddr || null,
+          firstLineSnippet(bodyText, 280),
+          bodyText,
+          replyBody,
+          analysis?.summary ? String(analysis.summary).trim() : null,
+          analysis?.sentiment ? String(analysis.sentiment).trim() : null,
+          JSON.stringify(metadata)
+        ]);
+
+        await imap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true }).catch(() => {});
+        console.log(`         "${subject || '(bez předmětu)'}" → návrh odpovědi uložen a čeká na schválení (Custom).`);
       }
     } catch (e) {
       console.error('[IMAP worker] chyba:', e?.message || e);
     } finally {
+      if (dbClient) dbClient.release();
       try { if (imap.connected) await imap.logout(); } catch {}
     }
   }
 }
+
+
 
 
 
@@ -4202,7 +4698,7 @@ ${String(bodyText).slice(0, 3000)}
       continue;
     }
 
-    if (!acc.auto_reply || !acc.approval_required) {
+    if (!acc.approval_required) {
       continue;
     }
 
@@ -4574,4 +5070,5 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
