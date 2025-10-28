@@ -434,276 +434,196 @@ async function chatText({ model, system, user, client, dashboardUserEmail }) {
 
 
 // Funkce pro vytvoření tabulky, pokud neexistuje
+
 async function setupDatabase() {
     let client;
     try {
         client = await pool.connect();
 
-        // 1. Tabulka pro uživatele, kteří se přihlašují do naší aplikace
-        await client.query(`
-        CREATE TABLE IF NOT EXISTS dashboard_users (
-            email VARCHAR(255) PRIMARY KEY,
+        const setupStatements = [
+            `CREATE TABLE IF NOT EXISTS dashboard_users (
+                email VARCHAR(255) PRIMARY KEY,
                 name VARCHAR(255),
                 plan VARCHAR(50) DEFAULT 'Starter',
                 role TEXT DEFAULT 'user', -- PŘIDÁNO: role s výchozí hodnotou 'user'
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-        `);
-
-        await client.query(`
-  ALTER TABLE dashboard_users
-    ADD COLUMN IF NOT EXISTS password_hash TEXT,
-    ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false,
-    ADD COLUMN IF NOT EXISTS verification_token TEXT,
-    ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';
-`);
-
-        // 2. Tabulka pro emaily, které si uživatelé připojí (původní "users")
-        // PŘIDALI JSME dashboard_user_email, který je cizím klíčem
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS connected_accounts (
+            );`,
+            `ALTER TABLE dashboard_users
+                ADD COLUMN IF NOT EXISTS password_hash TEXT,
+                ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false,
+                ADD COLUMN IF NOT EXISTS verification_token TEXT,
+                ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';`,
+            `CREATE TABLE IF NOT EXISTS connected_accounts (
                 email VARCHAR(255) PRIMARY KEY,
                 refresh_token TEXT NOT NULL,
                 dashboard_user_email VARCHAR(255) NOT NULL,
                 active BOOLEAN DEFAULT true,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
+            );`,
+            `DO $$ BEGIN
+                BEGIN
+                    ALTER TABLE connected_accounts ADD COLUMN active BOOLEAN DEFAULT true;
+                EXCEPTION WHEN duplicate_column THEN
+                    NULL;
+                END;
+            END $$;`,
+            `CREATE TABLE IF NOT EXISTS settings (
+                dashboard_user_email VARCHAR(255) NOT NULL,
+                connected_email VARCHAR(255) NOT NULL,
+                tone VARCHAR(50) DEFAULT 'Formální',
+                length VARCHAR(50) DEFAULT 'Střední (1 odstavec)',
+                signature TEXT DEFAULT '',
+                auto_reply BOOLEAN DEFAULT true,
+                approval_required BOOLEAN DEFAULT true,
+                spam_filter BOOLEAN DEFAULT true,
+                PRIMARY KEY (dashboard_user_email, connected_email),
+                FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
+                -- POZOR: žádný FK na connected_accounts, ať to funguje i pro custom účty
+            );`,
+            `DO $$ BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.table_constraints tc
+                    WHERE tc.constraint_type = 'FOREIGN KEY'
+                      AND tc.table_name = 'settings'
+                      AND tc.constraint_name = 'settings_connected_email_fkey'
+                ) THEN
+                    ALTER TABLE settings DROP CONSTRAINT settings_connected_email_fkey;
+                END IF;
+            END $$;`,
+            `CREATE TABLE IF NOT EXISTS custom_accounts (
+                id SERIAL PRIMARY KEY,
+                dashboard_user_email VARCHAR(255) NOT NULL REFERENCES dashboard_users(email) ON DELETE CASCADE,
+                email_address VARCHAR(255) NOT NULL,
+                imap_host TEXT NOT NULL,
+                imap_port INT NOT NULL,
+                imap_secure BOOLEAN NOT NULL DEFAULT true,
+                smtp_host TEXT NOT NULL,
+                smtp_port INT NOT NULL,
+                smtp_secure BOOLEAN NOT NULL DEFAULT true,
+                enc_username TEXT NOT NULL,
+                enc_password TEXT NOT NULL,
+                active BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE (dashboard_user_email, email_address)
+            );`,
+            `CREATE TABLE IF NOT EXISTS plans (
+                code VARCHAR(50) PRIMARY KEY,
+                label VARCHAR(100) NOT NULL,
+                max_accounts INT NOT NULL,
+                monthly_ai_actions INT NOT NULL
+            );`,
+            `CREATE TABLE IF NOT EXISTS style_profiles (
+                dashboard_user_email TEXT NOT NULL,
+                connected_email TEXT,
+                profile_json JSONB NOT NULL,
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (dashboard_user_email, connected_email)
+            );`,
+            `CREATE TABLE IF NOT EXISTS faqs (
+                id BIGSERIAL PRIMARY KEY,
+                dashboard_user_email TEXT NOT NULL,
+                connected_email TEXT NOT NULL,
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                source JSONB DEFAULT '[]'::jsonb,
+                updated_at TIMESTAMPTZ DEFAULT NOW()
             );
-        `);
-
-        await client.query(`
-  DO $$ BEGIN
-    BEGIN
-      ALTER TABLE connected_accounts ADD COLUMN active BOOLEAN DEFAULT true;
-    EXCEPTION WHEN duplicate_column THEN
-      -- sloupec už existuje
-      NULL;
-    END;
-  END $$;
-`);
-        
-        
-
-
-        // 3. Tabulka pro nastavení, nyní s vazbou na uživatele i připojený účet
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS settings (
-    dashboard_user_email VARCHAR(255) NOT NULL,
-    connected_email VARCHAR(255) NOT NULL,
-    tone VARCHAR(50) DEFAULT 'Formální',
-    length VARCHAR(50) DEFAULT 'Střední (1 odstavec)',
-    signature TEXT DEFAULT '',
-    auto_reply BOOLEAN DEFAULT true,
-    approval_required BOOLEAN DEFAULT true,
-    spam_filter BOOLEAN DEFAULT true,
-    PRIMARY KEY (dashboard_user_email, connected_email),
-    FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
-    -- POZOR: žádný FK na connected_accounts, ať to funguje i pro custom účty
-  );
-        `);
-
-
-      await client.query(`
-  DO $$ BEGIN
-    IF EXISTS (
-      SELECT 1
-      FROM information_schema.table_constraints tc
-      WHERE tc.constraint_type = 'FOREIGN KEY'
-        AND tc.table_name = 'settings'
-        AND tc.constraint_name = 'settings_connected_email_fkey'
-    ) THEN
-      ALTER TABLE settings DROP CONSTRAINT settings_connected_email_fkey;
-    END IF;
-  END $$;
-`);
-
-      await client.query(`
-  CREATE TABLE IF NOT EXISTS custom_accounts (
-    id SERIAL PRIMARY KEY,
-    dashboard_user_email VARCHAR(255) NOT NULL REFERENCES dashboard_users(email) ON DELETE CASCADE,
-    email_address VARCHAR(255) NOT NULL,
-    imap_host TEXT NOT NULL,
-    imap_port INT NOT NULL,
-    imap_secure BOOLEAN NOT NULL DEFAULT true,
-    smtp_host TEXT NOT NULL,
-    smtp_port INT NOT NULL,
-    smtp_secure BOOLEAN NOT NULL DEFAULT true,
-    enc_username TEXT NOT NULL,
-    enc_password TEXT NOT NULL,
-    active BOOLEAN DEFAULT true,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (dashboard_user_email, email_address)
-  );
-`);
-
-await client.query(`
-  CREATE TABLE IF NOT EXISTS plans (
-    code VARCHAR(50) PRIMARY KEY,
-    label VARCHAR(100) NOT NULL,
-    max_accounts INT NOT NULL,
-    monthly_ai_actions INT NOT NULL
-  );
-`);
-
-await client.query(`
-  CREATE TABLE IF NOT EXISTS style_profiles (
-    dashboard_user_email TEXT NOT NULL,
-    connected_email TEXT,
-    profile_json JSONB NOT NULL,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (dashboard_user_email, connected_email)
-  );
-`);
-
-
-
-
-await client.query(`
-  CREATE TABLE IF NOT EXISTS faqs (
-    id BIGSERIAL PRIMARY KEY,
-    dashboard_user_email TEXT NOT NULL,
-    connected_email TEXT NOT NULL,
-    question TEXT NOT NULL,
-    answer TEXT NOT NULL,
-    source JSONB DEFAULT '[]'::jsonb, -- můžeš si sem ukládat odkazy na zprávy
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-  );
-  CREATE INDEX IF NOT EXISTS faqs_user_account_idx
-    ON faqs(dashboard_user_email, connected_email);
-`);
-
-await client.query(`
-  CREATE TABLE IF NOT EXISTS pending_replies (
-    id SERIAL PRIMARY KEY,
-    dashboard_user_email TEXT NOT NULL,
-    connected_email TEXT NOT NULL,
-    provider TEXT NOT NULL DEFAULT 'gmail',
-    message_id TEXT NOT NULL,
-    thread_id TEXT,
-    external_message_id TEXT,
-    references_header TEXT,
-    subject TEXT,
-    sender TEXT,
-    snippet TEXT,
-    original_body TEXT,
-    reply_body TEXT NOT NULL,
-    summary TEXT,
-    sentiment TEXT,
-    status TEXT NOT NULL DEFAULT 'pending',
-    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    last_generated_at TIMESTAMPTZ DEFAULT NOW(),
-    sent_at TIMESTAMPTZ,
-    UNIQUE (dashboard_user_email, connected_email, provider, message_id)
-  );
-  CREATE INDEX IF NOT EXISTS pending_replies_lookup_idx
-    ON pending_replies (dashboard_user_email, connected_email, status);
-`);
-
-await client.query(`
-  ALTER TABLE pending_replies
-    ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'gmail',
-    ADD COLUMN IF NOT EXISTS thread_id TEXT,
-    ADD COLUMN IF NOT EXISTS external_message_id TEXT,
-    ADD COLUMN IF NOT EXISTS references_header TEXT,
-    ADD COLUMN IF NOT EXISTS snippet TEXT,
-    ADD COLUMN IF NOT EXISTS original_body TEXT,
-    ADD COLUMN IF NOT EXISTS summary TEXT,
-    ADD COLUMN IF NOT EXISTS sentiment TEXT,
-    ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
-    ADD COLUMN IF NOT EXISTS last_generated_at TIMESTAMPTZ DEFAULT NOW(),
-    ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;
-`);
-
-await client.query(`
-  UPDATE pending_replies
-     SET provider = 'gmail'
-   WHERE provider IS NULL;
-`);
-
-await client.query(`
-  ALTER TABLE pending_replies
-    ALTER COLUMN provider SET DEFAULT 'gmail';
-`);
-
-await client.query(`
-  ALTER TABLE pending_replies
-    ALTER COLUMN provider SET NOT NULL;
-`);
-
-await client.query(`
-  UPDATE pending_replies
-     SET metadata = '{}'::jsonb
-   WHERE metadata IS NULL;
-`);
-
-await client.query(`
-  ALTER TABLE pending_replies
-    ALTER COLUMN metadata SET DEFAULT '{}'::jsonb;
-`);
-
-await client.query(`
-  ALTER TABLE pending_replies
-    ALTER COLUMN metadata SET NOT NULL;
-      
-      
-        
-
-// 5) Seed základních plánů (lze kdykoli změnit v DB)
-await client.query(`
-  INSERT INTO plans (code, label, max_accounts, monthly_ai_actions) VALUES
-    ('Starter','Starter', 1, 50),
-    ('Professional','Professional', 5, 1000),
-    ('Enterprise','Enterprise', 999, 100000)
-  ON CONFLICT (code) DO NOTHING;
-`);
-
-// 6) Měsíční čítač použití AI
-await client.query(`
-  CREATE TABLE IF NOT EXISTS usage_counters (
-    dashboard_user_email VARCHAR(255) NOT NULL,
-    period_start DATE NOT NULL,                  
-    ai_actions_used INT NOT NULL DEFAULT 0,      
-    PRIMARY KEY (dashboard_user_email, period_start),
-    FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
-  );
-`);
-
-await client.query(`
-  ALTER TABLE usage_counters
-    ADD COLUMN IF NOT EXISTS tokens_used BIGINT DEFAULT 0;
-`);
-      
-
-        await client.query(`
-  CREATE TABLE IF NOT EXISTS templates (
-    id SERIAL PRIMARY KEY,
-    dashboard_user_email VARCHAR(255) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    category VARCHAR(100) DEFAULT 'Obecné',
-    content TEXT NOT NULL,
-    uses INT DEFAULT 0,
-    success_rate NUMERIC(5,2) DEFAULT 0.00,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
-  );
-`);
-
-await client.query(`
-            CREATE TABLE IF NOT EXISTS audit_log (
+            CREATE INDEX IF NOT EXISTS faqs_user_account_idx
+                ON faqs(dashboard_user_email, connected_email);`,
+            `CREATE TABLE IF NOT EXISTS pending_replies (
+                id SERIAL PRIMARY KEY,
+                dashboard_user_email TEXT NOT NULL,
+                connected_email TEXT NOT NULL,
+                provider TEXT NOT NULL DEFAULT 'gmail',
+                message_id TEXT NOT NULL,
+                thread_id TEXT,
+                external_message_id TEXT,
+                references_header TEXT,
+                subject TEXT,
+                sender TEXT,
+                snippet TEXT,
+                original_body TEXT,
+                reply_body TEXT NOT NULL,
+                summary TEXT,
+                sentiment TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                last_generated_at TIMESTAMPTZ DEFAULT NOW(),
+                sent_at TIMESTAMPTZ,
+                UNIQUE (dashboard_user_email, connected_email, provider, message_id)
+            );
+            CREATE INDEX IF NOT EXISTS pending_replies_lookup_idx
+                ON pending_replies (dashboard_user_email, connected_email, status);`,
+            `ALTER TABLE pending_replies
+                ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'gmail',
+                ADD COLUMN IF NOT EXISTS thread_id TEXT,
+                ADD COLUMN IF NOT EXISTS external_message_id TEXT,
+                ADD COLUMN IF NOT EXISTS references_header TEXT,
+                ADD COLUMN IF NOT EXISTS snippet TEXT,
+                ADD COLUMN IF NOT EXISTS original_body TEXT,
+                ADD COLUMN IF NOT EXISTS summary TEXT,
+                ADD COLUMN IF NOT EXISTS sentiment TEXT,
+                ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+                ADD COLUMN IF NOT EXISTS last_generated_at TIMESTAMPTZ DEFAULT NOW(),
+                ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;`,
+            `UPDATE pending_replies
+                SET provider = 'gmail'
+              WHERE provider IS NULL;`,
+            `ALTER TABLE pending_replies
+                ALTER COLUMN provider SET DEFAULT 'gmail';`,
+            `ALTER TABLE pending_replies
+                ALTER COLUMN provider SET NOT NULL;`,
+            `UPDATE pending_replies
+                SET metadata = '{}'::jsonb
+              WHERE metadata IS NULL;`,
+            `ALTER TABLE pending_replies
+                ALTER COLUMN metadata SET DEFAULT '{}'::jsonb;`,
+            `ALTER TABLE pending_replies
+                ALTER COLUMN metadata SET NOT NULL;`,
+            `INSERT INTO plans (code, label, max_accounts, monthly_ai_actions) VALUES
+                ('Starter','Starter', 1, 50),
+                ('Professional','Professional', 5, 1000),
+                ('Enterprise','Enterprise', 999, 100000)
+            ON CONFLICT (code) DO NOTHING;`,
+            `CREATE TABLE IF NOT EXISTS usage_counters (
+                dashboard_user_email VARCHAR(255) NOT NULL,
+                period_start DATE NOT NULL,
+                ai_actions_used INT NOT NULL DEFAULT 0,
+                PRIMARY KEY (dashboard_user_email, period_start),
+                FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
+            );`,
+            `ALTER TABLE usage_counters
+                ADD COLUMN IF NOT EXISTS tokens_used BIGINT DEFAULT 0;`,
+            `CREATE TABLE IF NOT EXISTS templates (
+                id SERIAL PRIMARY KEY,
+                dashboard_user_email VARCHAR(255) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                category VARCHAR(100) DEFAULT 'Obecné',
+                content TEXT NOT NULL,
+                uses INT DEFAULT 0,
+                success_rate NUMERIC(5,2) DEFAULT 0.00,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
+            );`,
+            `CREATE TABLE IF NOT EXISTS audit_log (
                 id BIGSERIAL PRIMARY KEY,
                 timestamp TIMESTAMPTZ DEFAULT NOW(),
                 user_email VARCHAR(255),
                 action TEXT NOT NULL,
-                status VARCHAR(50) NOT NULL, -- 'success', 'error', 'info'
+                status VARCHAR(50) NOT NULL,
                 details JSONB
-            );
-        `);
+            );`
+        ];
 
-      
-        
+        for (const statement of setupStatements) {
+            await client.query(statement);
+        }
+
         console.log("✅ Databázové tabulky pro víceuživatelský provoz jsou připraveny.");
     } catch (err) {
         console.error('Chyba při nastavování databází:', err);
@@ -713,6 +633,7 @@ await client.query(`
         }
     }
 }
+
 
 
 // ---------- Helpers pro čtení Gmail zpráv ----------
