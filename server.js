@@ -599,6 +599,53 @@ await client.query(`
   CREATE INDEX IF NOT EXISTS pending_replies_lookup_idx
     ON pending_replies (dashboard_user_email, connected_email, status);
 `);
+
+await client.query(`
+  ALTER TABLE pending_replies
+    ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'gmail',
+    ADD COLUMN IF NOT EXISTS thread_id TEXT,
+    ADD COLUMN IF NOT EXISTS external_message_id TEXT,
+    ADD COLUMN IF NOT EXISTS references_header TEXT,
+    ADD COLUMN IF NOT EXISTS snippet TEXT,
+    ADD COLUMN IF NOT EXISTS original_body TEXT,
+    ADD COLUMN IF NOT EXISTS summary TEXT,
+    ADD COLUMN IF NOT EXISTS sentiment TEXT,
+    ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS last_generated_at TIMESTAMPTZ DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;
+`);
+
+await client.query(`
+  UPDATE pending_replies
+     SET provider = 'gmail'
+   WHERE provider IS NULL;
+`);
+
+await client.query(`
+  ALTER TABLE pending_replies
+    ALTER COLUMN provider SET DEFAULT 'gmail';
+`);
+
+await client.query(`
+  ALTER TABLE pending_replies
+    ALTER COLUMN provider SET NOT NULL;
+`);
+
+await client.query(`
+  UPDATE pending_replies
+     SET metadata = '{}'::jsonb
+   WHERE metadata IS NULL;
+`);
+
+await client.query(`
+  ALTER TABLE pending_replies
+    ALTER COLUMN metadata SET DEFAULT '{}'::jsonb;
+`);
+
+await client.query(`
+  ALTER TABLE pending_replies
+    ALTER COLUMN metadata SET NOT NULL;
       
       
         
@@ -5070,5 +5117,6 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
