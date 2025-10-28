@@ -557,6 +557,8 @@ await client.query(`
 `);
 
 
+
+
 await client.query(`
   CREATE TABLE IF NOT EXISTS faqs (
     id BIGSERIAL PRIMARY KEY,
@@ -570,6 +572,36 @@ await client.query(`
   CREATE INDEX IF NOT EXISTS faqs_user_account_idx
     ON faqs(dashboard_user_email, connected_email);
 `);
+
+await client.query(`
+  CREATE TABLE IF NOT EXISTS pending_replies (
+    id SERIAL PRIMARY KEY,
+    dashboard_user_email TEXT NOT NULL,
+    connected_email TEXT NOT NULL,
+    provider TEXT NOT NULL DEFAULT 'gmail',
+    message_id TEXT NOT NULL,
+    thread_id TEXT,
+    external_message_id TEXT,
+    references_header TEXT,
+    subject TEXT,
+    sender TEXT,
+    snippet TEXT,
+    original_body TEXT,
+    reply_body TEXT NOT NULL,
+    summary TEXT,
+    sentiment TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_generated_at TIMESTAMPTZ DEFAULT NOW(),
+    sent_at TIMESTAMPTZ,
+    UNIQUE (dashboard_user_email, connected_email, provider, message_id)
+  );
+  CREATE INDEX IF NOT EXISTS pending_replies_lookup_idx
+    ON pending_replies (dashboard
+
+
+      
       
         
 
@@ -3168,12 +3200,194 @@ app.post('/api/gmail/approval/reject', async (req, res) => {
     console.error('/api/gmail/approval/reject', e);
     return res.status(500).json({ success:false, message:'Zamítnutí selhalo.' });
   }
+
 });
 
 
+app.get('/api/gmail/pending-replies', async (req, res) => {
+  const { dashboardUserEmail, email } = req.query || {};
+  if (!dashboardUserEmail || !email) {
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo email.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(`
+      SELECT id, message_id, thread_id, external_message_id, references_header,
+             subject, sender, snippet, original_body, reply_body,
+             summary, sentiment, status, created_at, last_generated_at, sent_at
+        FROM pending_replies
+       WHERE dashboard_user_email=$1
+         AND connected_email=$2
+         AND provider='gmail'
+         AND status='pending'
+       ORDER BY created_at DESC
+    `, [dashboardUserEmail, email]);
+
+    return res.json({ success: true, pending: rows });
+  } catch (e) {
+    console.error('[pending-replies] list error:', e);
+    return res.status(500).json({ success: false, message: 'Nepodařilo se načíst frontu ke schválení.' });
+  } finally {
+    client.release();
+  }
+});
+
+async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending }) {
+  const gmail = await getGmailClientFor(dashboardUserEmail, email);
+  const msgResponse = await gmail.users.messages.get({ userId: 'me', id: pending.message_id, format: 'full' });
+  const headers = msgResponse.data.payload?.headers || [];
+  const findHeader = (name) => headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value;
+
+  const originalSubject = findHeader('subject') || pending.subject || '';
+  const originalFrom = findHeader('from') || pending.sender || '';
+  const originalMessageId = findHeader('message-id') || pending.external_message_id || '';
+  const originalReferences = findHeader('references') || pending.references_header || '';
+
+  const encodeMimeWord = (str) =>
+    /[^\x00-\x7F]/.test(str) ? `=?UTF-8?B?${Buffer.from(str, 'utf8').toString('base64')}?=` : str;
+
+  const replySubject = originalSubject.startsWith('Re: ') ? originalSubject : `Re: ${originalSubject}`;
+  const encodedFrom = `<${email}>`;
+  const encodedSubject = encodeMimeWord(replySubject);
+
+  const lines = [
+    `From: ${encodedFrom}`,
+    `To: ${originalFrom}`,
+    `Subject: ${encodedSubject}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=utf-8',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    pending.reply_body
+  ];
+
+  if (originalMessageId) {
+    const refs = `${(originalReferences || '').trim()} ${originalMessageId}`.trim();
+    lines.splice(3, 0, `In-Reply-To: ${originalMessageId}`, `References: ${refs}`);
+  }
+
+  const raw = Buffer.from(lines.join('\n')).toString('base64url');
+
+  await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: {
+      raw,
+      threadId: msgResponse.data.threadId || pending.thread_id || undefined
+    }
+  });
+
+  const labelsRes = await gmail.users.labels.list({ userId: 'me' });
+  const approvalLabelId = labelsRes.data.labels?.find((l) => l.name === 'ceka-na-schvaleni')?.id;
+  const removeLabelIds = ['UNREAD'];
+  if (approvalLabelId) removeLabelIds.push(approvalLabelId);
+
+  await gmail.users.messages.modify({
+    userId: 'me',
+    id: pending.message_id,
+    requestBody: { removeLabelIds, addLabelIds: [] }
+  });
+
+  await logActivity(dashboardUserEmail, 'Odeslání odpovědi (schváleno)', 'success', { account: email, to: originalFrom });
+}
+
+app.post('/api/gmail/pending-replies/:id/approve', async (req, res) => {
+  const id = Number(req.params.id);
+  const { dashboardUserEmail, email } = req.body || {};
+  if (!id || !dashboardUserEmail || !email) {
+    return res.status(400).json({ success: false, message: 'Chybí povinná data.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(`
+      SELECT *
+        FROM pending_replies
+       WHERE id=$1 AND dashboard_user_email=$2 AND connected_email=$3 AND provider='gmail'
+    `, [id, dashboardUserEmail, email]);
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Záznam nenalezen.' });
+    }
+
+    const pending = rows[0];
+    if (pending.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'Tento návrh už byl zpracován.' });
+    }
+
+    await sendGmailReplyFromPending({ dashboardUserEmail, email, pending });
+
+    await client.query(`
+      UPDATE pending_replies
+         SET status='sent', sent_at=NOW()
+       WHERE id=$1
+    `, [id]);
+
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[pending-replies] approve error:', e?.response?.data || e);
+    return res.status(500).json({ success: false, message: 'Odeslání schválené odpovědi selhalo.' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/gmail/pending-replies/:id/reject', async (req, res) => {
+  const id = Number(req.params.id);
+  const { dashboardUserEmail, email } = req.body || {};
+  if (!id || !dashboardUserEmail || !email) {
+    return res.status(400).json({ success: false, message: 'Chybí povinná data.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(`
+      SELECT *
+        FROM pending_replies
+       WHERE id=$1 AND dashboard_user_email=$2 AND connected_email=$3 AND provider='gmail'
+    `, [id, dashboardUserEmail, email]);
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Záznam nenalezen.' });
+    }
+
+    const pending = rows[0];
+    if (pending.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'Tento návrh už byl zpracován.' });
+    }
+
+    const gmail = await getGmailClientFor(dashboardUserEmail, email);
+    const labelsRes = await gmail.users.labels.list({ userId: 'me' });
+    const approvalLabelId = labelsRes.data.labels?.find((l) => l.name === 'ceka-na-schvaleni')?.id;
+    const removeLabelIds = approvalLabelId ? [approvalLabelId] : [];
+
+    await gmail.users.messages.modify({
+      userId: 'me',
+      id: pending.message_id,
+      requestBody: { removeLabelIds }
+    });
+
+    await client.query(`
+      UPDATE pending_replies
+         SET status='rejected'
+       WHERE id=$1
+    `, [id]);
+
+    await logActivity(dashboardUserEmail, 'Zamítnutí AI odpovědi', 'success', { account: email, message: pending.subject });
+
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[pending-replies] reject error:', e);
+    return res.status(500).json({ success: false, message: 'Zamítnutí odpovědi selhalo.' });
+  } finally {
+    client.release();
+  }
+});
 
 
 app.post('/api/custom-email/send-reply', async (req, res) => {
+
+  
  const { dashboardUserEmail, emailAddress, to, subject, text, fromName, origMessageId, origReferences, replyToUid } = req.body || {};
 
   if (!dashboardUserEmail || !emailAddress || !to || !subject || !text || !origMessageId || !replyToUid) {
@@ -3879,15 +4093,18 @@ async function runEmailWorker() {
         ca.refresh_token,
         ca.dashboard_user_email,
         ca.active,
-        ca.created_at, -- PŘIDÁNO ZDE
+        ca.created_at,
         s.auto_reply,
         s.approval_required,
-        s.spam_filter
+        s.spam_filter,
+        s.tone,
+        s.length,
+        s.signature
       FROM connected_accounts ca
       JOIN settings s
         ON s.dashboard_user_email = ca.dashboard_user_email AND s.connected_email = ca.email
       WHERE ca.active = true
-        AND (s.approval_required = true OR s.spam_filter = true)
+        AND (s.auto_reply = true OR s.spam_filter = true OR s.approval_required = true)
     `);
 
     for (const acc of accounts) {
@@ -3903,120 +4120,251 @@ async function runEmailWorker() {
         })).data;
       }
 
-      // --- PŘIDANÁ LOGIKA PRO FILTR PODLE DATA ---
-     
-      const afterTimestamp = Math.floor(new Date(acc.created_at).getTime() / 1000);
-     const searchQuery = [
-  'is:unread',
-  'in:inbox',
-  '-in:spam',
-  '-in:trash',
-  '-category:promotions',
-  '-category:social',
-  `after:${afterTimestamp}`
-].join(' ');
+       // --- PŘIDANÁ LOGIKA PRO FILTR PODLE DATA ---
 
-const listResponse = await gmail.users.messages.list({
-  userId: 'me',
-  q: searchQuery,
-  labelIds: ['INBOX'],
-  includeSpamTrash: false
-});
-      const messages = listResponse.data.messages || [];
-      if (messages.length === 0) continue;
+        const afterTimestamp = Math.floor(new Date(acc.created_at).getTime() / 1000);
+        const searchQuery = [
+          'is:unread',
+          'in:inbox',
+          '-in:spam',
+          '-in:trash',
+          '-category:promotions',
+          '-category:social',
+          `after:${afterTimestamp}`
+        ].join(' ');
 
-      console.log(`      Nalezeno ${messages.length} nových zpráv.`);
+        const listResponse = await gmail.users.messages.list({
+          userId: 'me',
+          q: searchQuery,
+          labelIds: ['INBOX'],
+          includeSpamTrash: false
+        });
+        const messages = listResponse.data.messages || [];
+        if (messages.length === 0) continue;
 
-      function headerVal(headers, name) {
-  return (headers.find(h => h.name?.toLowerCase() === name.toLowerCase())?.value || '').toString();
+        console.log(`      Nalezeno ${messages.length} nových zpráv.`);
+
+      const faqRows = (await dbClient.query(`
+        SELECT question, answer
+          FROM faqs
+         WHERE dashboard_user_email=$1 AND connected_email=$2
+      `, [acc.dashboard_user_email, acc.connected_email])).rows || [];
+
+      let faqContext = '';
+      if (faqRows.length) {
+        faqContext = 'Při generování odpovědi se inspiruj a čerpej informace z následující FAQ databáze:\n---\n';
+        faqContext += faqRows.map(row => `Otázka: ${row.question}\nOdpověď: ${row.answer}`).join('\n\n');
+        faqContext += '\n---\n\n';
+      }
+
+      const styleProfile = {
+        tone: acc.tone || 'Formální',
+        length: acc.length || 'Střední (1 odstavec)',
+        signature: acc.signature || '',
+        language: 'cs-CZ'
+      };
+
+      const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
+Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu,
+použij rozumný default, ale profil má přednost.
+
+STYLE_PROFILE:
+${JSON.stringify(styleProfile, null, 2)}
+
+Pravidla pro tvorbu "suggested_reply":
+- Dodrž tón (tone) ze STYLE_PROFILE:
+  - "Formální" = spisovný, zdvořilý, bez slangových výrazů.
+  - "Neformální" = přátelský, uvolněný tón.
+- Dodrž délku (length) ze STYLE_PROFILE:
+  - "Krátká" = 1–2 věty.
+  - "Střední" = 1 odstavec (cca 3–6 vět).
+  - "Dlouhá" = více odstavců, podrobnější.
+- Pokud STYLE_PROFILE.signature není prázdný:
+  - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
+  - Podpis neduplikuj, pokud už v textu je.
+`;
+
+      const buildTask = (bodyText) => `${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+{
+  "summary": "stručné shrnutí",
+  "sentiment": "pozitivní|neutrální|negativní",
+  "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše"
 }
+Bez jakéhokoli dalšího textu mimo JSON. Odpovědi piš česky.
 
-function hasListUnsub(headers) {
-  return !!headerVal(headers, 'list-unsubscribe');
-}
+Text e-mailu:
+---
+${String(bodyText).slice(0, 3000)}
+---`;
 
-function hasPrecedenceBulk(headers) {
-  const v = headerVal(headers, 'precedence').toLowerCase();
-  return /bulk|list|bulkmail/.test(v);
-}
+      const headerVal = (headers, name) => (headers.find(h => h.name?.toLowerCase() === name.toLowerCase())?.value || '').toString();
+      const hasListUnsub = (headers) => !!headerVal(headers, 'list-unsubscribe');
+      const hasPrecedenceBulk = (headers) => {
+        const v = headerVal(headers, 'precedence').toLowerCase();
+        return /bulk|list|bulkmail/.test(v);
+      };
+      const looksLikeSpam = (subject, snippet, headers) => {
+        const s = `${subject} ${snippet}`.toLowerCase();
+        const promoTokens = ['unsubscribe','newsletter','promo','reklama','sleva','akce','kup nyní','% sleva','sale'];
+        if (promoTokens.some(t => s.includes(t))) return true;
+        if (hasListUnsub(headers)) return true;
+        if (hasPrecedenceBulk(headers)) return true;
+        if (/\b\d{2,3}[ ,.\u00A0]?(kč|czk|eur|€|\$)\b/i.test(s)) return true;
+        return false;
+      };
+      const extractEmail = (addr) => {
+        const m = String(addr || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+        return m ? m[0] : (addr || '');
+      };
 
-function looksLikeSpam(subject, snippet, headers) {
-  const s = `${subject} ${snippet}`.toLowerCase();
-  const promoTokens = ['unsubscribe','newsletter','promo','reklama','sleva','akce','kup nyní','% sleva','sale'];
-  if (promoTokens.some(t => s.includes(t))) return true;
-  if (hasListUnsub(headers)) return true;
-  if (hasPrecedenceBulk(headers)) return true;
-  if (/\b\d{2,3}[ ,.\u00A0]?(kč|czk|eur|€|\$)\b/i.test(s)) return true;
-  return false;
-}
-
-function looksImportant(from, subject, snippet, whitelist = []) {
-  const s = `${subject} ${snippet}`.toLowerCase();
-  if (whitelist.some(w => from.toLowerCase().includes(w))) return true;
-  if (/\b(urgent|důležité|reklamace|stížnost|smlouva|faktura|deadline|kritické)\b/i.test(s)) return true;
-  return false;
-}
-
-function looksRoutine(subject, snippet) {
-  const s = `${subject} ${snippet}`.toLowerCase();
-  if (/\?/.test(s)) return true;
-  if (/\b(dotaz|info|prosím o|cenu|dostupnost|objednávka|termín)\b/i.test(s)) return true;
-  return false;
-}
-
-function extractEmail(addr) {
-  const m = String(addr || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  return m ? m[0] : (addr || '');
-}
       for (const msg of messages) {
-       const msgResponse = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'full' });
-const headers = msgResponse.data.payload?.headers || [];
-const subject = headerVal(headers, 'Subject') || '';
-const fromHdr = headerVal(headers, 'From') || '';
-const from = extractEmail(fromHdr);
-const snippet = (msgResponse.data.snippet || '').slice(0, 1200);
+        const msgResponse = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'full' });
+        const headers = msgResponse.data.payload?.headers || [];
+        const subject = headerVal(headers, 'Subject') || '';
+        const fromHdr = headerVal(headers, 'From') || '';
+        const from = extractEmail(fromHdr);
+        const snippet = (msgResponse.data.snippet || '').slice(0, 1200);
 
-// 1) SPAM / reklama
-if (acc.spam_filter && looksLikeSpam(subject, snippet, headers)) {
-  await gmail.users.messages.modify({
-    userId: 'me', id: msg.id,
-    requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX','UNREAD'] }
-  });
-  console.log(`         "${subject}" → SPAM (heuristika)`);
-  continue;
-}
+        if (looksLikeSpam(subject, snippet, headers)) {
+          if (acc.spam_filter) {
+            await gmail.users.messages.modify({
+              userId: 'me',
+              id: msg.id,
+              requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX', 'UNREAD'] }
+            });
+          }
+          console.log(`         "${subject}" → ignorováno (spam/reklama).`);
+          continue;
+        }
 
-// 2) Ke schválení (důležité)
-const accountWhitelist = (process.env.EMAIL_WHITELIST || '')
-  .split(',').map(s => s.trim()).filter(Boolean);
+        if (!acc.auto_reply || !acc.approval_required) {
+          continue;
+        }
 
-if (acc.approval_required && looksImportant(from, subject, snippet, accountWhitelist)) {
-  await gmail.users.messages.modify({
-    userId: 'me', id: msg.id,
-    requestBody: { addLabelIds: [approvalLabel.id], removeLabelIds: ['INBOX','UNREAD'] }
-  });
-  console.log(`         "${subject}" → čeká na schválení (heuristika)`);
-  continue;
-}
+        const alreadyPending = await dbClient.query(`
+          SELECT 1
+            FROM pending_replies
+           WHERE dashboard_user_email=$1
+             AND connected_email=$2
+             AND provider='gmail'
+             AND message_id=$3
+        `, [acc.dashboard_user_email, acc.connected_email, msg.id]);
+        if (alreadyPending.rowCount > 0) {
+          continue;
+        }
 
-// 3) Rutinní → pouze označ jako přečtené (odpověď řešíš ručně/na schválení UI, anebo ji můžeš hned poslat přes render)
-if (acc.auto_reply && looksRoutine(subject, snippet)) {
-  await gmail.users.messages.modify({
-    userId: 'me', id: msg.id,
-    requestBody: { removeLabelIds: ['UNREAD'] }
-  });
-  console.log(`         "${subject}" → rutinní (označeno jako přečtené).`);
-  continue;
-}
+        const bodyText = extractPlainText(msgResponse.data.payload) || snippet;
+        if (!bodyText || !bodyText.trim()) {
+          console.log(`         "${subject}" → přeskočeno (prázdné tělo).`);
+          continue;
+        }
 
-// 4) Jinak jen odznačit UNREAD (neutrální)
-await gmail.users.messages.modify({
-  userId: 'me', id: msg.id,
-  requestBody: { removeLabelIds: ['UNREAD'] }
-});
-console.log(`         "${subject}" → neutrální (označeno jako přečtené).`);
+        const consume = await tryConsumeAiAction(dbClient, acc.dashboard_user_email);
+        if (!consume.ok) {
+          console.warn(`         Limit AI akcí dosažen pro ${acc.dashboard_user_email}, zbytek schránky přeskočen.`);
+          break;
+        }
 
-}
+        let raw;
+        try {
+          raw = await chatJson({
+            model: EMAIL_MODEL,
+            system: systemInstruction,
+            user: buildTask(bodyText),
+            client: dbClient,
+            dashboardUserEmail: acc.dashboard_user_email
+          });
+        } catch (e) {
+          console.error('         Generování návrhu odpovědi selhalo:', e?.message || e);
+          continue;
+        }
+
+        let analysis;
+        try {
+          analysis = JSON.parse(stripJsonFence(String(raw)));
+        } catch {
+          try {
+            const fixed = await chatJson({
+              model: DEFAULT_MODEL,
+              system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
+              user: `Oprav na validní JSON:\n${raw}`,
+              client: dbClient,
+              dashboardUserEmail: acc.dashboard_user_email
+            });
+            analysis = JSON.parse(stripJsonFence(String(fixed)));
+          } catch (parseErr) {
+            console.error('         AI odpověď nešla převést na JSON:', parseErr?.message || parseErr);
+            continue;
+          }
+        }
+
+        const replyBody = String(analysis?.suggested_reply || '').trim();
+        if (!replyBody) {
+          console.log(`         "${subject}" → návrh byl prázdný, přeskočeno.`);
+          continue;
+        }
+
+        const metadata = {
+          fromHeader: fromHdr
+        };
+
+        await dbClient.query(`
+          INSERT INTO pending_replies (
+            dashboard_user_email,
+            connected_email,
+            provider,
+            message_id,
+            thread_id,
+            external_message_id,
+            references_header,
+            subject,
+            sender,
+            snippet,
+            original_body,
+            reply_body,
+            summary,
+            sentiment,
+            metadata
+          ) VALUES (
+            $1,$2,'gmail',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+          )
+          ON CONFLICT (dashboard_user_email, connected_email, provider, message_id)
+          DO UPDATE SET
+            reply_body = EXCLUDED.reply_body,
+            summary = EXCLUDED.summary,
+            sentiment = EXCLUDED.sentiment,
+            snippet = EXCLUDED.snippet,
+            original_body = EXCLUDED.original_body,
+            status = 'pending',
+            metadata = EXCLUDED.metadata,
+            last_generated_at = NOW();
+        `, [
+          acc.dashboard_user_email,
+          acc.connected_email,
+          msg.id,
+          msgResponse.data.threadId || null,
+          headerVal(headers, 'Message-Id') || null,
+          headerVal(headers, 'References') || null,
+          subject || null,
+          from || null,
+          snippet,
+          bodyText,
+          replyBody,
+          analysis?.summary ? String(analysis.summary).trim() : null,
+          analysis?.sentiment ? String(analysis.sentiment).trim() : null,
+          JSON.stringify(metadata)
+        ]);
+
+        await gmail.users.messages.modify({
+          userId: 'me',
+          id: msg.id,
+          requestBody: {
+            addLabelIds: [approvalLabel.id]
+          }
+        });
+
+        console.log(`         "${subject}" → návrh odpovědi uložen a čeká na schválení.`);
+      }
       }
     }
   } catch (err) {
@@ -4224,6 +4572,7 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
