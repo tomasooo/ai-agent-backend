@@ -1,5 +1,4 @@
-// server.js-test
-// server.js-test
+
 // server.js-test
 import express from 'express';
 import cron from 'node-cron';
@@ -4573,6 +4572,7 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
