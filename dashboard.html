@@ -1850,8 +1850,21 @@
         <div class="pro-body-card__title">Obsah zprávy</div>
         <div class="pro-body-card__content" id="ed-body">Načítám…</div>
       </div>
+
+      <div class="pro-body-card" id="ed-ai-card" style="display: none;">
+        <div class="pro-body-card__title">Návrh odpovědi (AI)</div>
+        <div class="pro-body-card__content">
+          <div style="color:#0f172a; margin-bottom:12px; line-height:1.6;">
+            <div><strong>Shrnutí:</strong> <span id="ed-ai-summary">—</span></div>
+            <div><strong>Sentiment:</strong> <span id="ed-ai-sentiment">—</span></div>
+          </div>
+          <div id="ed-ai-reply" style="white-space: pre-wrap; line-height:1.55; color:#111827;"></div>
+        </div>
+      </div>
     </div>
 
+
+      
     <!-- Footer -->
     <div class="pro-modal__footer">
       <button class="btn btn-secondary" id="closeEmailDetailBottom">Zavřít</button>
@@ -3331,8 +3344,49 @@ function parseSenderName(s='') {
 
 
 async function tryGmailEmails(primaryEmail, status, period, searchQuery) {
+  if (!primaryEmail) return null;
+
+  if (status === 'approval') {
+    try {
+      const pendingUrl = new URL(`${window.BACKEND}/api/gmail/pending-replies`);
+      pendingUrl.searchParams.set('dashboardUserEmail', dashboardUserEmail);
+      pendingUrl.searchParams.set('email', primaryEmail);
+
+      const r = await fetch(pendingUrl.toString(), { cache: 'no-store' });
+      const j = await r.json();
+      if (!j.success) return { src: 'gmail', total: 0, emails: [] };
+
+      const normalized = (j.pending || []).map((item) => {
+        const createdAt = item.created_at || item.last_generated_at || item.sent_at;
+        return {
+          id: item.message_id,
+          messageId: item.message_id,
+          pendingId: item.id,
+          sender: item.sender || '',
+          subject: item.subject || 'Bez předmětu',
+          snippet: item.summary || item.snippet || '',
+          date: createdAt || new Date().toISOString(),
+          _src: 'gmail',
+          _pending: true,
+          account: primaryEmail,
+          replyBody: item.reply_body || '',
+          originalBody: item.original_body || '',
+          summary: item.summary || '',
+          sentiment: item.sentiment || '',
+          threadId: item.thread_id || '',
+          status: item.status || 'pending'
+        };
+      });
+
+      return { src: 'gmail', total: normalized.length, emails: normalized };
+    } catch (error) {
+      console.error('Nepodařilo se načíst čekající odpovědi:', error);
+      return { src: 'gmail', total: 0, emails: [] };
+    }
+  }
+
   const url = `${window.BACKEND}/api/gmail/emails?email=${encodeURIComponent(primaryEmail)}&dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}`;
-  const r = await fetch(url, { cache:'no-store' });
+  const r = await fetch(url, { cache: 'no-store' });
   const j = await r.json();
   if (!j.success) return null;
   const normalized = (j.emails || []).map(e => ({
@@ -3342,10 +3396,16 @@ async function tryGmailEmails(primaryEmail, status, period, searchQuery) {
     subject: e.subject,
     snippet: e.snippet || '',
     date: e.date,
-    _src: 'gmail'
+    _src: 'gmail',
+    _pending: false,
+    account: primaryEmail
   }));
   return { src:'gmail', total:j.total || normalized.length, emails: normalized };
 }
+
+
+
+        
 
 async function tryCustomEmails(primaryEmail) {
   const url = `${window.BACKEND}/api/custom-email/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&limit=50`;
@@ -3362,7 +3422,9 @@ async function tryCustomEmails(primaryEmail) {
       subject: e.subject || '',
       snippet: e.snippet || '',
       date: e.date || e.internalDate || Date.now(),
-      _src: 'custom'
+      _src: 'custom',
+      _pending: false,
+      account: primaryEmail
     };
   });
   return { src:'custom', total: normalized.length, emails: normalized };
@@ -3404,42 +3466,26 @@ async function fetchEmails() {
       if (fallback && fallback.emails.length) res = fallback;
     }
 
-    if (!res) throw new Error('Nepodařilo se načíst emaily.');
+    if (!res || !Array.isArray(res.emails)) {
+        throw new Error('Nepodařilo se načíst emaily.');
+      }
 
-    // ulož pro render
-    allEmails = res.emails;
+      allEmails = res.emails.map(email => ({
+        ...email,
+        account: email.account || primaryEmail
+      }));
 
-    // header + render
-    if (emailCountHeader) {
-  const total = (res.total ?? res.emails.length) || 0;
-  const countStr = total > 0 ? ` (${total})` : '';
-  emailCountHeader.textContent = `Emaily pro: ${primaryEmail}${countStr}`;
-}
-    // vykreslení (doplníme data-src)
-    emailListContainer.innerHTML = '';
-    if (!allEmails.length) {
-      emailListContainer.innerHTML = `<div class="empty-state"><h3>Nebyly nalezeny žádné emaily</h3></div>`;
-      return;
-    }
-    allEmails.forEach(email => {
-      const senderName = parseSenderName(email.sender || '');
-      const html = `
-   <div class="email-item"
-     data-id="${email.id}"
-     data-src="${email._src || 'custom'}"
-     data-from="${escapeHtml(email.sender || '')}">
-          <div class="email-content" style="flex-grow:1;">
-            <div class="email-sender">${senderName || '(bez jména)'}</div>
-            <div class="email-subject">${email.subject || '(bez předmětu)'}</div>
-            <div class="email-preview">${email.snippet || ''}</div>
-          </div>
-          <div class="email-meta" style="text-align:right; flex-shrink:0;">
-            <div>${new Date(email.date).toLocaleDateString('cs-CZ')}</div>
-            <button class="btn btn-primary analyze-btn" data-message-id="${email.id}">Analyzovat 🤖</button>
-          </div>
-        </div>`;
-      emailListContainer.insertAdjacentHTML('beforeend', html);
-    });
+      if (emailCountHeader) {
+        const total = Number(res.total ?? allEmails.length ?? 0);
+        const countStr = total > 0 ? ` (${total})` : '';
+        if (status === 'approval') {
+          emailCountHeader.textContent = `Čekající odpovědi pro: ${primaryEmail}${countStr}`;
+        } else {
+          emailCountHeader.textContent = `Emaily pro: ${primaryEmail}${countStr}`;
+        }
+      }
+
+      renderEmailList(allEmails, res.total ?? allEmails.length);
   } catch (e) {
     emailListContainer.innerHTML = `<div class="empty-state"><h3>${e.message || 'Chyba načítání'}</h3></div>`;
   }
@@ -3832,35 +3878,82 @@ function renderEmailList(emails, total) {
     const isApprovalView = currentStatusFilter === 'approval';
 
     if (emails.length === 0) {
-        emailListContainer.innerHTML = `<div class="empty-state"><h3>Nebyly nalezeny žádné emaily</h3><p>Zkuste změnit filtry nebo vyhledávání.</p></div>`;
-        return;
-    }
+      emailListContainer.innerHTML = `<div class="empty-state"><h3>Nebyly nalezeny žádné emaily</h3><p>Zkuste změnit filtry nebo vyhledávání.</p></div>`;
+      return;
+  }
 
-    emails.forEach(email => {
-        const sender = (email.sender || '').split('<')[0].trim().replace(/"/g, '') || email.sender;
-        
-        // Dynamické přidání schvalovacích tlačítek
-        const actionButtons = isApprovalView
-          ? `<div class="approval-actions" style="margin-top: 8px; display: flex; gap: 8px;">
-               <button class="btn btn-success btn-sm approve-btn" data-id="${email.id}" data-src="${email._src || 'gmail'}">✅ Schválit</button>
-               <button class="btn btn-danger btn-sm reject-btn" data-id="${email.id}" data-src="${email._src || 'gmail'}">❌ Zamítnout</button>
-             </div>`
-          : `<button class="btn btn-primary analyze-btn" data-message-id="${email.id}" style="margin-top: 5px;">Analyzovat 🤖</button>`;
+  emails.forEach(email => {
+      const sender = (email.sender || '').split('<')[0].trim().replace(/"/g, '') || email.sender;
 
-        const emailHTML = `
-            <div class="email-item" data-id="${email.id}" data-src="${email._src || 'gmail'}" data-from="${escapeHtml(email.sender || '')}">
-                <div class="email-content" style="flex-grow: 1;">
-                    <div class="email-sender">${escapeHtml(sender)}</div>
-                    <div class="email-subject">${escapeHtml(email.subject)}</div>
-                    <div class="email-preview">${escapeHtml(email.snippet)}</div>
-                </div>
-                <div class="email-meta" style="text-align: right; flex-shrink: 0;">
-                    <div>${new Date(email.date).toLocaleDateString('cs-CZ')}</div>
-                    ${actionButtons}
-                </div>
-            </div>`;
-        emailListContainer.insertAdjacentHTML('beforeend', emailHTML);
-    });
+      // Dynamické přidání schvalovacích tlačítek
+      const actionButtons = isApprovalView
+        ? `<div class="approval-actions" style="margin-top: 8px; display: flex; gap: 8px;">
+                <button class="btn btn-success btn-sm approve-btn" data-pending-id="${email.pendingId || ''}" data-src="${email._src || 'gmail'}">✅ Schválit</button>
+                <button class="btn btn-danger btn-sm reject-btn" data-pending-id="${email.pendingId || ''}" data-src="${email._src || 'gmail'}">❌ Zamítnout</button>
+              </div>`
+        : `<button class="btn btn-primary analyze-btn" data-message-id="${email.id}" style="margin-top: 5px;">Analyzovat 🤖</button>`;
+
+      const replyPreviewRaw = (email.replyBody || '').trim();
+      const replyPreview = replyPreviewRaw ? replyPreviewRaw.slice(0, 180) + (replyPreviewRaw.length > 180 ? '…' : '') : '';
+      const summaryText = (email.summary || email.snippet || '').trim();
+      const badge = email._pending
+        ? `<div class="status-badge" style="display:inline-flex; align-items:center; gap:6px; background:#fef3c7; color:#92400e; font-weight:600; padding:2px 8px; border-radius:999px; margin-bottom:6px; font-size:0.8rem;">⏳ Čeká na schválení</div>`
+        : '';
+
+      const preview = isApprovalView
+        ? `
+            <div class="email-preview">${escapeHtml(summaryText || '(bez shrnutí)')}</div>
+            <div class="email-preview" style="margin-top:4px; color:#475569;">AI odpověď: ${escapeHtml(replyPreview || '(bez návrhu)')}</div>
+          `
+        : `<div class="email-preview">${escapeHtml(email.snippet || '')}</div>`;
+
+      const datasetParts = [
+        `data-id="${escapeHtml(email.id || '')}"`,
+        `data-src="${email._src || 'gmail'}"`,
+        `data-from="${escapeHtml(email.sender || '')}"`
+      ];
+      if (email.account) datasetParts.push(`data-account="${escapeHtml(email.account)}"`);
+      if (email.pendingId) datasetParts.push(`data-pending-id="${email.pendingId}"`);
+      if (email.messageId) datasetParts.push(`data-message-id="${escapeHtml(email.messageId)}"`);
+      if (email._pending) datasetParts.push('data-pending="1"');
+
+      const emailHTML = `
+              <div class="email-item" ${datasetParts.join(' ')}>
+                  <div class="email-content" style="flex-grow: 1;">
+                      ${badge}
+                      <div class="email-sender">${escapeHtml(sender)}</div>
+                      <div class="email-subject">${escapeHtml(email.subject || '(bez předmětu)')}</div>
+                      ${preview}
+                  </div>
+                  <div class="email-meta" style="text-align: right; flex-shrink: 0;">
+                      <div>${new Date(email.date).toLocaleDateString('cs-CZ')}</div>
+                      ${actionButtons}
+                  </div>
+              </div>`;
+      emailListContainer.insertAdjacentHTML('beforeend', emailHTML);
+  });
+}
+
+function renderPendingPreview(entry) {
+  const card = document.getElementById('ed-ai-card');
+  const summaryEl = document.getElementById('ed-ai-summary');
+  const sentimentEl = document.getElementById('ed-ai-sentiment');
+  const replyEl = document.getElementById('ed-ai-reply');
+
+  if (!card || !summaryEl || !sentimentEl || !replyEl) return;
+
+  if (!entry || !entry._pending) {
+    card.style.display = 'none';
+    summaryEl.textContent = '—';
+    sentimentEl.textContent = '—';
+    replyEl.textContent = '';
+    return;
+  }
+
+  card.style.display = '';
+  summaryEl.textContent = entry.summary || '(bez shrnutí)';
+  sentimentEl.textContent = entry.sentiment || '(neuvedeno)';
+  replyEl.textContent = entry.replyBody || '';
 }
 
 
@@ -3872,36 +3965,41 @@ document.getElementById('email-list-container')?.addEventListener('click', async
   const rejectBtn  = e.target.closest('.reject-btn');
   if (!approveBtn && !rejectBtn) return;
 
-  const row = e.target.closest('.email-item');
-  const messageId = row?.dataset.id;
-  const src = row?.dataset.src || 'gmail';
+ const row = e.target.closest('.email-item');
+    const pendingId = row?.dataset.pendingId;
+    const src = row?.dataset.src || 'gmail';
 
-  const dashboardUserEmail = localStorage.getItem('userEmail');
-  const accountEmail       = localStorage.getItem('primaryEmail');
+    const dashboardUserEmail = localStorage.getItem('userEmail');
+    const accountEmail       = localStorage.getItem('primaryEmail');
 
-  try {
-    if (!messageId) throw new Error('Chybí ID zprávy.');
-    if (src !== 'gmail') throw new Error('Schvalování je aktuálně podporováno pro Gmail.');
+    const triggerBtn = approveBtn || rejectBtn;
 
-    const url = approveBtn
-      ? `${window.BACKEND}/api/gmail/approval/approve`
-      : `${window.BACKEND}/api/gmail/approval/reject`;
+    try {
+      if (!pendingId) throw new Error('Chybí ID návrhu.');
+      if (!dashboardUserEmail || !accountEmail) throw new Error('Chybí kontext účtu.');
+      if (src !== 'gmail') throw new Error('Schvalování je aktuálně podporováno pro Gmail.');
 
-    const r = await fetch(url, {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ dashboardUserEmail, email: accountEmail, messageId })
-    });
-    const j = await r.json();
-    if (!r.ok || !j.success) throw new Error(j.message || 'Akce selhala.');
+      if (triggerBtn) triggerBtn.disabled = true;
 
-    // UX: odstranit položku ze seznamu a ohlásit výsledek
-    row.remove();
-    showToast(approveBtn ? 'Schváleno – přesunuto do Doručené.' : 'Zamítnuto – archivováno.', 'success');
-  } catch (err) {
-    showToast(err.message || 'Chyba akce.', 'error');
-  }
-});
+      const endpoint = approveBtn ? 'approve' : 'reject';
+      const url = `${window.BACKEND}/api/gmail/pending-replies/${pendingId}/${endpoint}`;
+
+      const r = await fetch(url, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ dashboardUserEmail, email: accountEmail })
+      });
+      const j = await r.json();
+      if (!r.ok || !j.success) throw new Error(j.message || 'Akce selhala.');
+
+      showToast(j.message || (approveBtn ? 'Odpověď byla odeslána.' : 'Návrh byl zamítnut.'), 'success');
+      await fetchEmails();
+    } catch (err) {
+      showToast(err.message || 'Chyba akce.', 'error');
+    } finally {
+      if (triggerBtn) triggerBtn.disabled = false;
+    }
+  });
 
 
 
@@ -4874,20 +4972,31 @@ if (dlg) dlg.classList.add('modal-xl');
                 }
             }
 
-const item = event.target.closest('.email-item');
+ const item = event.target.closest('.email-item');
     if (item && !event.target.closest('.analyze-btn')) {
       const id  = item.dataset.id;
       const src = (item.dataset.src || '').toLowerCase(); // 'gmail' | 'custom'
       const from = item.dataset.from || '';
       const subject = item.querySelector('.email-subject')?.textContent?.trim() || '';
       const dateTxt = item.querySelector('.email-meta > div')?.textContent?.trim() || '';
+      const pendingId = item.dataset.pendingId || '';
+
+      const emailEntry = allEmails.find(entry => {
+        if (pendingId) {
+          return String(entry?.pendingId ?? '') === String(pendingId);
+        }
+        return String(entry?.id ?? '') === String(id);
+      });
 
       window.__currentEmailCtx = {
-  id,                                   // stejné "id" co už máš (messageId nebo UID)
-  src,                                  // 'gmail' | 'custom'
-  account: (item.dataset.account || localStorage.getItem('primaryEmail') || ''),
-  from, subject, date: dateTxt
-};
+        id,                                   // stejné "id" co už máš (messageId nebo UID)
+        src,                                  // 'gmail' | 'custom'
+        account: (item.dataset.account || localStorage.getItem('primaryEmail') || ''),
+        from,
+        subject,
+        date: dateTxt,
+        pendingId: pendingId || (emailEntry?.pendingId ? String(emailEntry.pendingId) : '')
+      };
 
       // otevři modal + loading
       const modal = document.getElementById('emailDetailModal');
@@ -4895,16 +5004,19 @@ const item = event.target.closest('.email-item');
       const edSubj = document.getElementById('ed-subject');
       const edDate = document.getElementById('ed-date');
       const edBody = document.getElementById('ed-body');
-      
 
       if (!modal || !edFrom || !edSubj || !edDate || !edBody) return;
 
       edFrom.textContent = from || '(neznámý odesílatel)';
       edSubj.textContent = subject || '(bez předmětu)';
       edDate.textContent = dateTxt || '';
-      edBody.textContent = 'Načítám obsah zprávy…';
+      if (emailEntry && emailEntry._pending && emailEntry.originalBody) {
+        edBody.textContent = emailEntry.originalBody;
+      } else {
+        edBody.textContent = 'Načítám obsah zprávy…';
+      }
+      renderPendingPreview(emailEntry);
       syncProMeta();
-
 
       modal.classList.add('show');
       document.body.style.overflow = 'hidden';
@@ -4914,18 +5026,22 @@ const item = event.target.closest('.email-item');
         const primaryEmail       = localStorage.getItem('primaryEmail');
         const isCustom = (src === 'custom') || /^\d+$/.test(String(id)); // UID = custom
 
-        // Volání lehkého backend endpointu pro tělo zprávy (viz změny v serveru níže)
-        let url;
-        if (isCustom) {
-          url = `${window.BACKEND}/api/custom-email/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&uid=${encodeURIComponent(id)}`;
-        } else {
-          url = `${window.BACKEND}/api/gmail/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}&messageId=${encodeURIComponent(id)}`;
-        }
+        const shouldFetchBody = !(emailEntry && emailEntry._pending && emailEntry.originalBody);
 
-        const r = await fetch(url);
-        const j = await r.json();
-        if (!r.ok || !j.success) throw new Error(j.message || 'Nepodařilo se načíst obsah zprávy.');
-        edBody.textContent = j.body || '(tělo zprávy je prázdné)';
+        if (shouldFetchBody) {
+          // Volání lehkého backend endpointu pro tělo zprávy (viz změny v serveru níže)
+          let url;
+          if (isCustom) {
+            url = `${window.BACKEND}/api/custom-email/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&uid=${encodeURIComponent(id)}`;
+          } else {
+            url = `${window.BACKEND}/api/gmail/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}&messageId=${encodeURIComponent(id)}`;
+          }
+
+          const r = await fetch(url);
+          const j = await r.json();
+          if (!r.ok || !j.success) throw new Error(j.message || 'Nepodařilo se načíst obsah zprávy.');
+          edBody.textContent = j.body || '(tělo zprávy je prázdné)';
+        }
       } catch (e) {
         edBody.textContent = e.message || 'Chyba při načítání obsahu zprávy.';
       }
@@ -5853,4 +5969,5 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
