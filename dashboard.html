@@ -3517,32 +3517,28 @@ async function fetchEmails() {
     let res = null;
 
     if (status === 'approval') {
-      const sources = [];
-      if (isGmailAccount) {
-        const gmailPending = await tryGmailEmails(primaryEmail, status, period, searchQuery);
-        if (gmailPending) sources.push(gmailPending);
-      }
-      if (isCustomAccount) {
-        const customPending = await tryCustomPendingEmails(primaryEmail);
-        if (customPending) sources.push(customPending);
-      }
+      const [gmailPending, customPending] = await Promise.all([
+        isGmailAccount ? tryGmailEmails(primaryEmail, status, period, searchQuery) : null,
+        isCustomAccount ? tryCustomPendingEmails(primaryEmail) : null
+      ]);
 
-      const combinedEmails = sources.flatMap(src => (Array.isArray(src?.emails) ? src.emails : []));
+      const sources = [gmailPending, customPending].filter(src => src && Array.isArray(src.emails));
+      const combinedEmails = sources.flatMap(src => src.emails);
       combinedEmails.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
       const totalCount = sources.reduce((sum, src) => sum + (src?.total ?? (src?.emails?.length || 0)), 0);
       res = { src: 'approval', total: totalCount || combinedEmails.length, emails: combinedEmails };
     } else {
-      if (isGmailAccount) {
-        res = await tryGmailEmails(primaryEmail, status, period, searchQuery);
+      const [gmailResult, customResult] = await Promise.all([
+        isGmailAccount ? tryGmailEmails(primaryEmail, status, period, searchQuery) : null,
+        isCustomAccount ? tryCustomEmails(primaryEmail, status) : null
+      ]);
+
+      if (gmailResult && Array.isArray(gmailResult.emails)) {
+        res = gmailResult;
       }
 
-      if ((!res || !Array.isArray(res.emails) || (!res.emails.length && isGmailAccount)) && isCustomAccount) {
-        const custom = await tryCustomEmails(primaryEmail);
-        if (custom && Array.isArray(custom.emails) && custom.emails.length) {
-          res = custom;
-        } else if (!res) {
-          res = custom;
-        }
+      if ((!res || !Array.isArray(res.emails) || res.emails.length === 0) && customResult && Array.isArray(customResult.emails)) {
+        res = customResult;
       }
     }
 
@@ -3964,12 +3960,15 @@ function renderEmailList(emails, total) {
 
   emails.forEach(email => {
       const sender = (email.sender || '').split('<')[0].trim().replace(/"/g, '') || email.sender;
+      const pendingIdValue = email.pendingId ?? null;
+      const pendingIdAttr = pendingIdValue !== null && pendingIdValue !== undefined ? escapeHtml(String(pendingIdValue)) : '';
+      const srcAttr = escapeHtml(email._src || 'gmail');
 
       // Dynamické přidání schvalovacích tlačítek
       const actionButtons = isApprovalView
         ? `<div class="approval-actions" style="margin-top: 8px; display: flex; gap: 8px;">
-                <button class="btn btn-success btn-sm approve-btn" data-pending-id="${email.pendingId || ''}" data-src="${email._src || 'gmail'}">✅ Schválit</button>
-                <button class="btn btn-danger btn-sm reject-btn" data-pending-id="${email.pendingId || ''}" data-src="${email._src || 'gmail'}">❌ Zamítnout</button>
+                <button class="btn btn-success btn-sm approve-btn" data-pending-id="${pendingIdAttr}" data-src="${srcAttr}">✅ Schválit</button>
+                <button class="btn btn-danger btn-sm reject-btn" data-pending-id="${pendingIdAttr}" data-src="${srcAttr}">❌ Zamítnout</button>
               </div>`
         : `<button class="btn btn-primary analyze-btn" data-message-id="${email.id}" style="margin-top: 5px;">Analyzovat 🤖</button>`;
 
@@ -3989,11 +3988,11 @@ function renderEmailList(emails, total) {
 
       const datasetParts = [
         `data-id="${escapeHtml(email.id || '')}"`,
-        `data-src="${email._src || 'gmail'}"`,
+        `data-src="${srcAttr}"`,
         `data-from="${escapeHtml(email.sender || '')}"`
-      ];
+      ];␊
       if (email.account) datasetParts.push(`data-account="${escapeHtml(email.account)}"`);
-      if (email.pendingId) datasetParts.push(`data-pending-id="${email.pendingId}"`);
+      if (pendingIdValue !== null && pendingIdValue !== undefined) datasetParts.push(`data-pending-id="${pendingIdAttr}"`);
       if (email.messageId) datasetParts.push(`data-message-id="${escapeHtml(email.messageId)}"`);
       if (email._pending) datasetParts.push('data-pending="1"');
 
@@ -6055,6 +6054,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
