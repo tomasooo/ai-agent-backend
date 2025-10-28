@@ -3353,8 +3353,15 @@ async function tryGmailEmails(primaryEmail, status, period, searchQuery) {
       pendingUrl.searchParams.set('email', primaryEmail);
 
       const r = await fetch(pendingUrl.toString(), { cache: 'no-store' });
-      const j = await r.json();
-      if (!j.success) return { src: 'gmail', total: 0, emails: [] };
+      let j = null;
+      try {
+        j = await r.json();
+      } catch (_) {
+        j = null;
+      }
+      if (!r.ok || !j || !j.success) {
+        return { src: 'gmail', total: Array.isArray(j?.pending) ? j.pending.length : 0, emails: [] };
+      }
 
       const normalized = (j.pending || []).map((item) => {
         const createdAt = item.created_at || item.last_generated_at || item.sent_at;
@@ -3387,8 +3394,13 @@ async function tryGmailEmails(primaryEmail, status, period, searchQuery) {
 
   const url = `${window.BACKEND}/api/gmail/emails?email=${encodeURIComponent(primaryEmail)}&dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}`;
   const r = await fetch(url, { cache: 'no-store' });
-  const j = await r.json();
-  if (!j.success) return null;
+  let j = null;
+  try {
+    j = await r.json();
+  } catch (_) {
+    j = null;
+  }
+  if (!r.ok || !j || !j.success) return null;
   const normalized = (j.emails || []).map(e => ({
     id: e.id,                       // Gmail messageId
     uid: null,
@@ -3403,6 +3415,44 @@ async function tryGmailEmails(primaryEmail, status, period, searchQuery) {
   return { src:'gmail', total:j.total || normalized.length, emails: normalized };
 }
 
+async function tryCustomPendingEmails(primaryEmail) {
+  if (!primaryEmail) return null;
+  const url = `${window.BACKEND}/api/custom-email/pending-replies?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}`;
+  const r = await fetch(url, { cache: 'no-store' });
+  let j = null;
+  try {
+    j = await r.json();
+  } catch (_) {
+    j = null;
+  }
+  if (!r.ok || !j || !j.success) {
+    return { src: 'custom', total: Array.isArray(j?.pending) ? j.pending.length : 0, emails: [] };
+  }
+
+  const normalized = (j.pending || []).map((item) => {
+    const createdAt = item.created_at || item.last_generated_at || item.sent_at;
+    return {
+      id: item.message_id || String(item.id),
+      messageId: item.message_id || String(item.id),
+      pendingId: item.id,
+      sender: item.sender || '',
+      subject: item.subject || 'Bez předmětu',
+      snippet: item.summary || item.snippet || '',
+      date: createdAt || new Date().toISOString(),
+      _src: 'custom',
+      _pending: true,
+      account: primaryEmail,
+      replyBody: item.reply_body || '',
+      originalBody: item.original_body || '',
+      summary: item.summary || '',
+      sentiment: item.sentiment || '',
+      status: item.status || 'pending'
+    };
+  });
+
+  return { src: 'custom', total: normalized.length, emails: normalized };
+}
+
 
 
         
@@ -3410,8 +3460,13 @@ async function tryGmailEmails(primaryEmail, status, period, searchQuery) {
 async function tryCustomEmails(primaryEmail) {
   const url = `${window.BACKEND}/api/custom-email/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&limit=50`;
   const r = await fetch(url, { cache:'no-store' });
-  const j = await r.json();
-  if (!j.success) return null;
+  let j = null;
+  try {
+    j = await r.json();
+  } catch (_) {
+    j = null;
+  }
+  if (!r.ok || !j || !j.success) return null;
   const normalized = (j.emails || []).map(e => {
     // backend vrací { id: "...", sender: "...", subject, date, ... }
     const uid = e.uid ?? e.id; // podpora obou variant
@@ -3454,38 +3509,63 @@ async function fetchEmails() {
 
   emailListContainer.innerHTML = `<div class="empty-state"><span>📧</span><p>Načítám emaily pro ${primaryEmail}…</p></div>`;
 
-  try {
-    // 1) zkus Gmail
-    let res = await tryGmailEmails(primaryEmail, status, period, searchQuery);
-    // 2) pokud nic/slepé, zkus Custom
-    if (!res || !Array.isArray(res.emails)) {
-      res = await tryCustomEmails(primaryEmail);
-    } else if (!res.emails.length) {
-      // Gmail bez výsledků → zkus si pro jistotu custom (užitečné, když primární je custom)
-      const fallback = await tryCustomEmails(primaryEmail);
-      if (fallback && fallback.emails.length) res = fallback;
+ try {
+    const accountType = prim?.type || '';
+    const isGmailAccount = !accountType || accountType === 'gmail';
+    const isCustomAccount = !accountType || accountType === 'custom';
+
+    let res = null;
+
+    if (status === 'approval') {
+      const sources = [];
+      if (isGmailAccount) {
+        const gmailPending = await tryGmailEmails(primaryEmail, status, period, searchQuery);
+        if (gmailPending) sources.push(gmailPending);
+      }
+      if (isCustomAccount) {
+        const customPending = await tryCustomPendingEmails(primaryEmail);
+        if (customPending) sources.push(customPending);
+      }
+
+      const combinedEmails = sources.flatMap(src => (Array.isArray(src?.emails) ? src.emails : []));
+      combinedEmails.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+      const totalCount = sources.reduce((sum, src) => sum + (src?.total ?? (src?.emails?.length || 0)), 0);
+      res = { src: 'approval', total: totalCount || combinedEmails.length, emails: combinedEmails };
+    } else {
+      if (isGmailAccount) {
+        res = await tryGmailEmails(primaryEmail, status, period, searchQuery);
+      }
+
+      if ((!res || !Array.isArray(res.emails) || (!res.emails.length && isGmailAccount)) && isCustomAccount) {
+        const custom = await tryCustomEmails(primaryEmail);
+        if (custom && Array.isArray(custom.emails) && custom.emails.length) {
+          res = custom;
+        } else if (!res) {
+          res = custom;
+        }
+      }
     }
 
     if (!res || !Array.isArray(res.emails)) {
-        throw new Error('Nepodařilo se načíst emaily.');
+      throw new Error('Nepodařilo se načíst emaily.');
+    }
+
+    allEmails = res.emails.map(email => ({
+      ...email,
+      account: email.account || primaryEmail
+    }));
+
+    if (emailCountHeader) {
+      const total = Number(res.total ?? allEmails.length ?? 0);
+      const countStr = total > 0 ? ` (${total})` : '';
+      if (status === 'approval') {
+        emailCountHeader.textContent = `Čekající odpovědi pro: ${primaryEmail}${countStr}`;
+      } else {
+        emailCountHeader.textContent = `Emaily pro: ${primaryEmail}${countStr}`;
       }
+    }
 
-      allEmails = res.emails.map(email => ({
-        ...email,
-        account: email.account || primaryEmail
-      }));
-
-      if (emailCountHeader) {
-        const total = Number(res.total ?? allEmails.length ?? 0);
-        const countStr = total > 0 ? ` (${total})` : '';
-        if (status === 'approval') {
-          emailCountHeader.textContent = `Čekající odpovědi pro: ${primaryEmail}${countStr}`;
-        } else {
-          emailCountHeader.textContent = `Emaily pro: ${primaryEmail}${countStr}`;
-        }
-      }
-
-      renderEmailList(allEmails, res.total ?? allEmails.length);
+    renderEmailList(allEmails, res.total ?? allEmails.length);
   } catch (e) {
     emailListContainer.innerHTML = `<div class="empty-state"><h3>${e.message || 'Chyba načítání'}</h3></div>`;
   }
@@ -3977,17 +4057,23 @@ document.getElementById('email-list-container')?.addEventListener('click', async
     try {
       if (!pendingId) throw new Error('Chybí ID návrhu.');
       if (!dashboardUserEmail || !accountEmail) throw new Error('Chybí kontext účtu.');
-      if (src !== 'gmail') throw new Error('Schvalování je aktuálně podporováno pro Gmail.');
+      if (!['gmail', 'custom'].includes(src)) throw new Error('Nepodporovaný typ účtu.');
 
       if (triggerBtn) triggerBtn.disabled = true;
 
       const endpoint = approveBtn ? 'approve' : 'reject';
-      const url = `${window.BACKEND}/api/gmail/pending-replies/${pendingId}/${endpoint}`;
+      const url = src === 'custom'
+        ? `${window.BACKEND}/api/custom-email/pending-replies/${pendingId}/${endpoint}`
+        : `${window.BACKEND}/api/gmail/pending-replies/${pendingId}/${endpoint}`;
+
+      const payload = src === 'custom'
+        ? { dashboardUserEmail, emailAddress: accountEmail }
+        : { dashboardUserEmail, email: accountEmail };
 
       const r = await fetch(url, {
         method:'POST',
         headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ dashboardUserEmail, email: accountEmail })
+        body: JSON.stringify(payload)
       });
       const j = await r.json();
       if (!r.ok || !j.success) throw new Error(j.message || 'Akce selhala.');
@@ -5969,5 +6055,6 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
