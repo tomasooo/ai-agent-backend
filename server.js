@@ -435,6 +435,7 @@ async function chatText({ model, system, user, client, dashboardUserEmail }) {
 
 // Funkce pro vytvoření tabulky, pokud neexistuje
 
+
 async function setupDatabase() {
     let client;
     try {
@@ -634,6 +635,7 @@ async function setupDatabase() {
     }
 }
 
+await setupDatabase();
 
 
 // ---------- Helpers pro čtení Gmail zpráv ----------
@@ -1151,7 +1153,12 @@ app.post('/api/custom-email/disconnect', async (req, res) => {
 
 
 app.get('/api/custom-email/emails', async (req, res) => {
-  const { dashboardUserEmail, emailAddress, limit = 20 } = req.query || {};
+  const {
+    dashboardUserEmail,
+    emailAddress,
+    limit = 20,
+    status = 'all'
+  } = req.query || {};
   if (!dashboardUserEmail || !emailAddress) {
     return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail nebo emailAddress.' });
   }
@@ -1191,35 +1198,61 @@ app.get('/api/custom-email/emails', async (req, res) => {
 
     const out = [];
     const max = Math.min(Number(limit) || 20, 200);
-    const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 500);
+    const normalizedStatus = String(status || 'all').toLowerCase();
+    const unreadOnly = normalizedStatus === 'unread' || normalizedStatus === 'unseen';
 
-    // ⬅️ DŮLEŽITÉ: ŽÁDNÝ filtr "seen:false" – bereme i přečtené zprávy
-    for await (const msg of imap.fetch(
-      { seq: `${startSeq}:*` },
-      { uid: true, envelope: true, internalDate: true, flags: true }
-    )) {
+    const totalExists = Number(imap.mailbox?.exists || 0);
+    const windowSize = unreadOnly ? Math.max(max * 4, max) : max;
+    const startSeq = totalExists > 0 ? Math.max(1, totalExists - windowSize + 1) : 1;
+
+    const fetchQuery = {
+      seq: `${startSeq}:*`,
+      limit: max,
+      reverse: true
+    };
+
+    if (unreadOnly) {
+      fetchQuery.seen = false;
+    }
+
+    const fetchOptions = { uid: true, envelope: true, internalDate: true, flags: true };
+    const seenUids = new Set();
+
+    for await (const msg of imap.fetch(fetchQuery, fetchOptions)) {
+      if (!msg?.uid || seenUids.has(msg.uid)) continue;
+      seenUids.add(msg.uid);
+
+      if (unreadOnly && Array.isArray(msg.flags) && msg.flags.includes('\\Seen')) {
+        continue;
+      }
+
       const fromRaw = msg.envelope?.from?.[0] || {};
       out.push({
-        id: String(msg.uid), // sjednocený název pole
+        id: String(msg.uid),
         uid: msg.uid,
         subject: decodeHeader(msg.envelope?.subject || ''),
         sender: (fromRaw.address || '').trim(),
         from: `${decodeHeader(fromRaw.name || '')} <${fromRaw.address || ''}>`,
         date: msg.internalDate ? msg.internalDate.toISOString() : null
       });
+
       if (out.length >= max) break;
     }
 
     // seřadit od nejnovějších (pro jistotu)
     out.sort((a, b) => (new Date(b.date || 0)) - (new Date(a.date || 0)));
 
-    await imap.logout();
-    return res.json({ success:true, emails: out, total: out.length });
+    return res.json({ success:true, emails: out, total: out.length, filter: normalizedStatus });
   } catch (e) {
     console.error("Chyba IMAP:", e);
-    try { if (imap?.connected) await imap.logout(); } catch {}
     return res.status(500).json({ success:false, message:'Nepodařilo se načíst emaily (custom).' });
   } finally {
+    try {
+      if (imap?.connected) {
+        await imap.logout();
+      }
+    } catch {}
+
     db.release();
   }
 });
@@ -5038,6 +5071,7 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
