@@ -3457,8 +3457,8 @@ async function tryCustomPendingEmails(primaryEmail) {
 
         
 
-async function tryCustomEmails(primaryEmail) {
-  const url = `${window.BACKEND}/api/custom-email/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&limit=50`;
+async function tryCustomEmails(primaryEmail, status = 'all') {
+  const url = `${window.BACKEND}/api/custom-email/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&limit=50&status=${encodeURIComponent(status)}`;
   const r = await fetch(url, { cache:'no-store' });
   let j = null;
   try {
@@ -6055,6 +6055,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
