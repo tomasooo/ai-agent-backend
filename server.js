@@ -1175,9 +1175,11 @@ app.get('/api/custom-email/emails', async (req, res) => {
   const {
     dashboardUserEmail,
     emailAddress,
-    limit = 20,
+    limit = 10,
+    page = 1,
     status = 'all'
   } = req.query || {};
+ 
   if (!dashboardUserEmail || !emailAddress) {
     return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail nebo emailAddress.' });
   }
@@ -1216,7 +1218,12 @@ app.get('/api/custom-email/emails', async (req, res) => {
     }
 
     const out = [];
-    const max = Math.min(Number(limit) || 20, 200);
+    const DEFAULT_PAGE_SIZE = 10;
+    const requestedLimit = Number.parseInt(limit, 10);
+    const pageSize = Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : DEFAULT_PAGE_SIZE, 1), 100);
+    const requestedPage = Number.parseInt(page, 10);
+    const currentPage = Math.min(Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1), 1000);
+    const offset = (currentPage - 1) * pageSize;
     const normalizedStatus = String(status || 'all').toLowerCase();
     const unreadOnly = normalizedStatus === 'unread' || normalizedStatus === 'unseen';
 
@@ -1224,38 +1231,74 @@ app.get('/api/custom-email/emails', async (req, res) => {
     let totalMatches = totalExists;
 
     let fetchQuery;
-    if (unreadOnly) {
+   if (unreadOnly) {
       const unreadUids = await imap.search({ seen: false });
-      totalMatches = unreadUids.length;
-
-      if (!unreadUids.length) {
-        return res.json({ success: true, emails: [], total: 0, filter: normalizedStatus });
-      }
-
-      const limitedUids = unreadUids
+      const normalizedUids = unreadUids
         .map(Number)
         .filter(Number.isFinite)
-        .sort((a, b) => b - a)
-        .slice(0, max);
+        .sort((a, b) => b - a);
 
-      fetchQuery = { uid: limitedUids };
+      totalMatches = normalizedUids.length;
+
+      if (!totalMatches) {
+        return res.json({
+          success: true,
+          emails: [],
+          total: 0,
+          filter: normalizedStatus,
+          page: currentPage,
+          pageSize,
+          totalPages: 0
+        });
+      }
+
+      const startIndex = Math.min(offset, normalizedUids.length);
+      const pageUids = normalizedUids.slice(startIndex, startIndex + pageSize);
+
+      if (!pageUids.length) {
+        return res.json({
+          success: true,
+          emails: [],
+          total: totalMatches,
+          filter: normalizedStatus,
+          page: currentPage,
+          pageSize,
+          totalPages: Math.ceil(totalMatches / pageSize) || 0
+        });
+      }
+
+      fetchQuery = { uid: pageUids };
     } else {
-      const windowSize = Math.max(max * 2, max);
-      const startSeq = totalExists > 0 ? Math.max(1, totalExists - windowSize + 1) : 1;
+      if (!totalExists) {
+        return res.json({
+          success: true,
+          emails: [],
+          total: 0,
+          filter: normalizedStatus,
+          page: currentPage,
+          pageSize,
+          totalPages: 0
+        });
+      }
+
+      const fetchLimit = Math.min(pageSize + offset + 50, 5000, Math.max(totalExists, pageSize));
+      const windowSize = Math.max(fetchLimit, pageSize);
+      const startSeq = Math.max(1, totalExists - windowSize + 1);
 
       fetchQuery = {
         seq: `${startSeq}:*`,
-        limit: max,
+        limit: fetchLimit,
         reverse: true
       };
     }
 
     const fetchOptions = { uid: true, envelope: true, internalDate: true, flags: true };
     const seenUids = new Set();
+    let skipped = 0;
 
     for await (const msg of imap.fetch(fetchQuery, fetchOptions)) {
       if (!msg?.uid || seenUids.has(msg.uid)) continue;
-      seenUids.add(msg.uid);␊
+      seenUids.add(msg.uid);
 
       if (flagIncludes(msg.flags, '\\Deleted')) {
         continue;
@@ -1265,6 +1308,10 @@ app.get('/api/custom-email/emails', async (req, res) => {
         continue;
       }
 
+      if (!unreadOnly && skipped < offset) {
+        skipped++;
+        continue;
+      }
 
       const fromRaw = msg.envelope?.from?.[0] || {};
       const isUnread = !flagIncludes(msg.flags, '\\Seen');
@@ -1279,15 +1326,24 @@ app.get('/api/custom-email/emails', async (req, res) => {
         unread: isUnread
       });
 
-      if (out.length >= max) break;
+      if (out.length >= pageSize) break;
     }
 
    // seřadit od nejnovějších (pro jistotu)
     out.sort((a, b) => (new Date(b.date || 0)) - (new Date(a.date || 0)));
 
-    const reportedTotal = unreadOnly ? totalMatches : out.length;
+    const totalPages = totalMatches ? Math.ceil(totalMatches / pageSize) : 0;
+    const reportedTotal = totalMatches;
 
-    return res.json({ success:true, emails: out, total: reportedTotal, filter: normalizedStatus });
+    return res.json({
+      success:true,
+      emails: out,
+      total: reportedTotal,
+      filter: normalizedStatus,
+      page: currentPage,
+      pageSize,
+      totalPages
+    });
   } catch (e) {
     console.error("Chyba IMAP:", e);
     return res.status(500).json({ success:false, message:'Nepodařilo se načíst emaily (custom).' });
@@ -5119,6 +5175,7 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
