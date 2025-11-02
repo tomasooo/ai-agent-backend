@@ -1202,17 +1202,33 @@ app.get('/api/custom-email/emails', async (req, res) => {
     const unreadOnly = normalizedStatus === 'unread' || normalizedStatus === 'unseen';
 
     const totalExists = Number(imap.mailbox?.exists || 0);
-    const windowSize = unreadOnly ? Math.max(max * 4, max) : max;
-    const startSeq = totalExists > 0 ? Math.max(1, totalExists - windowSize + 1) : 1;
+    let totalMatches = totalExists;
 
-    const fetchQuery = {
-      seq: `${startSeq}:*`,
-      limit: max,
-      reverse: true
-    };
-
+    let fetchQuery;
     if (unreadOnly) {
-      fetchQuery.seen = false;
+      const unreadUids = await imap.search({ seen: false });
+      totalMatches = unreadUids.length;
+
+      if (!unreadUids.length) {
+        return res.json({ success: true, emails: [], total: 0, filter: normalizedStatus });
+      }
+
+      const limitedUids = unreadUids
+        .map(Number)
+        .filter(Number.isFinite)
+        .sort((a, b) => b - a)
+        .slice(0, max);
+
+      fetchQuery = { uid: limitedUids };
+    } else {
+      const windowSize = Math.max(max * 2, max);
+      const startSeq = totalExists > 0 ? Math.max(1, totalExists - windowSize + 1) : 1;
+
+      fetchQuery = {
+        seq: `${startSeq}:*`,
+        limit: max,
+        reverse: true
+      };
     }
 
     const fetchOptions = { uid: true, envelope: true, internalDate: true, flags: true };
@@ -1222,9 +1238,14 @@ app.get('/api/custom-email/emails', async (req, res) => {
       if (!msg?.uid || seenUids.has(msg.uid)) continue;
       seenUids.add(msg.uid);
 
+      if (Array.isArray(msg.flags) && msg.flags.includes('\\Deleted')) {
+        continue;
+      }
+
       if (unreadOnly && Array.isArray(msg.flags) && msg.flags.includes('\\Seen')) {
         continue;
       }
+
 
       const fromRaw = msg.envelope?.from?.[0] || {};
       out.push({
@@ -1239,10 +1260,12 @@ app.get('/api/custom-email/emails', async (req, res) => {
       if (out.length >= max) break;
     }
 
-    // seřadit od nejnovějších (pro jistotu)
+   // seřadit od nejnovějších (pro jistotu)
     out.sort((a, b) => (new Date(b.date || 0)) - (new Date(a.date || 0)));
 
-    return res.json({ success:true, emails: out, total: out.length, filter: normalizedStatus });
+    const reportedTotal = unreadOnly ? totalMatches : out.length;
+
+    return res.json({ success:true, emails: out, total: reportedTotal, filter: normalizedStatus });
   } catch (e) {
     console.error("Chyba IMAP:", e);
     return res.status(500).json({ success:false, message:'Nepodařilo se načíst emaily (custom).' });
@@ -5071,6 +5094,7 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
