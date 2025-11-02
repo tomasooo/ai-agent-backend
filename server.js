@@ -1248,13 +1248,16 @@ app.get('/api/custom-email/emails', async (req, res) => {
 
 
       const fromRaw = msg.envelope?.from?.[0] || {};
+      const isUnread = !(Array.isArray(msg.flags) && msg.flags.includes('\\Seen'));
+
       out.push({
         id: String(msg.uid),
         uid: msg.uid,
         subject: decodeHeader(msg.envelope?.subject || ''),
         sender: (fromRaw.address || '').trim(),
         from: `${decodeHeader(fromRaw.name || '')} <${fromRaw.address || ''}>`,
-        date: msg.internalDate ? msg.internalDate.toISOString() : null
+        date: msg.internalDate ? msg.internalDate.toISOString() : null,
+        unread: isUnread
       });
 
       if (out.length >= max) break;
@@ -2849,23 +2852,26 @@ if (!isCustom) {
     return res.json({ success: true, emails: [], total: 0 });
   }
 
-  const emails = await Promise.all(messageIds.map(async (m) => {
-    const mr = await gmail.users.messages.get({
-      userId: 'me',
-      id: m.id,
-      format: 'metadata',
-      metadataHeaders: ['Subject', 'From', 'Date']
-    });
-    const headers = mr.data.payload.headers || [];
-    const getHeader = (n) => headers.find(h => h.name === n)?.value || '';
-    return {
-      id: m.id,
-      snippet: mr.data.snippet,
-      sender: (getHeader('From').match(/<([^>]+)>/)?.[1] || getHeader('From')).trim().replace(/^mailto:/i, ''),
-      subject: getHeader('Subject'),
-      date: getHeader('Date')
-    };
-  }));
+ const emails = await Promise.all(messageIds.map(async (m) => {
+      const mr = await gmail.users.messages.get({
+        userId: 'me',
+        id: m.id,
+        format: 'metadata',
+        metadataHeaders: ['Subject', 'From', 'Date']
+      });
+      const headers = mr.data.payload.headers || [];
+      const getHeader = (n) => headers.find(h => h.name === n)?.value || '';
+      const isUnread = Array.isArray(mr.data.labelIds) && mr.data.labelIds.includes('UNREAD');
+      return {
+        id: m.id,
+        snippet: mr.data.snippet,
+        sender: (getHeader('From').match(/<([^>]+)>/)?.[1] || getHeader('From')).trim().replace(/^mailto:/i, ''),
+        from: getHeader('From'),
+        subject: getHeader('Subject'),
+        date: getHeader('Date'),
+        unread: isUnread
+      };
+    }));
 
   return res.json({ success: true, emails, total: listResponse.data.resultSizeEstimate });
 }
@@ -5094,6 +5100,7 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
