@@ -597,6 +597,61 @@
         .email-item:last-child {
             border-bottom: none;
         }
+
+        .email-item.unread .email-sender,
+        .email-item.unread .email-subject {
+            font-weight: 600;
+            color: #1e293b;
+        }
+
+        .pagination-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            padding: 1rem 1.5rem;
+            border-top: 1px solid #e2e8f0;
+            background: #fff;
+        }
+
+        .pagination-info {
+            font-size: 0.875rem;
+            color: #475569;
+        }
+
+        .pagination-buttons {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .pagination-button {
+            min-width: 38px;
+            padding: 0.4rem 0.65rem;
+            border-radius: 999px;
+            border: 1px solid #cbd5f5;
+            background: #f1f5f9;
+            color: #1e293b;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .pagination-button:hover:not(.active):not(:disabled) {
+            background: #e2e8f0;
+        }
+
+        .pagination-button.active {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: #fff;
+        }
+
+        .pagination-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
         
 
         .email-status {
@@ -1773,6 +1828,7 @@
             📧 Načítám emaily...
         </div>
     </div>
+    <div id="email-pagination" class="pagination-container" style="display:none;"></div>
 </div>
                     <div class="modal-overlay" id="templatePicker">
   <div class="modal">
@@ -2564,6 +2620,11 @@ const periodFilter = document.getElementById('period-filter');
 const analysisModal = document.getElementById('analysisModal');
 const closeAnalysisModalBtn = document.getElementById('closeAnalysisModal');
 const searchBar = document.getElementById('search-bar');
+const paginationContainer = document.getElementById('email-pagination');
+
+const EMAILS_PER_PAGE = 10;
+let currentEmailPage = 1;
+let lastEmailTotal = 0;
 
 
 // === Modal helpers: uložit výchozí obsah a možnost ho vrátit ===
@@ -3419,7 +3480,8 @@ async function tryGmailEmails(primaryEmail, status, period, searchQuery) {
     date: e.date,
     _src: 'gmail',
     _pending: false,
-    account: primaryEmail
+    account: primaryEmail,
+    unread: e.unread === true
   }));
   return { src:'gmail', total:j.total || normalized.length, emails: normalized };
 }
@@ -3488,11 +3550,13 @@ async function tryCustomEmails(primaryEmail, status = 'all') {
       date: e.date || e.internalDate || Date.now(),
       _src: 'custom',
       _pending: false,
-      account: primaryEmail
+      account: primaryEmail,
+      unread: e.unread === true
     };
   });
   return { src:'custom', total: normalized.length, emails: normalized };
 }
+
 
 
 // ZMĚNA: Funkce nyní načítá emaily pro primární účet z localStorage
@@ -3551,17 +3615,32 @@ async function fetchEmails() {
       }
     }
 
-    if (!res || !Array.isArray(res.emails)) {
+     if (!res || !Array.isArray(res.emails)) {
       throw new Error('Nepodařilo se načíst emaily.');
     }
 
-    allEmails = res.emails.map(email => ({
+    const rawEmails = Array.isArray(res.emails) ? res.emails : [];
+    const filteredEmails = status === 'unread'
+      ? rawEmails.filter(email => email.unread === true)
+      : rawEmails;
+
+    allEmails = filteredEmails.map(email => ({
       ...email,
       account: email.account || primaryEmail
     }));
 
+    lastEmailTotal = status === 'unread'
+      ? allEmails.length
+      : Number(res.total ?? filteredEmails.length ?? 0);
+
+    if (!Number.isFinite(lastEmailTotal) || lastEmailTotal < allEmails.length) {
+      lastEmailTotal = allEmails.length;
+    }
+
+    currentEmailPage = 1;
+
     if (emailCountHeader) {
-      const total = Number(res.total ?? allEmails.length ?? 0);
+      const total = lastEmailTotal;
       const countStr = total > 0 ? ` (${total})` : '';
       if (status === 'approval') {
         emailCountHeader.textContent = `Čekající odpovědi pro: ${primaryEmail}${countStr}`;
@@ -3570,7 +3649,7 @@ async function fetchEmails() {
       }
     }
 
-    renderEmailList(allEmails, res.total ?? allEmails.length);
+    renderEmailList(allEmails, lastEmailTotal);
   } catch (e) {
     emailListContainer.innerHTML = `<div class="empty-state"><h3>${e.message || 'Chyba načítání'}</h3></div>`;
   }
@@ -3957,17 +4036,28 @@ document.getElementById('tplCategory')?.addEventListener('change', refreshPicker
 
 function renderEmailList(emails, total) {
     if (!emailListContainer) return;
-    emailListContainer.innerHTML = '';
-    
+    const safeEmails = Array.isArray(emails) ? emails : [];
     const currentStatusFilter = document.getElementById('status-filter')?.value;
     const isApprovalView = currentStatusFilter === 'approval';
 
-    if (emails.length === 0) {
+    if (!safeEmails.length) {
       emailListContainer.innerHTML = `<div class="empty-state"><h3>Nebyly nalezeny žádné emaily</h3><p>Zkuste změnit filtry nebo vyhledávání.</p></div>`;
+      if (paginationContainer) {
+        paginationContainer.innerHTML = '';
+        paginationContainer.style.display = 'none';
+      }
       return;
   }
 
-  emails.forEach(email => {
+  const totalPages = Math.max(1, Math.ceil(safeEmails.length / EMAILS_PER_PAGE));
+  if (currentEmailPage > totalPages) currentEmailPage = totalPages;
+
+  const startIndex = (currentEmailPage - 1) * EMAILS_PER_PAGE;
+  const pageEmails = safeEmails.slice(startIndex, startIndex + EMAILS_PER_PAGE);
+
+  emailListContainer.innerHTML = '';
+
+  pageEmails.forEach(email => {
       const sender = (email.sender || '').split('<')[0].trim().replace(/"/g, '') || email.sender;
       const pendingIdValue = email.pendingId ?? null;
       const pendingIdAttr = pendingIdValue !== null && pendingIdValue !== undefined ? escapeHtml(String(pendingIdValue)) : '';
@@ -4003,10 +4093,12 @@ function renderEmailList(emails, total) {
       if (email.account) datasetParts.push(`data-account="${escapeHtml(email.account)}"`);
       if (pendingIdValue !== null && pendingIdValue !== undefined) datasetParts.push(`data-pending-id="${pendingIdAttr}"`);
       if (email.messageId) datasetParts.push(`data-message-id="${escapeHtml(email.messageId)}"`);
-      if (email._pending) datasetParts.push('data-pending="1"');
+       if (email._pending) datasetParts.push('data-pending="1"');
+      const isUnread = email.unread === true && !email._pending;
+      if (isUnread) datasetParts.push('data-unread="1"');
 
       const emailHTML = `
-              <div class="email-item" ${datasetParts.join(' ')}>
+              <div class="email-item ${isUnread ? 'unread' : ''}" ${datasetParts.join(' ')}>
                   <div class="email-content" style="flex-grow: 1;">
                       ${badge}
                       <div class="email-sender">${escapeHtml(sender)}</div>
@@ -4020,7 +4112,64 @@ function renderEmailList(emails, total) {
               </div>`;
       emailListContainer.insertAdjacentHTML('beforeend', emailHTML);
   });
+
+  const endIndex = startIndex + pageEmails.length;
+  renderPagination(totalPages, startIndex + 1, endIndex, Math.max(total || 0, safeEmails.length));
 }
+
+function renderPagination(totalPages, startIndex, endIndex, totalRecords) {
+  if (!paginationContainer) return;
+
+  if (totalPages <= 1) {
+    paginationContainer.innerHTML = '';
+    paginationContainer.style.display = 'none';
+    return;
+  }
+
+  const safeTotal = Math.max(totalRecords || 0, endIndex);
+  const infoText = `Zobrazeno ${startIndex}-${endIndex} z ${safeTotal} emailů`;
+  const prevPage = currentEmailPage > 1 ? currentEmailPage - 1 : 1;
+  const nextPage = currentEmailPage < totalPages ? currentEmailPage + 1 : totalPages;
+
+  let buttons = `
+    <button class="pagination-button${currentEmailPage === 1 ? ' disabled' : ''}" data-page="${prevPage}" ${currentEmailPage === 1 ? 'disabled' : ''}>‹</button>
+  `;
+
+  for (let i = 1; i <= totalPages; i++) {
+    buttons += `<button class="pagination-button${i === currentEmailPage ? ' active' : ''}" data-page="${i}">${i}</button>`;
+  }
+
+  buttons += `
+    <button class="pagination-button${currentEmailPage === totalPages ? ' disabled' : ''}" data-page="${nextPage}" ${currentEmailPage === totalPages ? 'disabled' : ''}>›</button>
+  `;
+
+  paginationContainer.innerHTML = `
+    <div class="pagination-info">${infoText}</div>
+    <div class="pagination-buttons">${buttons}</div>
+  `;
+  paginationContainer.style.display = '';
+}
+
+paginationContainer?.addEventListener('click', (event) => {
+  const btn = event.target.closest('.pagination-button');
+  if (!btn || btn.disabled) return;
+
+  const requested = Number(btn.dataset.page);
+  if (!Number.isFinite(requested) || requested < 1) return;
+
+  const totalPages = Math.max(1, Math.ceil((allEmails?.length || 0) / EMAILS_PER_PAGE));
+  const nextPage = Math.min(Math.max(requested, 1), totalPages);
+  if (nextPage === currentEmailPage) return;
+
+  currentEmailPage = nextPage;
+  renderEmailList(allEmails, lastEmailTotal);
+
+  try {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (_) {
+    window.scrollTo(0, 0);
+  }
+});
 
 function renderPendingPreview(entry) {
   const card = document.getElementById('ed-ai-card');
@@ -6077,6 +6226,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
