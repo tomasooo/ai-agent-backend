@@ -116,6 +116,25 @@ function unwrapImapError(e) {
   }
 }
 
+function flagIncludes(flags, flagName) {
+  if (!flags || !flagName) return false;
+  if (Array.isArray(flags)) return flags.includes(flagName);
+  if (typeof flags.has === 'function') {
+    try { return flags.has(flagName); } catch { return false; }
+  }
+  if (typeof flags[Symbol.iterator] === 'function') {
+    try {
+      for (const value of flags) {
+        if (value === flagName) return true;
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+  return false;
+}
+
+
 async function resolveAWithSNI(hostname) {
   try {
     // vem čistě IPv4 (A) – žádné AAAA
@@ -1236,19 +1255,19 @@ app.get('/api/custom-email/emails', async (req, res) => {
 
     for await (const msg of imap.fetch(fetchQuery, fetchOptions)) {
       if (!msg?.uid || seenUids.has(msg.uid)) continue;
-      seenUids.add(msg.uid);
+      seenUids.add(msg.uid);␊
 
-      if (Array.isArray(msg.flags) && msg.flags.includes('\\Deleted')) {
+      if (flagIncludes(msg.flags, '\\Deleted')) {
         continue;
       }
 
-      if (unreadOnly && Array.isArray(msg.flags) && msg.flags.includes('\\Seen')) {
+      if (unreadOnly && flagIncludes(msg.flags, '\\Seen')) {
         continue;
       }
 
 
       const fromRaw = msg.envelope?.from?.[0] || {};
-      const isUnread = !(Array.isArray(msg.flags) && msg.flags.includes('\\Seen'));
+      const isUnread = !flagIncludes(msg.flags, '\\Seen');
 
       out.push({
         id: String(msg.uid),
@@ -5100,6 +5119,7 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
