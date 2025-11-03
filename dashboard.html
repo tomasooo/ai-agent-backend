@@ -3565,7 +3565,7 @@ async function tryCustomEmails(primaryEmail, status = 'all', period = 'all', sea
 
 // ZMĚNA: Funkce nyní načítá emaily pro primární účet z localStorage
 async function fetchEmails(options = {}) {
-  const { resetPage = false } = options || {};
+  const { resetPage = false, targetPage = null } = options || {};
   const primaryEmail = localStorage.getItem('primaryEmail');
   if (!primaryEmail) {
     if (emailListContainer) emailListContainer.innerHTML = `<div class="empty-state"><h3>Vyberte hlavní emailový účet</h3></div>`;
@@ -3584,7 +3584,20 @@ async function fetchEmails(options = {}) {
   const status = statusFilter ? statusFilter.value : 'all';
   const period = periodFilter ? periodFilter.value : 'all';
   const searchQuery = searchBar ? searchBar.value : '';
-  const pageToRequest = resetPage ? 1 : currentEmailPage;
+  if (resetPage) {
+    currentEmailPage = 1;
+  } else if (targetPage !== null) {
+    const numericTarget = Number(targetPage);
+    if (Number.isFinite(numericTarget) && numericTarget > 0) {
+      currentEmailPage = Math.floor(numericTarget);
+    }
+  }
+
+  if (!Number.isFinite(currentEmailPage) || currentEmailPage < 1) {
+    currentEmailPage = 1;
+  }
+
+  const pageToRequest = currentEmailPage;
 
   emailListContainer.innerHTML = `<div class="empty-state"><span>📧</span><p>Načítám emaily pro ${primaryEmail}…</p></div>`;
 
@@ -3653,6 +3666,14 @@ async function fetchEmails(options = {}) {
         emailCountHeader.textContent = `Čekající odpovědi pro: ${primaryEmail}${countStr}`;
       } else {
         emailCountHeader.textContent = `Emaily pro: ${primaryEmail}${countStr}`;
+      }
+    }
+
+    const totalPages = Math.max(1, Math.ceil(lastEmailTotal / EMAILS_PER_PAGE));
+    if (currentEmailPage > totalPages) {
+      currentEmailPage = totalPages;
+      if (currentEmailPage !== pageToRequest) {
+        return fetchEmails({ targetPage: currentEmailPage });
       }
     }
 
@@ -4047,6 +4068,11 @@ function renderEmailList(emails, total) {
     const currentStatusFilter = document.getElementById('status-filter')?.value;
     const isApprovalView = currentStatusFilter === 'approval';
 
+    const numericTotal = Number(total);
+    const totalCount = Number.isFinite(numericTotal)
+      ? Math.max(numericTotal, safeEmails.length)
+      : safeEmails.length;
+
     if (!safeEmails.length) {
       emailListContainer.innerHTML = `<div class="empty-state"><h3>Nebyly nalezeny žádné emaily</h3><p>Zkuste změnit filtry nebo vyhledávání.</p></div>`;
       if (paginationContainer) {
@@ -4056,11 +4082,17 @@ function renderEmailList(emails, total) {
       return;
   }
 
-  const totalPages = Math.max(1, Math.ceil(safeEmails.length / EMAILS_PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(totalCount / EMAILS_PER_PAGE));
   if (currentEmailPage > totalPages) currentEmailPage = totalPages;
 
-  const startIndex = (currentEmailPage - 1) * EMAILS_PER_PAGE;
-  const pageEmails = safeEmails.slice(startIndex, startIndex + EMAILS_PER_PAGE);
+  let pageEmails = safeEmails;
+  let startIndex = (currentEmailPage - 1) * EMAILS_PER_PAGE + 1;
+  if (isApprovalView) {
+    const sliceStart = (currentEmailPage - 1) * EMAILS_PER_PAGE;
+    pageEmails = safeEmails.slice(sliceStart, sliceStart + EMAILS_PER_PAGE);
+    startIndex = sliceStart + 1;
+  }
+  const endIndex = Math.min(startIndex + (pageEmails.length ? pageEmails.length - 1 : 0), totalCount);
 
   emailListContainer.innerHTML = '';
 
@@ -4120,8 +4152,7 @@ function renderEmailList(emails, total) {
       emailListContainer.insertAdjacentHTML('beforeend', emailHTML);
   });
 
-  const endIndex = startIndex + pageEmails.length;
-  renderPagination(totalPages, startIndex + 1, endIndex, Math.max(total || 0, safeEmails.length));
+  renderPagination(totalPages, startIndex, endIndex, totalCount);
 }
 
 function renderPagination(totalPages, startIndex, endIndex, totalRecords) {
@@ -4133,7 +4164,7 @@ function renderPagination(totalPages, startIndex, endIndex, totalRecords) {
     return;
   }
 
-  const safeTotal = Math.max(totalRecords || 0, endIndex);
+  const safeTotal = Math.max(totalRecords || 0, endIndex);␊
   const infoText = `Zobrazeno ${startIndex}-${endIndex} z ${safeTotal} emailů`;
   const prevPage = currentEmailPage > 1 ? currentEmailPage - 1 : 1;
   const nextPage = currentEmailPage < totalPages ? currentEmailPage + 1 : totalPages;
@@ -4164,12 +4195,11 @@ paginationContainer?.addEventListener('click', (event) => {
   const requested = Number(btn.dataset.page);
   if (!Number.isFinite(requested) || requested < 1) return;
 
-  const totalPages = Math.max(1, Math.ceil((allEmails?.length || 0) / EMAILS_PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(Math.max(lastEmailTotal, allEmails?.length || 0) / EMAILS_PER_PAGE));
   const nextPage = Math.min(Math.max(requested, 1), totalPages);
   if (nextPage === currentEmailPage) return;
 
-  currentEmailPage = nextPage;
-  renderEmailList(allEmails, lastEmailTotal);
+  fetchEmails({ targetPage: nextPage }).catch(err => console.error('Pagination fetch error:', err));
 
   try {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -6240,6 +6270,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
