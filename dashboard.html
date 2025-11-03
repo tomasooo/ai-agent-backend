@@ -3528,8 +3528,12 @@ async function tryCustomPendingEmails(primaryEmail) {
 
         
 
-async function tryCustomEmails(primaryEmail, status = 'all', period = 'all', searchQuery = '') {
-  const url = `${window.BACKEND}/api/custom-email/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&limit=${EMAILS_PER_PAGE}&page=${currentEmailPage}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}`;
+async function tryCustomEmails(primaryEmail, status = 'all', period = 'all', searchQuery = '', page = 1, limit = EMAILS_PER_PAGE) {
+  const numericPage = Number(page);
+  const numericLimit = Number(limit);
+  const safePage = Number.isFinite(numericPage) && numericPage > 0 ? numericPage : 1;
+  const safeLimit = Number.isFinite(numericLimit) && numericLimit > 0 ? numericLimit : EMAILS_PER_PAGE;
+  const url = `${window.BACKEND}/api/custom-email/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&limit=${safeLimit}&page=${safePage}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}`;
   const r = await fetch(url, { cache:'no-store' });
   let j = null;
   try {
@@ -3560,8 +3564,9 @@ async function tryCustomEmails(primaryEmail, status = 'all', period = 'all', sea
 
 
 // ZMĚNA: Funkce nyní načítá emaily pro primární účet z localStorage
-async function fetchEmails() {
-    const primaryEmail = localStorage.getItem('primaryEmail');
+async function fetchEmails(options = {}) {
+  const { resetPage = false } = options || {};
+  const primaryEmail = localStorage.getItem('primaryEmail');
   if (!primaryEmail) {
     if (emailListContainer) emailListContainer.innerHTML = `<div class="empty-state"><h3>Vyberte hlavní emailový účet</h3></div>`;
     if (emailCountHeader) emailCountHeader.textContent = 'Emaily';
@@ -3579,10 +3584,11 @@ async function fetchEmails() {
   const status = statusFilter ? statusFilter.value : 'all';
   const period = periodFilter ? periodFilter.value : 'all';
   const searchQuery = searchBar ? searchBar.value : '';
+  const pageToRequest = resetPage ? 1 : currentEmailPage;
 
   emailListContainer.innerHTML = `<div class="empty-state"><span>📧</span><p>Načítám emaily pro ${primaryEmail}…</p></div>`;
 
- try {
+  try {
     const accountType = prim?.type || '';
     const isGmailAccount = !accountType || accountType === 'gmail';
     const isCustomAccount = !accountType || accountType === 'custom';
@@ -3591,7 +3597,7 @@ async function fetchEmails() {
 
     if (status === 'approval') {
       const [gmailPending, customPending] = await Promise.all([
-        isGmailAccount ? tryGmailEmails(primaryEmail, status, period, searchQuery, currentEmailPage, EMAILS_PER_PAGE) : null,
+        isGmailAccount ? tryGmailEmails(primaryEmail, status, period, searchQuery, pageToRequest, EMAILS_PER_PAGE) : null,
         isCustomAccount ? tryCustomPendingEmails(primaryEmail) : null
       ]);
 
@@ -3602,8 +3608,8 @@ async function fetchEmails() {
       res = { src: 'approval', total: totalCount || combinedEmails.length, emails: combinedEmails };
     } else {
       const [gmailResult, customResult] = await Promise.all([
-        isGmailAccount ? tryGmailEmails(primaryEmail, status, period, searchQuery, currentEmailPage, EMAILS_PER_PAGE) : null,
-        isCustomAccount ? tryCustomEmails(primaryEmail, status, period, searchQuery) : null
+        isGmailAccount ? tryGmailEmails(primaryEmail, status, period, searchQuery, pageToRequest, EMAILS_PER_PAGE) : null,
+        isCustomAccount ? tryCustomEmails(primaryEmail, status, period, searchQuery, pageToRequest, EMAILS_PER_PAGE) : null
       ]);
 
       if (gmailResult && Array.isArray(gmailResult.emails)) {
@@ -3619,10 +3625,13 @@ async function fetchEmails() {
       throw new Error('Nepodařilo se načíst emaily.');
     }
 
-    const rawEmails = Array.isArray(res.emails) ? res.emails : [];
-    const filteredEmails = status === 'unread'
-      ? rawEmails.filter(email => email.unread === true)
-      : rawEmails;
+   const rawEmails = Array.isArray(res.emails) ? res.emails : [];
+    let filteredEmails = rawEmails;
+    if (status === 'unread') {
+      filteredEmails = rawEmails.filter(email => email.unread === true);
+    } else if (status === 'processed') {
+      filteredEmails = rawEmails.filter(email => email.unread === false);
+    }
 
     allEmails = filteredEmails.map(email => ({
       ...email,
@@ -3635,7 +3644,7 @@ async function fetchEmails() {
       lastEmailTotal = allEmails.length;
     }
 
-    currentEmailPage = 1;
+    currentEmailPage = Math.max(1, pageToRequest);
 
     if (emailCountHeader) {
       const total = lastEmailTotal;
@@ -5303,9 +5312,16 @@ if (dlg) dlg.classList.add('modal-xl');
     if (analysisModal) analysisModal.addEventListener('click', (e) => { if (e.target === analysisModal) hideAnalysisModal(); });
     if (closeAnalysisModalBtn) closeAnalysisModalBtn.addEventListener('click', hideAnalysisModal);
     if (googleBtn) googleBtn.addEventListener('click', connectGoogleAccount);
-    if (statusFilter) statusFilter.addEventListener('change', fetchEmails);
-    if (periodFilter) periodFilter.addEventListener('change', fetchEmails);
-    if (searchBar) searchBar.addEventListener('search', fetchEmails);
+    if (statusFilter) statusFilter.addEventListener('change', () => fetchEmails({ resetPage: true }));
+    if (periodFilter) periodFilter.addEventListener('change', () => fetchEmails({ resetPage: true }));
+    if (searchBar) {
+      searchBar.addEventListener('search', () => fetchEmails({ resetPage: true }));
+      searchBar.addEventListener('input', (event) => {
+        if (event.target.value === '') {
+          fetchEmails({ resetPage: true });
+        }
+      });
+    }
     
     const modalFooter = document.querySelector('#analysisModal .modal-footer');
     if (modalFooter) {
@@ -6224,6 +6240,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
