@@ -4096,7 +4096,7 @@ function renderEmailList(emails, total) {
         `data-id="${escapeHtml(email.id || '')}"`,
         `data-src="${srcAttr}"`,
         `data-from="${escapeHtml(email.sender || '')}"`
-      ];␊
+      ];
       if (email.account) datasetParts.push(`data-account="${escapeHtml(email.account)}"`);
       if (pendingIdValue !== null && pendingIdValue !== undefined) datasetParts.push(`data-pending-id="${pendingIdAttr}"`);
       if (email.messageId) datasetParts.push(`data-message-id="${escapeHtml(email.messageId)}"`);
@@ -6240,6 +6240,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
