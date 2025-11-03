@@ -3413,7 +3413,7 @@ function parseSenderName(s='') {
 }
 
 
-async function tryGmailEmails(primaryEmail, status, period, searchQuery) {
+async function tryGmailEmails(primaryEmail, status, period, searchQuery, page = 1, limit = EMAILS_PER_PAGE) {
   if (!primaryEmail) return null;
 
   if (status === 'approval') {
@@ -3462,7 +3462,7 @@ async function tryGmailEmails(primaryEmail, status, period, searchQuery) {
     }
   }
 
-  const url = `${window.BACKEND}/api/gmail/emails?email=${encodeURIComponent(primaryEmail)}&dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}`;
+  const url = `${window.BACKEND}/api/gmail/emails?email=${encodeURIComponent(primaryEmail)}&dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}&page=${page}&limit=${limit}`;
   const r = await fetch(url, { cache: 'no-store' });
   let j = null;
   try {
@@ -3528,8 +3528,8 @@ async function tryCustomPendingEmails(primaryEmail) {
 
         
 
-async function tryCustomEmails(primaryEmail, status = 'all') {
-  const url = `${window.BACKEND}/api/custom-email/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&limit=50&status=${encodeURIComponent(status)}`;
+async function tryCustomEmails(primaryEmail, status = 'all', period = 'all', searchQuery = '') {
+  const url = `${window.BACKEND}/api/custom-email/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&limit=${EMAILS_PER_PAGE}&page=${currentEmailPage}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}`;
   const r = await fetch(url, { cache:'no-store' });
   let j = null;
   try {
@@ -3541,7 +3541,7 @@ async function tryCustomEmails(primaryEmail, status = 'all') {
   const normalized = (j.emails || []).map(e => {
     // backend vrací { id: "...", sender: "...", subject, date, ... }
     const uid = e.uid ?? e.id; // podpora obou variant
-   return {
+    return {
       id: String(uid),
       uid: Number(uid),
       sender: e.sender || e.from || '',
@@ -3554,7 +3554,7 @@ async function tryCustomEmails(primaryEmail, status = 'all') {
       unread: e.unread === true
     };
   });
-  return { src:'custom', total: normalized.length, emails: normalized };
+  return { src:'custom', total: j.total ?? normalized.length, emails: normalized };
 }
 
 
@@ -3591,7 +3591,7 @@ async function fetchEmails() {
 
     if (status === 'approval') {
       const [gmailPending, customPending] = await Promise.all([
-        isGmailAccount ? tryGmailEmails(primaryEmail, status, period, searchQuery) : null,
+        isGmailAccount ? tryGmailEmails(primaryEmail, status, period, searchQuery, currentEmailPage, EMAILS_PER_PAGE) : null,
         isCustomAccount ? tryCustomPendingEmails(primaryEmail) : null
       ]);
 
@@ -3602,8 +3602,8 @@ async function fetchEmails() {
       res = { src: 'approval', total: totalCount || combinedEmails.length, emails: combinedEmails };
     } else {
       const [gmailResult, customResult] = await Promise.all([
-        isGmailAccount ? tryGmailEmails(primaryEmail, status, period, searchQuery) : null,
-        isCustomAccount ? tryCustomEmails(primaryEmail, status) : null
+        isGmailAccount ? tryGmailEmails(primaryEmail, status, period, searchQuery, currentEmailPage, EMAILS_PER_PAGE) : null,
+        isCustomAccount ? tryCustomEmails(primaryEmail, status, period, searchQuery) : null
       ]);
 
       if (gmailResult && Array.isArray(gmailResult.emails)) {
@@ -3629,9 +3629,7 @@ async function fetchEmails() {
       account: email.account || primaryEmail
     }));
 
-    lastEmailTotal = status === 'unread'
-      ? allEmails.length
-      : Number(res.total ?? filteredEmails.length ?? 0);
+    lastEmailTotal = Number(res.total ?? filteredEmails.length ?? 0);
 
     if (!Number.isFinite(lastEmailTotal) || lastEmailTotal < allEmails.length) {
       lastEmailTotal = allEmails.length;
@@ -6226,6 +6224,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
