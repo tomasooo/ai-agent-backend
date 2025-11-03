@@ -1172,12 +1172,14 @@ app.post('/api/custom-email/disconnect', async (req, res) => {
 
 
 app.get('/api/custom-email/emails', async (req, res) => {
-  const {
+ const {
     dashboardUserEmail,
     emailAddress,
     limit = 10,
     page = 1,
-    status = 'all'
+    status = 'all',
+    period = 'all',
+    searchQuery = ''
   } = req.query || {};
  
   if (!dashboardUserEmail || !emailAddress) {
@@ -1225,13 +1227,32 @@ app.get('/api/custom-email/emails', async (req, res) => {
     const currentPage = Math.min(Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1), 1000);
     const offset = (currentPage - 1) * pageSize;
     const normalizedStatus = String(status || 'all').toLowerCase();
+    const normalizedPeriod = String(period || 'all').toLowerCase();
+    const searchTerm = String(searchQuery || '').trim().toLowerCase();
     const unreadOnly = normalizedStatus === 'unread' || normalizedStatus === 'unseen';
+
+    if (normalizedStatus === 'spam') {
+      return res.json({
+        success: true,
+        emails: [],
+        total: 0,
+        filter: normalizedStatus,
+        page: currentPage,
+        pageSize,
+        totalPages: 0
+      });
+    }
+
+    const now = new Date();
+    const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
+    const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const thirtyDaysAgo = new Date(now); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const totalExists = Number(imap.mailbox?.exists || 0);
     let totalMatches = totalExists;
 
     let fetchQuery;
-   if (unreadOnly) {
+    if (unreadOnly) {
       const unreadUids = await imap.search({ seen: false });
       const normalizedUids = unreadUids
         .map(Number)
@@ -1296,6 +1317,8 @@ app.get('/api/custom-email/emails', async (req, res) => {
     const seenUids = new Set();
     let skipped = 0;
 
+    let matchedCount = 0;
+
     for await (const msg of imap.fetch(fetchQuery, fetchOptions)) {
       if (!msg?.uid || seenUids.has(msg.uid)) continue;
       seenUids.add(msg.uid);
@@ -1304,36 +1327,68 @@ app.get('/api/custom-email/emails', async (req, res) => {
         continue;
       }
 
-      if (unreadOnly && flagIncludes(msg.flags, '\\Seen')) {
+      const fromRaw = msg.envelope?.from?.[0] || {};
+      const isSeen = flagIncludes(msg.flags, '\\Seen');
+
+      if (unreadOnly && isSeen) {
         continue;
       }
+
+      if (normalizedStatus === 'processed' && !isSeen) {
+        continue;
+      }
+
+      const messageDate = msg.internalDate ? new Date(msg.internalDate) : null;
+      if (normalizedPeriod === 'today' && (!messageDate || messageDate < startOfToday)) {
+        continue;
+      }
+      if (normalizedPeriod === 'week' && (!messageDate || messageDate < sevenDaysAgo)) {
+        continue;
+      }
+      if (normalizedPeriod === 'month' && (!messageDate || messageDate < thirtyDaysAgo)) {
+        continue;
+      }
+
+      const decodedSubject = decodeHeader(msg.envelope?.subject || '');
+      const decodedName = decodeHeader(fromRaw.name || '');
+      const fromAddress = (fromRaw.address || '').trim();
+
+      if (searchTerm) {
+        const haystacks = [decodedSubject, decodedName, fromAddress]
+          .map(v => String(v).toLowerCase());
+        const matches = haystacks.some(v => v.includes(searchTerm));
+        if (!matches) {
+          continue;
+        }
+      }
+
+      matchedCount++;
 
       if (!unreadOnly && skipped < offset) {
         skipped++;
         continue;
       }
 
-      const fromRaw = msg.envelope?.from?.[0] || {};
-      const isUnread = unreadOnly ? true : !flagIncludes(msg.flags, '\\Seen');
+      const isUnread = unreadOnly ? true : !isSeen;
 
       out.push({
         id: String(msg.uid),
         uid: msg.uid,
-        subject: decodeHeader(msg.envelope?.subject || ''),
-        sender: (fromRaw.address || '').trim(),
-        from: `${decodeHeader(fromRaw.name || '')} <${fromRaw.address || ''}>`,
+        subject: decodedSubject,
+        sender: fromAddress,
+        from: `${decodedName} <${fromRaw.address || ''}>`,
         date: msg.internalDate ? msg.internalDate.toISOString() : null,
         unread: isUnread
       });
-
       if (out.length >= pageSize) break;
     }
 
    // seřadit od nejnovějších (pro jistotu)
     out.sort((a, b) => (new Date(b.date || 0)) - (new Date(a.date || 0)));
 
-    const totalPages = totalMatches ? Math.ceil(totalMatches / pageSize) : 0;
-    const reportedTotal = totalMatches;
+    const effectiveTotal = unreadOnly ? totalMatches : matchedCount;
+    const totalPages = effectiveTotal ? Math.ceil(effectiveTotal / pageSize) : 0;
+    const reportedTotal = effectiveTotal;
 
     return res.json({
       success:true,
@@ -2878,78 +2933,89 @@ app.get('/api/gmail/emails', async (req, res) => {
 
     // === Gmail větev ===
     // === Gmail větev ===
-if (!isCustom) {
-  console.log(`[emails] Gmail account: ${email}`);
-  const refreshToken = acc.rows[0].refresh_token;
-  if (!refreshToken) {
-    return res.status(404).json({ success: false, message: "Pro tento email u tohoto uživatele nebyl nalezen token." });
-  }
+    if (!isCustom) {
+      console.log(`[emails] Gmail account: ${email}`);
+      const refreshToken = acc.rows[0].refresh_token;
+      if (!refreshToken) {
+        return res.status(404).json({ success: false, message: "Pro tento email u tohoto uživatele nebyl nalezen token." });
+      }
 
-  db.release(); db = null; // DB už netřeba
+      db.release(); db = null; // DB už netřeba
 
-  oauth2Client.setCredentials({ refresh_token: refreshToken });
-  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      oauth2Client.setCredentials({ refresh_token: refreshToken });
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-  // --- NOVĚ: podpora status=approval ---
-  let labelIds = [];
-  const queryParts = ['-in:spam', '-in:trash']; // nikdy nevracej spam/koš
+      // --- NOVĚ: podpora status=approval ---
+      const normalizedStatus = String(status || 'all').toLowerCase();
+      const normalizedPeriod = String(period || 'all').toLowerCase();
+      const safeSearch = String(searchQuery || '').trim();
 
-  if (status === 'approval') {
-    // najdi (nebo vytvoř) label "ceka-na-schvaleni"
-    const labelsList = await gmail.users.labels.list({ userId: 'me' });
-    const approvalLabel = labelsList.data.labels?.find(l => l.name === 'ceka-na-schvaleni');
-    if (!approvalLabel) {
-      // pokud label neexistuje, vrátíme prázdno (worker ho standardně zakládá)
-      return res.json({ success: true, emails: [], total: 0 });
-    }
-    labelIds = [approvalLabel.id]; // dotazujeme výhradně čekající
-  } else {
-    // standardní INBOX dotaz
-    queryParts.push('in:inbox');
-    if (status === 'unread') queryParts.push('is:unread');
-    if (period === 'today') queryParts.push('newer_than:1d');
-    if (period === 'week')  queryParts.push('newer_than:7d');
-  }
-  if (searchQuery) queryParts.push(String(searchQuery));
-  const finalQuery = queryParts.join(' ');
+      let labelIds = [];
+      const queryParts = [];
 
-  const listResponse = await gmail.users.messages.list({
-    userId: 'me',
-    q: finalQuery,
-    // --- ZMĚNA: nepoužívat natvrdo ['INBOX'] ---
-    labelIds,                 // prázdné = default (INBOX přes 'in:inbox' v q), jinak 'ceka-na-schvaleni'
-    includeSpamTrash: false,
-    maxResults: 50
-  });
+      if (normalizedStatus === 'approval') {
+        // najdi (nebo vytvoř) label "ceka-na-schvaleni"
+        const labelsList = await gmail.users.labels.list({ userId: 'me' });
+        const approvalLabel = labelsList.data.labels?.find(l => l.name === 'ceka-na-schvaleni');
+        if (!approvalLabel) {
+          // pokud label neexistuje, vrátíme prázdno (worker ho standardně zakládá)
+          return res.json({ success: true, emails: [], total: 0 });
+        }
+        labelIds = [approvalLabel.id]; // dotazujeme výhradně čekající
+      } else if (normalizedStatus === 'spam') {
+        queryParts.push('in:spam');
+        queryParts.push('-in:trash');
+      } else {
+        // standardní INBOX dotaz
+        queryParts.push('in:inbox');
+        queryParts.push('-in:spam');
+        queryParts.push('-in:trash');
+        if (normalizedStatus === 'unread') queryParts.push('is:unread');
+        if (normalizedStatus === 'processed') queryParts.push('is:read');
+        if (normalizedPeriod === 'today') queryParts.push('newer_than:1d');
+        if (normalizedPeriod === 'week')  queryParts.push('newer_than:7d');
+        if (normalizedPeriod === 'month') queryParts.push('newer_than:30d');
+      }
+      if (safeSearch) queryParts.push(safeSearch);
+      const finalQuery = queryParts.join(' ');
 
-  const messageIds = listResponse.data.messages || [];
-  if (messageIds.length === 0) {
-    return res.json({ success: true, emails: [], total: 0 });
-  }
-
- const emails = await Promise.all(messageIds.map(async (m) => {
-      const mr = await gmail.users.messages.get({
+      const listResponse = await gmail.users.messages.list({
         userId: 'me',
-        id: m.id,
-        format: 'metadata',
-        metadataHeaders: ['Subject', 'From', 'Date']
+        q: finalQuery,
+        // --- ZMĚNA: nepoužívat natvrdo ['INBOX'] ---
+        labelIds,                 // prázdné = default (INBOX přes 'in:inbox' v q), jinak 'ceka-na-schvaleni'
+        includeSpamTrash: false,
+        maxResults: 50
       });
-      const headers = mr.data.payload.headers || [];
-      const getHeader = (n) => headers.find(h => h.name === n)?.value || '';
-      const isUnread = Array.isArray(mr.data.labelIds) && mr.data.labelIds.includes('UNREAD');
-      return {
-        id: m.id,
-        snippet: mr.data.snippet,
-        sender: (getHeader('From').match(/<([^>]+)>/)?.[1] || getHeader('From')).trim().replace(/^mailto:/i, ''),
-        from: getHeader('From'),
-        subject: getHeader('Subject'),
-        date: getHeader('Date'),
-        unread: isUnread
-      };
-    }));
 
-  return res.json({ success: true, emails, total: listResponse.data.resultSizeEstimate });
-}
+      const messageIds = listResponse.data.messages || [];
+      if (messageIds.length === 0) {
+        return res.json({ success: true, emails: [], total: 0 });
+      }
+
+      const emails = await Promise.all(messageIds.map(async (m) => {
+        const mr = await gmail.users.messages.get({
+          userId: 'me',
+          id: m.id,
+          format: 'metadata',
+          metadataHeaders: ['Subject', 'From', 'Date']
+        });
+        const headers = mr.data.payload.headers || [];
+        const getHeader = (n) => headers.find(h => h.name === n)?.value || '';
+        const isUnread = Array.isArray(mr.data.labelIds) && mr.data.labelIds.includes('UNREAD');
+        return {
+          id: m.id,
+          snippet: mr.data.snippet,
+          sender: (getHeader('From').match(/<([^>]+)>/)?.[1] || getHeader('From')).trim().replace(/^mailto:/i, ''),
+          from: getHeader('From'),
+          subject: getHeader('Subject'),
+          date: getHeader('Date'),
+          unread: isUnread
+        };
+      }));
+
+      return res.json({ success: true, emails, total: listResponse.data.resultSizeEstimate });
+    }
 
 
     // === Custom IMAP větev ===
@@ -5175,6 +5241,7 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
