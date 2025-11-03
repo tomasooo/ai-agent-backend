@@ -1253,7 +1253,8 @@ app.get('/api/custom-email/emails', async (req, res) => {
 
     let fetchQuery;
     if (unreadOnly) {
-      const unreadUids = await imap.search({ seen: false });
+      // search() vrací sekvenční čísla, proto explicitně požadujeme UID, ať následný fetch funguje správně
+      const unreadUids = await imap.search({ seen: false }, { uid: true });
       const normalizedUids = unreadUids
         .map(Number)
         .filter(Number.isFinite)
@@ -5241,6 +5242,7 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
