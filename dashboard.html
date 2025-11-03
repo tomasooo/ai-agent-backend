@@ -4164,7 +4164,7 @@ function renderPagination(totalPages, startIndex, endIndex, totalRecords) {
     return;
   }
 
-  const safeTotal = Math.max(totalRecords || 0, endIndex);␊
+  const safeTotal = Math.max(totalRecords || 0, endIndex);
   const infoText = `Zobrazeno ${startIndex}-${endIndex} z ${safeTotal} emailů`;
   const prevPage = currentEmailPage > 1 ? currentEmailPage - 1 : 1;
   const nextPage = currentEmailPage < totalPages ? currentEmailPage + 1 : totalPages;
@@ -6270,6 +6270,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
