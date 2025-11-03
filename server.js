@@ -1314,7 +1314,7 @@ app.get('/api/custom-email/emails', async (req, res) => {
       }
 
       const fromRaw = msg.envelope?.from?.[0] || {};
-      const isUnread = !flagIncludes(msg.flags, '\\Seen');
+      const isUnread = unreadOnly ? true : !flagIncludes(msg.flags, '\\Seen');
 
       out.push({
         id: String(msg.uid),
@@ -5175,6 +5175,7 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
