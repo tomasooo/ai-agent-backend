@@ -3481,11 +3481,24 @@ async function tryGmailEmails(primaryEmail, status, period, searchQuery, page = 
 
       const normalized = (j.pending || []).map((item) => {
         const createdAt = item.created_at || item.last_generated_at || item.sent_at;
+        let meta = {};
+        if (item.metadata) {
+          try {
+            meta = typeof item.metadata === 'object' ? item.metadata : JSON.parse(item.metadata);
+          } catch (_) {
+            meta = {};
+          }
+        }
+        const replyTo = meta.replyToHeader || meta.replyTo || item.sender || '';
+        const originalFrom = meta.fromHeader || meta.sender || item.sender || '';
+        const displaySender = replyTo || originalFrom || item.sender || '';
         return {
           id: item.message_id,
           messageId: item.message_id,
           pendingId: item.id,
-          sender: item.sender || '',
+          sender: displaySender,
+          replyTo: replyTo || displaySender,
+          originalFrom,
           subject: item.subject || 'Bez předmětu',
           snippet: item.summary || item.snippet || '',
           date: createdAt || new Date().toISOString(),
@@ -3500,6 +3513,7 @@ async function tryGmailEmails(primaryEmail, status, period, searchQuery, page = 
           status: item.status || 'pending'
         };
       });
+
 
       return { src: 'gmail', total: normalized.length, emails: normalized };
     } catch (error) {
@@ -3517,18 +3531,26 @@ async function tryGmailEmails(primaryEmail, status, period, searchQuery, page = 
     j = null;
   }
   if (!r.ok || !j || !j.success) return null;
-  const normalized = (j.emails || []).map(e => ({
-    id: e.id,                       // Gmail messageId
-    uid: null,
-    sender: e.sender,
-    subject: e.subject,
-    snippet: e.snippet || '',
-    date: e.date,
-    _src: 'gmail',
-    _pending: false,
-    account: primaryEmail,
-    unread: e.unread === true
-  }));
+  const normalized = (j.emails || []).map(e => {
+    const replyTo = e.replyTo || '';
+    const originalFrom = e.from || '';
+    const fallbackSender = e.sender || originalFrom || '';
+    const displaySender = replyTo || fallbackSender;
+    return {
+      id: e.id,                       // Gmail messageId
+      uid: null,
+      sender: displaySender,
+      replyTo: replyTo || displaySender,
+      originalFrom,
+      subject: e.subject,
+      snippet: e.snippet || '',
+      date: e.date,
+      _src: 'gmail',
+      _pending: false,
+      account: primaryEmail,
+      unread: e.unread === true
+    };
+  });
   return { src:'gmail', total:j.total || normalized.length, emails: normalized };
 }
 
@@ -3548,11 +3570,24 @@ async function tryCustomPendingEmails(primaryEmail) {
 
   const normalized = (j.pending || []).map((item) => {
     const createdAt = item.created_at || item.last_generated_at || item.sent_at;
+    let meta = {};
+    if (item.metadata) {
+      try {
+        meta = typeof item.metadata === 'object' ? item.metadata : JSON.parse(item.metadata);
+      } catch (_) {
+        meta = {};
+      }
+    }
+    const replyTo = meta.replyToHeader || meta.replyTo || item.sender || '';
+    const originalFrom = meta.fromHeader || meta.sender || item.sender || '';
+    const displaySender = replyTo || originalFrom || item.sender || '';
     return {
       id: item.message_id || String(item.id),
       messageId: item.message_id || String(item.id),
       pendingId: item.id,
-      sender: item.sender || '',
+      sender: displaySender,
+      replyTo: replyTo || displaySender,
+      originalFrom,
       subject: item.subject || 'Bez předmětu',
       snippet: item.summary || item.snippet || '',
       date: createdAt || new Date().toISOString(),
@@ -3591,10 +3626,16 @@ async function tryCustomEmails(primaryEmail, status = 'all', period = 'all', sea
   const normalized = (j.emails || []).map(e => {
     // backend vrací { id: "...", sender: "...", subject, date, ... }
     const uid = e.uid ?? e.id; // podpora obou variant
+    const replyTo = e.replyTo || '';
+    const originalFrom = e.from || '';
+    const fallbackSender = e.sender || originalFrom || '';
+    const displaySender = replyTo || fallbackSender;
     return {
       id: String(uid),
       uid: Number(uid),
-      sender: e.sender || e.from || '',
+      sender: displaySender,
+      replyTo: replyTo || displaySender,
+      originalFrom,
       subject: e.subject || '',
       snippet: e.snippet || '',
       date: e.date || e.internalDate || Date.now(),
@@ -4175,6 +4216,8 @@ function renderEmailList(emails, total) {
         `data-src="${srcAttr}"`,
         `data-from="${escapeHtml(email.sender || '')}"`
       ];
+      if (email.replyTo) datasetParts.push(`data-reply-to="${escapeHtml(email.replyTo)}"`);
+      if (email.originalFrom) datasetParts.push(`data-from-original="${escapeHtml(email.originalFrom)}"`);
       if (email.account) datasetParts.push(`data-account="${escapeHtml(email.account)}"`);
       if (pendingIdValue !== null && pendingIdValue !== undefined) datasetParts.push(`data-pending-id="${pendingIdAttr}"`);
       if (email.messageId) datasetParts.push(`data-message-id="${escapeHtml(email.messageId)}"`);
@@ -5289,16 +5332,32 @@ if (data.success && modalBody) {
       <textarea class="form-control" id="response-editor" style="display: none;"></textarea>
     </div>`;
 
+  const datasetReplyTo = item?.dataset?.replyTo || '';
+  const datasetFrom = item?.dataset?.from || '';
+  const datasetOriginalFrom = item?.dataset?.fromOriginal || datasetFrom;
   window.CURRENT_EMAIL = {
-                        id: currentMessageId,
-                        subject: item?.querySelector('.email-subject')?.textContent?.trim() || '',
-                        from:    item?.dataset?.from || '',
-                        date:    item?.querySelector('.email-meta > div')?.textContent?.trim() || '',
-                        bodyText: data.emailBody || '',
-                        analysis: data.analysis || {},
-                        account:  primaryEmail,
-                        headers: data.headers || {} // <-- PŘIDÁNO: Uložíme hlavičky
-                      };
+    id: currentMessageId,
+    subject: item?.querySelector('.email-subject')?.textContent?.trim() || '',
+    from: datasetReplyTo || datasetFrom || '',
+    replyTo: datasetReplyTo || '',
+    originalFrom: datasetOriginalFrom || '',
+    date: item?.querySelector('.email-meta > div')?.textContent?.trim() || '',
+    bodyText: data.emailBody || '',
+    analysis: data.analysis || {},
+    account: primaryEmail,
+    headers: data.headers || {}
+  };
+
+  const headerReplyTo = data?.headers?.replyTo || '';
+  if (headerReplyTo && !window.CURRENT_EMAIL.replyTo) {
+    window.CURRENT_EMAIL.replyTo = headerReplyTo;
+    if (!window.CURRENT_EMAIL.from) {
+      window.CURRENT_EMAIL.from = headerReplyTo;
+    }
+  }
+  if (!window.CURRENT_EMAIL.originalFrom && data?.headers?.from) {
+    window.CURRENT_EMAIL.originalFrom = data.headers.from;
+  }
 
 
 // 1) Rozšířit modal + přidat scope class
@@ -5405,11 +5464,14 @@ if (dlg) dlg.classList.add('modal-xl');
       if (!modal || !edFrom || !edSubj || !edDate || !edBody) return;
 
       const safeFrom = from || '(neznámý odesílatel)';
+      const originalFrom = window.CURRENT_EMAIL?.originalFrom || emailEntry?.originalFrom || '';
       const safeSubject = subject || '(bez předmětu)';
       const safeDate = dateTxt || '';
 
       edFrom.textContent = safeFrom;
-      edFrom.title = safeFrom;
+      edFrom.title = (originalFrom && originalFrom !== safeFrom)
+        ? `${safeFrom}\nPůvodní From: ${originalFrom}`
+        : safeFrom;
       edSubj.textContent = safeSubject;
       edSubj.title = safeSubject;
       edDate.textContent = safeDate;
@@ -5504,22 +5566,28 @@ if (dlg) dlg.classList.add('modal-xl');
 
   // metadata pro custom odeslání
   const subj   = (window.CURRENT_EMAIL?.subject || '').trim();
-  const fromRaw = (window.CURRENT_EMAIL?.from || '');
-  const toAddr  = extractEmailAddress(fromRaw) || '';
+  const replyTargetRaw = window.CURRENT_EMAIL?.replyTo || window.CURRENT_EMAIL?.from || '';
+  const toAddr  = extractEmailAddress(replyTargetRaw) || '';
+  if (!replyTargetRaw || !toAddr) {
+    showToast('Nepodařilo se zjistit adresu pro odpověď.', 'error');
+    sendButton.textContent = 'Odeslat nyní';
+    sendButton.disabled = false;
+    return;
+  }
 
   // připrav endpoint + payload
   let urlPost = '', payload = {};
   if (src === 'custom') {
                     // Custom IMAP/SMTP
                     urlPost = `${window.BACKEND}/api/custom-email/send-reply`;
-                    payload = {
+                     payload = {
                       dashboardUserEmail,
                       emailAddress: account,
                       to: toAddr,
+                      replyTo: replyTargetRaw,
                       subject: subj ? `Re: ${subj}` : 'Re:',
                       text: replyBody,
                       replyToUid: Number(currentMessageId),
-                      // === PŘIDANÉ ŘÁDKY PRO OPRAVU ===
                       origMessageId: window.CURRENT_EMAIL?.headers?.messageId || null,
                       origReferences: window.CURRENT_EMAIL?.headers?.references || null
                     };
@@ -6491,6 +6559,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
