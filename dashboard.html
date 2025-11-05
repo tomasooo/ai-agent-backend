@@ -2470,6 +2470,7 @@
                             <tbody id="activityLogTableBody">
                                 </tbody>
                         </table>
+                        <div id="activity-pagination" class="pagination-container" style="display:none;"></div>
                     </div>
 </div>
 
@@ -5999,6 +6000,11 @@ function syncProMeta(){
 // Globální proměnná pro ukládání načtených uživatelů
 let allAdminUsers = [];
 
+const ACTIVITY_LOGS_PER_PAGE = 10;
+let activityLogEntries = [];
+let currentActivityPage = 1;
+const activityPaginationContainer = document.getElementById('activity-pagination');
+
 // Funkce pro vykreslení tabulky na základě dat
 function renderAdminUsersTable(users) {
     const tableBody = document.getElementById('adminUsersTableBody');
@@ -6166,45 +6172,144 @@ async function loadActivityLog() {
     const tableBody = document.getElementById('activityLogTableBody');
     if (!tableBody) return;
     tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Načítám log...</td></tr>';
-    
+
     const dashboardUserEmail = localStorage.getItem('userEmail');
 
     try {
         const response = await fetch(`${window.BACKEND}/api/admin/activity-log?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`);
+        const contentType = response.headers.get('content-type') || '';
+
+        if (!contentType.includes('application/json')) {
+            const rawText = await response.text().catch(() => '');
+            const hasBody = typeof rawText === 'string' && rawText.trim().length > 0;
+            throw new Error(hasBody ? 'Server vrátil neočekávanou odpověď.' : 'Server vrátil prázdnou odpověď.');
+        }
+
         const data = await response.json();
 
-        if (!data.success) throw new Error(data.message);
+        if (!response.ok) {
+            throw new Error(data?.message || `Chyba serveru (${response.status})`);
+        }
 
-        if (data.log.length === 0) {
+        if (!data?.success) {
+            throw new Error(data?.message || 'Načtení logu selhalo.');
+        }
+
+        activityLogEntries = Array.isArray(data.log) ? data.log : [];
+        currentActivityPage = 1;
+
+        if (!activityLogEntries.length) {
             tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Žádná aktivita k zobrazení.</td></tr>';
+            hideActivityPagination();
             return;
         }
 
-        tableBody.innerHTML = data.log.map(entry => {
-            const time = new Date(entry.timestamp).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
-            const statusClass = entry.status === 'error' ? 'role-admin' : 'role-user'; // Použijeme existující třídy pro barvy
-            const statusText = entry.status === 'error' ? 'Chyba' : 'Úspěch';
-            const actionButton = entry.status === 'error' 
-                ? '<button class="btn btn-secondary btn-sm">Zkontrolovat</button>' 
-                : '<button class="btn btn-secondary btn-sm" style="opacity: 0.5; cursor: default;">Zobrazit</button>';
+        renderActivityLogPage(currentActivityPage);
+    } catch (error) {
+        activityLogEntries = [];
+        currentActivityPage = 1;
+        hideActivityPagination();
+        tableBody.innerHTML = `<tr><td colspan="5" style="color: red; text-align: center;">Chyba: ${escapeHtml(error.message || 'Neznámá chyba')}</td></tr>`;
+    }
+}
 
-            return `
+function hideActivityPagination() {
+    if (!activityPaginationContainer) return;
+    activityPaginationContainer.innerHTML = '';
+    activityPaginationContainer.style.display = 'none';
+}
+
+function renderActivityLogPage(page = 1) {
+    const tableBody = document.getElementById('activityLogTableBody');
+    if (!tableBody) return;
+
+    if (!Array.isArray(activityLogEntries) || activityLogEntries.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Žádná aktivita k zobrazení.</td></tr>';
+        hideActivityPagination();
+        return;
+    }
+
+    const totalEntries = activityLogEntries.length;
+    const totalPages = Math.max(1, Math.ceil(totalEntries / ACTIVITY_LOGS_PER_PAGE));
+    const safePage = Math.min(Math.max(page, 1), totalPages);
+
+    currentActivityPage = safePage;
+
+    const sliceStart = (safePage - 1) * ACTIVITY_LOGS_PER_PAGE;
+    const pageEntries = activityLogEntries.slice(sliceStart, sliceStart + ACTIVITY_LOGS_PER_PAGE);
+
+    const rows = pageEntries.map(entry => {
+        const timestamp = entry?.timestamp ? new Date(entry.timestamp) : null;
+        const time = timestamp && !isNaN(timestamp) ? timestamp.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—';
+        const isError = entry?.status === 'error';
+        const statusClass = isError ? 'role-admin' : 'role-user';
+        const statusText = isError ? 'Chyba' : 'Úspěch';
+        const actionButton = isError
+            ? '<button class="btn btn-secondary btn-sm">Zkontrolovat</button>'
+            : '<button class="btn btn-secondary btn-sm" style="opacity: 0.5; cursor: default;">Zobrazit</button>';
+
+        return `
                 <tr>
-                    <td>${time}</td>
-                    <td>${escapeHtml(entry.user_email)}</td>
-                    <td>${escapeHtml(entry.action)}</td>
+                    <td>${escapeHtml(time)}</td>
+                    <td>${escapeHtml(entry?.user_email || '—')}</td>
+                    <td>${escapeHtml(entry?.action || '—')}</td>
                     <td><span class="role-badge ${statusClass}">${statusText}</span></td>
                     <td>${actionButton}</td>
                 </tr>
             `;
-        }).join('');
-    } catch (error) {
-        tableBody.innerHTML = `<tr><td colspan="5" style="color: red; text-align: center;">Chyba: ${error.message}</td></tr>`;
+    }).join('');
+
+    tableBody.innerHTML = rows;
+
+    const startIndex = sliceStart + 1;
+    const endIndex = sliceStart + pageEntries.length;
+    renderActivityPagination(totalPages, startIndex, endIndex, totalEntries);
+}
+
+function renderActivityPagination(totalPages, startIndex, endIndex, totalRecords) {
+    if (!activityPaginationContainer) return;
+
+    if (totalPages <= 1) {
+        hideActivityPagination();
+        return;
     }
+
+    const safeEnd = Math.min(endIndex, totalRecords);
+    const infoText = `Zobrazeno ${startIndex}-${safeEnd} z ${totalRecords} aktivit`;
+    const prevPage = currentActivityPage > 1 ? currentActivityPage - 1 : 1;
+    const nextPage = currentActivityPage < totalPages ? currentActivityPage + 1 : totalPages;
+
+    let buttons = `
+    <button class="pagination-button${currentActivityPage === 1 ? ' disabled' : ''}" data-page="${prevPage}" ${currentActivityPage === 1 ? 'disabled' : ''}>‹</button>
+  `;
+
+    for (let i = 1; i <= totalPages; i++) {
+        buttons += `<button class="pagination-button${i === currentActivityPage ? ' active' : ''}" data-page="${i}">${i}</button>`;
+    }
+
+    buttons += `
+    <button class="pagination-button${currentActivityPage === totalPages ? ' disabled' : ''}" data-page="${nextPage}" ${currentActivityPage === totalPages ? 'disabled' : ''}>›</button>
+  `;
+
+    activityPaginationContainer.innerHTML = `
+    <div class="pagination-info">${infoText}</div>
+    <div class="pagination-buttons">${buttons}</div>
+  `;
+    activityPaginationContainer.style.display = '';
 }
 
 //  listener pro tlačítko Obnovit
 document.getElementById('refresh-log-btn')?.addEventListener('click', loadActivityLog);
+
+activityPaginationContainer?.addEventListener('click', (event) => {
+    const button = event.target.closest('.pagination-button');
+    if (!button || button.disabled) return;
+
+    const requestedPage = Number(button.dataset.page);
+    if (!Number.isFinite(requestedPage) || requestedPage < 1) return;
+
+    renderActivityLogPage(requestedPage);
+});
 
 
 const adminTabLink = document.querySelector('.nav-link[data-page="admin"]');
@@ -6270,6 +6375,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
