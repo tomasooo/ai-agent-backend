@@ -5217,7 +5217,7 @@ app.delete('/api/admin/users/:email', isAdmin, async (req, res) => {
 
 
 // Endpoint pro načtení logu aktivit (pouze pro adminy)
-app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
+app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req, res) => {
   let client;
   try {
     const { limit = 200, offset = 0 } = req.query || {};
@@ -5229,7 +5229,11 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
         LIMIT $1 OFFSET $2`,
       [Math.min(Number(limit) || 200, 1000), Math.max(Number(offset) || 0, 0)]
     );
-    return res.json({ success: true, items: r.rows });
+    return res.json({
+      success: true,
+      log: r.rows,
+      items: r.rows
+    });
   } catch (e) {
     console.error('Chyba při čtení audit_log:', e);
     return res.status(500).json({ success: false, message: 'Nepodařilo se načíst log.' });
@@ -5242,6 +5246,7 @@ app.get('/api/admin/audit-log', isAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
