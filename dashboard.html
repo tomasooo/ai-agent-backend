@@ -12,7 +12,15 @@
 
 
 /* === PRO EMAIL MODAL === */
-.pro-modal { padding: 0; overflow: hidden; border-radius: 18px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.pro-modal {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+  max-height: min(920px, 90vh);
+  display: flex;
+  flex-direction: column;
+}
 .pro-modal__header {
   display:flex; align-items:center; justify-content:space-between; gap:1rem;
   padding: 16px 18px;
@@ -45,7 +53,15 @@
 }
 .pro-close:hover { background: rgba(255,255,255,.28); }
 
-.pro-modal__body { padding: 18px; display:grid; grid-template-columns: 280px minmax(0,1fr); gap: 16px; }
+.pro-modal__body {
+  padding: 18px;
+  display:grid;
+  grid-template-columns: 280px minmax(0,1fr);
+  gap: 16px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
 @media (max-width: 860px) { .pro-modal__body { grid-template-columns: 1fr; } }
 
 .pro-meta {
@@ -6446,6 +6462,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
