@@ -1329,6 +1329,7 @@ app.get('/api/custom-email/emails', async (req, res) => {
       }
 
       const fromRaw = msg.envelope?.from?.[0] || {};
+      const replyToRaw = msg.envelope?.replyTo?.[0] || {};
       const isSeen = flagIncludes(msg.flags, '\\Seen');
 
       if (unreadOnly && isSeen) {
@@ -1353,6 +1354,11 @@ app.get('/api/custom-email/emails', async (req, res) => {
       const decodedSubject = decodeHeader(msg.envelope?.subject || '');
       const decodedName = decodeHeader(fromRaw.name || '');
       const fromAddress = (fromRaw.address || '').trim();
+      const replyToName = decodeHeader(replyToRaw.name || '');
+      const replyToAddress = (replyToRaw.address || '').trim();
+      const replyToHeader = replyToAddress
+        ? (replyToName ? `${replyToName} <${replyToAddress}>` : replyToAddress)
+        : '';
 
       if (searchTerm) {
         const haystacks = [decodedSubject, decodedName, fromAddress]
@@ -1376,8 +1382,9 @@ app.get('/api/custom-email/emails', async (req, res) => {
         id: String(msg.uid),
         uid: msg.uid,
         subject: decodedSubject,
-        sender: fromAddress,
+        sender: replyToHeader || fromAddress,
         from: `${decodedName} <${fromRaw.address || ''}>`,
+        replyTo: replyToHeader,
         date: msg.internalDate ? msg.internalDate.toISOString() : null,
         unread: isUnread
       });
@@ -2828,6 +2835,7 @@ const consume = await tryConsumeAiAction(db, dashboardUserEmail);
         const find = (n) => originalHeaders.find(h => h.name.toLowerCase() === n)?.value;
         const originalSubject = find('subject') || '';
         const originalFrom = find('from') || '';
+        const originalReplyTo = find('reply-to') || '';
         const originalMessageId = find('message-id') || '';
         const originalReferences = find('references') || '';
 
@@ -2841,9 +2849,14 @@ const replySubject = originalSubject.startsWith('Re: ') ? originalSubject : `Re:
 const encodedFrom = `<${email}>`;
 const encodedSubject = encodeMimeWord(replySubject);
 
+const targetRecipient = (originalReplyTo || originalFrom || '').trim();
+if (!targetRecipient) {
+  throw new Error('Nelze určit adresáta odpovědi (chybí Reply-To i From).');
+}
+
 const lines = [
   `From: ${encodedFrom}`,
-  `To: ${originalFrom}`,
+  `To: ${targetRecipient}`,
   `Subject: ${encodedSubject}`,
   'MIME-Version: 1.0',
   'Content-Type: text/plain; charset=utf-8',
@@ -2859,7 +2872,7 @@ if (originalMessageId) {
   lines.splice(3, 0, `In-Reply-To: ${originalMessageId}`, `References: ${refs}`);
 }
      
-await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Gmail)', 'success', { to: originalFrom, account: email });
+await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Gmail)', 'success', { to: targetRecipient, account: email });
 const raw = Buffer.from(lines.join('\n')).toString('base64url');
 
 await gmail.users.messages.send({
@@ -2869,16 +2882,20 @@ await gmail.users.messages.send({
 
 res.json({ success: true, message: "Email byl úspěšně odeslán." });
     } catch (error) {
+  const apiMessage = error?.response?.data?.error?.message;
+  const plainMessage = error?.message || '';
+  const statusCode = /adresáta/i.test(plainMessage) ? 400 : 500;
   console.error(
     "Chyba při odesílání emailu:",
-    error?.response?.data || error?.message || error
+    error?.response?.data || plainMessage || error
   );
-  res.status(500).json({
+  res.status(statusCode).json({
     success: false,
-    message: error?.response?.data?.error?.message || "Nepodařilo se odeslat email."
+    message: apiMessage || plainMessage || "Nepodařilo se odeslat email."
   });
 }
 });
+
 
 
 
@@ -2999,16 +3016,22 @@ app.get('/api/gmail/emails', async (req, res) => {
           userId: 'me',
           id: m.id,
           format: 'metadata',
-          metadataHeaders: ['Subject', 'From', 'Date']
+          metadataHeaders: ['Subject', 'From', 'Date', 'Reply-To']
         });
         const headers = mr.data.payload.headers || [];
         const getHeader = (n) => headers.find(h => h.name === n)?.value || '';
+        const replyToHeader = getHeader('Reply-To');
+        const preferredHeader = replyToHeader || getHeader('From');
+        const normalizedSender = (preferredHeader.match(/<([^>]+)>/)?.[1] || preferredHeader)
+          .trim()
+          .replace(/^mailto:/i, '');
         const isUnread = Array.isArray(mr.data.labelIds) && mr.data.labelIds.includes('UNREAD');
         return {
           id: m.id,
           snippet: mr.data.snippet,
-          sender: (getHeader('From').match(/<([^>]+)>/)?.[1] || getHeader('From')).trim().replace(/^mailto:/i, ''),
+          sender: normalizedSender,
           from: getHeader('From'),
+          replyTo: replyToHeader,
           subject: getHeader('Subject'),
           date: getHeader('Date'),
           unread: isUnread
@@ -3230,6 +3253,8 @@ async function handleCustomAnalyzeEmail(req, res) {
     if (Array.isArray(references)) {
         references = references.join(' ');
     }
+    const replyToHeader = parsed.replyTo?.text || headerMapValue(parsed.headers, 'Reply-To') || '';
+    const fromHeader = parsed.from?.text || headerMapValue(parsed.headers, 'From') || '';
 
     const styleProfile = {
       tone: st?.tone || 'Formální',
@@ -3314,8 +3339,10 @@ ${String(emailBody).slice(0, 3000)}
       analysis,
       emailBody,
       headers: {
-        messageId,          
-        references         
+        messageId,
+        references,
+        replyTo: replyToHeader,
+        from: fromHeader
       },
       debugOut
 });
@@ -3463,7 +3490,7 @@ app.get('/api/gmail/pending-replies', async (req, res) => {
     const { rows } = await client.query(`
       SELECT id, message_id, thread_id, external_message_id, references_header,
              subject, sender, snippet, original_body, reply_body,
-             summary, sentiment, status, created_at, last_generated_at, sent_at
+             summary, sentiment, status, metadata, created_at, last_generated_at, sent_at
         FROM pending_replies
        WHERE dashboard_user_email=$1
          AND connected_email=$2
@@ -3486,9 +3513,11 @@ async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending })
   const msgResponse = await gmail.users.messages.get({ userId: 'me', id: pending.message_id, format: 'full' });
   const headers = msgResponse.data.payload?.headers || [];
   const findHeader = (name) => headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value;
+  const metadata = toMetadataObject(pending.metadata);
 
   const originalSubject = findHeader('subject') || pending.subject || '';
-  const originalFrom = findHeader('from') || pending.sender || '';
+  const originalFrom = findHeader('from') || metadata.fromHeader || pending.sender || '';
+  const originalReplyTo = findHeader('reply-to') || metadata.replyToHeader || metadata.replyTo || '';
   const originalMessageId = findHeader('message-id') || pending.external_message_id || '';
   const originalReferences = findHeader('references') || pending.references_header || '';
 
@@ -3499,9 +3528,14 @@ async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending })
   const encodedFrom = `<${email}>`;
   const encodedSubject = encodeMimeWord(replySubject);
 
+  const targetRecipient = (originalReplyTo || originalFrom || metadata.sender || '').trim();
+  if (!targetRecipient) {
+    throw new Error('Nelze určit adresáta pro odeslání schválené odpovědi.');
+  }
+
   const lines = [
     `From: ${encodedFrom}`,
-    `To: ${originalFrom}`,
+    `To: ${targetRecipient}`,
     `Subject: ${encodedSubject}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=utf-8',
@@ -3536,7 +3570,7 @@ async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending })
     requestBody: { removeLabelIds, addLabelIds: [] }
   });
 
-  await logActivity(dashboardUserEmail, 'Odeslání odpovědi (schváleno)', 'success', { account: email, to: originalFrom });
+  await logActivity(dashboardUserEmail, 'Odeslání odpovědi (schváleno)', 'success', { account: email, to: targetRecipient });
 }
 
 app.post('/api/gmail/pending-replies/:id/approve', async (req, res) => {
@@ -3684,7 +3718,10 @@ async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pe
   const pass = decSecret(accountDetails.enc_password);
   const metadata = toMetadataObject(pending.metadata);
 
-  const toRaw = pending.sender || metadata.sender || '';
+  const toRaw = (metadata.replyToHeader || metadata.replyTo || pending.sender || metadata.sender || '').trim();
+  if (!toRaw) {
+    throw new Error('Nelze určit adresáta pro odeslání schválené odpovědi.');
+  }
   const toAddress = extractEmail(toRaw);
   const toName = parseNameFromFromHeader(toRaw);
   const fromName = metadata.fromName ? String(metadata.fromName) : '';
@@ -3892,9 +3929,11 @@ app.post('/api/custom-email/pending-replies/:id/reject', async (req, res) => {
 app.post('/api/custom-email/send-reply', async (req, res) => {
 
   
- const { dashboardUserEmail, emailAddress, to, subject, text, fromName, origMessageId, origReferences, replyToUid } = req.body || {};
+  const { dashboardUserEmail, emailAddress, to, replyTo, subject, text, fromName, origMessageId, origReferences, replyToUid } = req.body || {};
 
-  if (!dashboardUserEmail || !emailAddress || !to || !subject || !text || !origMessageId || !replyToUid) {
+  const targetRecipient = (replyTo || to || '').trim();
+
+  if (!dashboardUserEmail || !emailAddress || !targetRecipient || !subject || !text || !origMessageId || !replyToUid) {
     return res.status(400).json({ success: false, message: 'Chybí povinná data pro odeslání.' });
   }
 
@@ -3919,8 +3958,8 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
 
   try {
     // Krok 1 a 2: Sestavení a odeslání odpovědi (beze změny)
-    const toAddr = extractEmail(to);
-    const toName = parseNameFromFromHeader(String(to)) || '';
+    const toAddr = extractEmail(targetRecipient);
+    const toName = parseNameFromFromHeader(String(targetRecipient)) || '';
     const replySubject = subject?.trim() ? (subject.startsWith('Re: ') ? subject : `Re: ${subject}`) : 'Re: (bez předmětu)';
     const fromHeader = fromName ? `${libmime.encodeWord(fromName, 'B', 'utf-8')} <${emailAddress}>` : emailAddress;
     const toHeader = toName ? `${libmime.encodeWord(toName, 'B', 'utf-8')} <${toAddr}>` : toAddr;
@@ -3978,10 +4017,12 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
 
     return res.json({ success: true, message: 'Odpověď byla úspěšně odeslána a uložena.' });
 
-  } catch (e) {
+ } catch (e) {
     console.error('[custom-email/send-reply] Kritická chyba při odesílání:', e);
-    await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Custom)', 'success', { to, account: emailAddress });
-    return res.status(500).json({ success: false, message: e?.message || 'Odeslání selhalo.' });
+    const plainMessage = e?.message || '';
+    const statusCode = /adresáta/i.test(plainMessage) ? 400 : 500;
+    await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Custom)', 'error', { to: targetRecipient, account: emailAddress });
+    return res.status(statusCode).json({ success: false, message: plainMessage || 'Odeslání selhalo.' });
   }
 });
 
@@ -4044,7 +4085,15 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
 
     oauth2Client.setCredentials({ refresh_token: refreshToken });
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    const msgResponse = await gmail.users.messages.get({ userId: 'me', id: messageId });
+   const msgResponse = await gmail.users.messages.get({ userId: 'me', id: messageId });
+    const headerValue = (name) => {
+      const headers = msgResponse.data?.payload?.headers || [];
+      return headers.find(h => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
+    };
+    const messageIdHeader = headerValue('Message-ID');
+    const referencesHeader = headerValue('References');
+    const replyToHeader = headerValue('Reply-To');
+    const fromHeader = headerValue('From');
 
     let emailBody = '';
     if (msgResponse.data.payload.parts) {
@@ -4121,7 +4170,18 @@ const analysis = JSON.parse(stripJsonFence(String(raw)));
       debugOut.styleProfile = styleProfile;
     }
     await logActivity(dashboardUserEmail, 'AI analýza emailu', 'success', { account: email });
-    return res.json({ success: true, analysis, emailBody, debugOut });
+    return res.json({
+      success: true,
+      analysis,
+      emailBody,
+      headers: {
+        messageId: messageIdHeader,
+        references: referencesHeader,
+        replyTo: replyToHeader,
+        from: fromHeader
+      },
+      debugOut
+    });
 
   } catch (error) {
     console.error("Chyba při analýze emailu:", error);
@@ -4697,17 +4757,25 @@ ${String(bodyText).slice(0, 3000)}
           continue;
         }
 
-        const referencesHeader = headerMapValue(msg.headers, 'References')
+         const referencesHeader = headerMapValue(msg.headers, 'References')
           || (Array.isArray(parsed.references) ? parsed.references.join(' ') : String(parsed.references || ''));
         const messageIdHeader = parsed.messageId || headerMapValue(msg.headers, 'Message-ID');
+        const replyToHeader = parsed.replyTo?.text || headerMapValue(msg.headers, 'Reply-To') || '';
+        const replyToAddress = parsed.replyTo?.value?.[0]?.address || extractEmail(replyToHeader);
+        const fromHeaderText = parsed.from?.text || fromAddr || '';
+        const senderHeader = replyToHeader || fromHeaderText;
 
         const metadata = {
           replyToUid: msg.uid,
           mailbox: imap.mailbox?.path || 'INBOX',
           origMessageId: messageIdHeader || '',
           origReferences: referencesHeader || '',
-          senderName: parseNameFromFromHeader(parsed.from?.text || ''),
-          internalDate: msg.internalDate?.toISOString?.() || new Date().toISOString()
+          senderName: parseNameFromFromHeader(fromHeaderText),
+          internalDate: msg.internalDate?.toISOString?.() || new Date().toISOString(),
+          fromHeader: fromHeaderText,
+          replyToHeader,
+          replyTo: replyToAddress,
+          sender: senderHeader
         };
 
         await dbClient.query(`
@@ -4747,7 +4815,7 @@ ${String(bodyText).slice(0, 3000)}
           messageIdHeader || null,
           referencesHeader || null,
           subject || null,
-          parsed.from?.text || fromAddr || null,
+          senderHeader || null,
           firstLineSnippet(bodyText, 280),
           bodyText,
           replyBody,
@@ -4889,7 +4957,9 @@ ${String(bodyText).slice(0, 3000)}
     const headers = msgResponse.data.payload?.headers || [];
     const subject = headerVal(headers, 'Subject') || '';
     const fromHdr = headerVal(headers, 'From') || '';
+    const replyToHdr = headerVal(headers, 'Reply-To') || '';
     const from = extractEmail(fromHdr);
+    const replyToAddress = extractEmail(replyToHdr) || replyToHdr;
     const snippet = (msgResponse.data.snippet || '').slice(0, 1200);
 
     if (looksLikeSpam(subject, snippet, headers)) {
@@ -4972,7 +5042,10 @@ ${String(bodyText).slice(0, 3000)}
     }
 
     const metadata = {
-      fromHeader: fromHdr
+      fromHeader: fromHdr,
+      replyToHeader: replyToHdr,
+      replyTo: replyToAddress,
+      sender: replyToHdr || fromHdr || from
     };
 
     await dbClient.query(`
@@ -5013,7 +5086,7 @@ ${String(bodyText).slice(0, 3000)}
       headerVal(headers, 'Message-Id') || null,
       headerVal(headers, 'References') || null,
       subject || null,
-      from || null,
+      (replyToHdr || fromHdr || from) || null,
       snippet,
       bodyText,
       replyBody,
@@ -5280,6 +5353,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
