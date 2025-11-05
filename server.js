@@ -4338,41 +4338,71 @@ app.post('/api/faq/regenerate', async (req, res) => {
     }
 
     // Prompt: ze vzorků udělej 8–15 FAQ (Q/A) jako JSON
-    const prompt = `
+   const prompt = `
 Jsi e-mailový asistent. Z následujících vzorků e-mailové komunikace vytvoř seznam FAQ pro daný účet.
-FAQ má zachytit NEJČASTĚJŠÍ dotazy a typické odpovědi firmy. Vrať POUZE validní JSON pole:
-[
-  {"question":"…","answer":"…"},
-  ...
-]
+FAQ má zachytit NEJČASTĚJŠÍ dotazy a typické odpovědi firmy. Vrať POUZE validní JSON objekt:
+{
+  "faqs": [
+    {"question":"…","answer":"…"},
+    ...
+  ]
+}
 Počet 8–15, bez duplicit, česky, krátké a praktické.
 Vzorky (JSON řádky):
 ${examples.map(e => JSON.stringify(e)).join('\n').slice(0, 15000)}
     `.trim();
 
     const raw = await chatJson({ model: DEFAULT_MODEL, user: prompt });
-    const faqs = JSON.parse(raw);
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (parseErr) {
+      console.error('FAQ regenerate - invalid JSON response:', parseErr, raw);
+      throw new Error('AI nevrátila validní JSON.');
+    }
+
+    const faqs = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.faqs)
+        ? parsed.faqs
+        : Array.isArray(parsed?.data)
+          ? parsed.data
+          : Array.isArray(parsed?.items)
+            ? parsed.items
+            : null;
+
+    if (!Array.isArray(faqs)) {
+      throw new Error('AI nevrátila pole FAQ.');
+    }
+
+    const cleanedFaqs = faqs
+      .map(qa => ({
+        question: typeof qa?.question === 'string' ? qa.question.trim() : '',
+        answer: typeof qa?.answer === 'string' ? qa.answer.trim() : ''
+      }))
+      .filter(qa => qa.question && qa.answer);
 
     // Ulož: smaž staré a vlož nové (pro daný účet)
     const db2 = await pool.connect();
     try {
       await db2.query(`DELETE FROM faqs WHERE dashboard_user_email=$1 AND connected_email=$2`, [dashboardUserEmail, email]);
-      for (const qa of faqs) {
-        if (!qa?.question || !qa?.answer) continue;
+      for (const qa of cleanedFaqs) {
         await db2.query(
           `INSERT INTO faqs (dashboard_user_email, connected_email, question, answer)
            VALUES ($1,$2,$3,$4)`,
-          [dashboardUserEmail, email, qa.question.trim(), qa.answer.trim()]
+          [dashboardUserEmail, email, qa.question, qa.answer]
         );
       }
     } finally { db2.release(); }
 
-    res.json({ success:true, created: faqs.length, faqs });
+    res.json({ success:true, created: cleanedFaqs.length, faqs: cleanedFaqs });
   } catch (e) {
     console.error(e);
     res.status(500).json({ success:false, message:'Regenerace FAQ selhala.' });
   }
 });
+
 
 
 
@@ -5246,6 +5276,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
