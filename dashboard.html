@@ -4550,6 +4550,77 @@ function renderConnectedAccounts() {
   if (span) span.textContent = primary || 'Žádný';
 }
 
+async function setAllAccountsActive(targetState) {
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  if (!dashboardUserEmail) {
+    showToast('Nejste přihlášen.', 'error');
+    return;
+  }
+
+  const accounts = getConnectedAccounts();
+  if (!accounts.length) {
+    showToast('Nemáte připojené žádné emailové účty.', 'info');
+    return;
+  }
+
+  const buttons = document.querySelectorAll('#email-settings .bulk-btn');
+  buttons.forEach(btn => btn.setAttribute('disabled', 'disabled'));
+
+  const failed = [];
+
+  try {
+    for (const { email } of accounts) {
+      try {
+        const response = await fetch('https://ai-email-server-stejdesign.onrender.com/api/accounts/set-active', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dashboardUserEmail, email, active: targetState })
+        });
+        const result = await response.json();
+        if (!result.success) {
+          failed.push(email);
+        }
+      } catch (_) {
+        failed.push(email);
+      }
+    }
+
+    const accs = await syncConnectedEmails();
+    renderConnectedAccounts();
+
+    const prim = localStorage.getItem('primaryEmail');
+    const primObj = accs.find(a => a.email === prim);
+
+    if (!primObj || !primObj.active) {
+      if (emailListContainer) {
+        emailListContainer.innerHTML = `<div class="empty-state"><h3>Primární účet je neaktivní</h3><p>Pro načtení emailů ho aktivujte v Nastavení → Email účty.</p></div>`;
+        if (emailCountHeader) emailCountHeader.textContent = 'Emaily';
+      }
+    } else {
+      const emailsPageActive = document.getElementById('emails')?.classList.contains('active');
+      if (emailsPageActive) fetchEmails();
+    }
+
+    if (failed.length) {
+      showToast(`Některé účty se nepodařilo aktualizovat: ${failed.join(', ')}`, 'error');
+    } else {
+      showToast(targetState ? 'Všechny účty byly aktivovány.' : 'Všechny účty byly deaktivovány.', 'success');
+    }
+  } catch (error) {
+    showToast('Nepodařilo se změnit stav účtů.', 'error');
+  } finally {
+    buttons.forEach(btn => btn.removeAttribute('disabled'));
+  }
+}
+
+async function enableAllAccounts() {
+  await setAllAccountsActive(true);
+}
+
+async function disableAllAccounts() {
+  await setAllAccountsActive(false);
+}
+
 // ZMĚNA: Funkce nyní uloží výběr a znovu načte nastavení
 function selectForConfig(radioWrapper, email) {
     // Uložíme nový primární email do localStorage
@@ -6375,6 +6446,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
