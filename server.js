@@ -3253,6 +3253,7 @@ Pravidla pro tvorbu "suggested_reply":
   - "Krátká" = 1–2 věty.
   - "Střední" = 1 odstavec (cca 3–6 vět).
   - "Dlouhá" = více odstavců, podrobnější.
+- Nikdy nevyzývej příjemce, aby nás kontaktoval e-mailem nebo jiným kanálem, protože odpověď posíláš ty.
 - Pokud STYLE_PROFILE.signature není prázdný:
   - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
   - Podpis neduplikuj, pokud už v textu je.
@@ -4078,6 +4079,7 @@ Pravidla pro tvorbu "suggested_reply":
   - "Krátká" = 1–2 věty.
   - "Střední" = 1 odstavec (cca 3–6 vět).
   - "Dlouhá" = více odstavců, podrobnější.
+- Nikdy nevyzývej příjemce, aby nás kontaktoval e-mailem nebo jiným kanálem, protože odpověď posíláš ty.
 - Pokud STYLE_PROFILE.signature není prázdný:
   - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
   - Podpis neduplikuj, pokud už v textu je.
@@ -4591,6 +4593,7 @@ Pravidla pro tvorbu "suggested_reply":
   - "Krátká" = 1–2 věty.
   - "Střední" = 1 odstavec (cca 3–6 vět).
   - "Dlouhá" = více odstavců, podrobnější.
+- Nikdy nevyzývej příjemce, aby nás kontaktoval e-mailem nebo jiným kanálem, protože odpověď posíláš ty.
 - Pokud STYLE_PROFILE.signature není prázdný:
   - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
   - Podpis neduplikuj, pokud už v textu je.
@@ -4842,6 +4845,7 @@ Pravidla pro tvorbu "suggested_reply":
   - "Krátká" = 1–2 věty.
   - "Střední" = 1 odstavec (cca 3–6 vět).
   - "Dlouhá" = více odstavců, podrobnější.
+- Nikdy nevyzývej příjemce, aby nás kontaktoval e-mailem nebo jiným kanálem, protože odpověď posíláš ty.
 - Pokud STYLE_PROFILE.signature není prázdný:
   - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
   - Podpis neduplikuj, pokud už v textu je.
@@ -5276,6 +5280,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
