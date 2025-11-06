@@ -3184,6 +3184,14 @@ async function handleCustomAnalyzeEmail(req, res) {
     // podpora POST (body) i GET (query)
     const src = req.method === 'GET' ? (req.query || {}) : (req.body || {});
     const { dashboardUserEmail, emailAddress, uid } = src;
+    const rawInstructions = typeof src.instructions === 'string' ? src.instructions : '';
+    const instructions = rawInstructions.trim();
+    const toneOverride = typeof src.toneOverride === 'string' ? src.toneOverride.trim() : '';
+    const lengthOverride = typeof src.lengthOverride === 'string' ? src.lengthOverride.trim() : '';
+    let includeSignature = true;
+    if (typeof src.includeSignature !== 'undefined') {
+      includeSignature = src.includeSignature !== false && src.includeSignature !== 'false' && src.includeSignature !== '0';
+    }
 
     if (!dashboardUserEmail || !emailAddress || !uid) {
       return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, emailAddress, uid).' });
@@ -3257,9 +3265,9 @@ async function handleCustomAnalyzeEmail(req, res) {
     const fromHeader = parsed.from?.text || headerMapValue(parsed.headers, 'From') || '';
 
     const styleProfile = {
-      tone: st?.tone || 'Formální',
-      length: st?.length || 'Střední (1 odstavec)',
-      signature: st?.signature || '',
+      tone: toneOverride || st?.tone || 'Formální',
+      length: lengthOverride || st?.length || 'Střední (1 odstavec)',
+      signature: includeSignature ? (st?.signature || '') : '',
       language: 'cs-CZ'
     };
 
@@ -3291,7 +3299,12 @@ Pravidla pro tvorbu "suggested_reply":
       faqContext += '\n---\n\n';
     }
     
-    const task = `${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+    const trimmedInstruction = instructions ? instructions.slice(0, 1200) : '';
+    const instructionBlock = trimmedInstruction
+      ? `Specifická přání uživatele k odpovědi:\n"""${trimmedInstruction}"""\nDodrž je při psaní suggested_reply.\n\n`
+      : '';
+
+    const task = `${faqContext}${instructionBlock}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
 {
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
@@ -4037,6 +4050,13 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
   // Pokud FE poslal parametry custom účtu, rovnou použij náš custom handler
   const { dashboardUserEmail, emailAddress, uid, messageId } = req.body || {};
   const email = (req.body && req.body.email) || undefined;
+  const rawInstructions = typeof req.body?.instructions === 'string' ? req.body.instructions : '';
+  const instructions = rawInstructions.trim();
+  const toneOverride = typeof req.body?.toneOverride === 'string' ? req.body.toneOverride.trim() : '';
+  const lengthOverride = typeof req.body?.lengthOverride === 'string' ? req.body.lengthOverride.trim() : '';
+  const includeSignature = req.body?.includeSignature === false || req.body?.includeSignature === 'false'
+    ? false
+    : true;
   if (!messageId && emailAddress && uid) {
     // FE poslal custom data omylem na /api/gmail/analyze-email -> obsloužíme
     return handleCustomAnalyzeEmail(req, res);
@@ -4104,12 +4124,11 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
     }
 
 const styleProfile = {
-  tone: settings?.tone || 'Formální',
-  length: settings?.length || 'Střední (1 odstavec)',
-  signature: settings?.signature || '',
-  language: 'cs-CZ'
-};
-
+      tone: toneOverride || settings?.tone || 'Formální',
+      length: lengthOverride || settings?.length || 'Střední (1 odstavec)',
+      signature: includeSignature ? (settings?.signature || '') : '',
+      language: 'cs-CZ'
+    };
 
 
     
@@ -4142,7 +4161,12 @@ Pravidla pro tvorbu "suggested_reply":
       faqContext += '\n---\n\n';
     }
 
-    const task = `${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+   const trimmedInstruction = instructions ? instructions.slice(0, 1200) : '';
+    const instructionBlock = trimmedInstruction
+      ? `Specifická přání uživatele k odpovědi:\n"""${trimmedInstruction}"""\nDodrž je při psaní suggested_reply.\n\n`
+      : '';
+
+    const task = `${faqContext}${instructionBlock}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
 {
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
@@ -5353,6 +5377,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
