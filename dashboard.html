@@ -2921,6 +2921,28 @@ const EMAILS_PER_PAGE = 10;
 let currentEmailPage = 1;
 let lastEmailTotal = 0;
 
+function showEmailDetailModal(modal) {
+  if (!modal) return;
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => modal.classList.add('show'));
+}
+
+function hideEmailDetailModal(modal) {
+  if (!modal) return;
+  modal.classList.remove('show');
+  modal.setAttribute('aria-hidden', 'true');
+
+  const finalize = () => {
+    if (!modal.classList.contains('show')) {
+      modal.style.display = 'none';
+    }
+  };
+
+  modal.addEventListener('transitionend', finalize, { once: true });
+  setTimeout(finalize, 300);
+}
+
 
 // === Modal helpers: uložit výchozí obsah a možnost ho vrátit ===
 const modalBodyEl = document.querySelector('#modal-content .modal-body');
@@ -5824,14 +5846,14 @@ if (!currentPrimary || !connectedEmails.some(a => a.email === currentPrimary)) {
   ].filter(Boolean);
 
   closeBtns.forEach(btn => btn.addEventListener('click', () => {
-    modal.classList.remove('show');
+    hideEmailDetailModal(modal);
     document.body.style.overflow = '';
   }));
 
   // Klik mimo modal zavře
-  modal?.addEventListener('click', (e) => {
+ modal?.addEventListener('click', (e) => {
     if (e.target === modal) {
-      modal.classList.remove('show');
+      hideEmailDetailModal(modal);
       document.body.style.overflow = '';
     }
   });
@@ -6256,7 +6278,7 @@ if (dlg) dlg.classList.add('modal-xl');
       renderPendingPreview(emailEntry);
       syncProMeta();
 
-      modal.classList.add('show');
+      showEmailDetailModal(modal);
       document.body.style.overflow = 'hidden';
 
       try {
@@ -6891,7 +6913,7 @@ function syncProMeta(){
 
     const detailModal = document.getElementById('emailDetailModal');
     if (detailModal) {
-      detailModal.classList.remove('show');
+      hideEmailDetailModal(detailModal);
     }
     document.body.style.overflow = '';
 
@@ -7297,6 +7319,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
