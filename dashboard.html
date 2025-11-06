@@ -163,43 +163,27 @@
 .list-action-group .btn { width: 190px; }
 .quick-ai-btn { background:#f1f5f9; color:#0f172a; border:1px solid #e2e8f0; }
 .quick-ai-btn:hover { background:#e2e8f0; color:#0f172a; }
-.ai-launcher {
-    border:none;
-    background:linear-gradient(135deg,#fef3c7,#fde68a);
-    color:#7c2d12;
-    font-weight:600;
-    padding:0.6rem 1rem;
-    border-radius:12px;
-    display:flex;
-    align-items:center;
-    gap:0.5rem;
-    cursor:pointer;
-    transition:.2s ease;
-    box-shadow:0 10px 25px rgba(251,191,36,.25);
-}
-.ai-launcher:hover { transform:translateY(-1px); box-shadow:0 12px 30px rgba(251,191,36,.3); }
-.ai-launcher span { font-size:1.05rem; }
-
 .ai-composer-overlay {
     position:fixed;
     inset:0;
     background:rgba(15,23,42,0.45);
     backdrop-filter:blur(6px);
     display:none;
-    align-items:flex-end;
+    align-items:center;
     justify-content:center;
     z-index:2300;
     transition:opacity .25s ease;
     opacity:0;
+    padding:1.5rem;
 }
 .ai-composer-overlay.show { display:flex; opacity:1; }
 .ai-composer-panel {
     width:min(960px,96vw);
     background:#ffffff;
-    border-radius:24px 24px 0 0;
-    box-shadow:0 -18px 60px rgba(15,23,42,0.18);
+    border-radius:24px;
+    box-shadow:0 20px 60px rgba(15,23,42,0.22);
     overflow:hidden;
-    transform:translateY(24px);
+    transform:translateY(12px);
     transition:transform .25s ease;
     display:flex;
     flex-direction:column;
@@ -238,6 +222,14 @@
     flex-direction:column;
     gap:1.4rem;
 }
+.ai-composer-note {
+    padding:1rem 1.25rem;
+    background:#e2e8f0;
+    border-radius:16px;
+    color:#334155;
+    font-size:.95rem;
+    line-height:1.5;
+}
 .ai-composer-field label { display:block; font-weight:600; margin-bottom:.5rem; color:#0f172a; }
 .ai-composer-field textarea {
     width:100%;
@@ -251,11 +243,6 @@
     background:#f8fafc;
 }
 .ai-composer-field textarea:focus { outline:none; border-color:#818cf8; box-shadow:0 0 0 3px rgba(129,140,248,0.15); background:#fff; }
-.ai-composer-options {
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-    gap:1rem;
-}
 .ai-composer-select {
     width:100%;
     border:1px solid #e2e8f0;
@@ -320,7 +307,16 @@
 .ai-inline-card .pro-body-card__content { display:flex; flex-direction:column; gap:.75rem; }
 .ai-inline-input { min-height:90px; resize:vertical; }
 .ai-inline-controls { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; justify-content:space-between; }
-.ai-inline-controls select { border-radius:10px; padding:.5rem .75rem; border:1px solid #cbd5f5; background:#f8fafc; }
+.ai-inline-hint {
+    flex:1;
+    min-width:220px;
+    background:#eef2ff;
+    border-radius:12px;
+    padding:.65rem .9rem;
+    color:#475569;
+    font-size:.9rem;
+    line-height:1.4;
+}
 .ai-inline-note { font-size:.85rem; color:#64748b; }
 
 .analysis-section {
@@ -1881,10 +1877,6 @@
         <main class="main-content">
             <!-- Top Bar -->
            <div class="user-info">
-    <button class="ai-launcher" id="openAiComposerGlobal" type="button">
-        <span>✨</span>
-        <span>AI odpověď</span>
-    </button>
     <button class="notifications">
         <span>🔔</span>
         <span class="notification-badge">3</span>
@@ -2101,35 +2093,8 @@
         <label for="aiComposerInstructions">Co má odpověď obsahovat?</label>
         <textarea id="aiComposerInstructions" placeholder="Shrňte hlavní body, které má AI do odpovědi přidat…"></textarea>
       </div>
-      <div class="ai-composer-options">
-        <div>
-          <label for="aiComposerTone">Tón</label>
-          <select id="aiComposerTone" class="ai-composer-select">
-            <option value="">Dle nastavení</option>
-            <option>Formální</option>
-            <option>Neformální</option>
-            <option>Přátelský</option>
-            <option>Profesionální</option>
-            <option>Stručný</option>
-          </select>
-        </div>
-        <div>
-          <label for="aiComposerLength">Délka</label>
-          <select id="aiComposerLength" class="ai-composer-select">
-            <option value="">Dle nastavení</option>
-            <option>Krátká (1-2 věty)</option>
-            <option>Střední (1 odstavec)</option>
-            <option>Dlouhá (více odstavců)</option>
-            <option>Adaptivní</option>
-          </select>
-        </div>
-        <div>
-          <label for="aiComposerSignature">Podpis</label>
-          <select id="aiComposerSignature" class="ai-composer-select">
-            <option value="include">Připojit uložený podpis</option>
-            <option value="omit">Bez podpisu</option>
-          </select>
-        </div>
+     <div class="ai-composer-note">
+        Tón, délka i podpis se automaticky přebírají z nastavení připojeného e-mailového účtu.
       </div>
       <div class="ai-composer-status" id="aiComposerStatus"></div>
       <div class="ai-composer-loader" id="aiComposerLoader" style="display:none;"></div>
@@ -2220,21 +2185,13 @@
             <textarea id="ed-ai-instructions" class="form-control ai-inline-input" rows="3" placeholder="Napište body nebo tón odpovědi, který má AI dodržet…"></textarea>
           </div>
           <div class="ai-inline-controls">
-            <div style="display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;">
-              <span class="ai-composer-tag">Styl profilu</span>
-              <label for="ed-ai-tone" style="font-weight:500; color:#475569;">Tón</label>
-              <select id="ed-ai-tone">
-                <option value="">Dle nastavení</option>
-                <option>Formální</option>
-                <option>Neformální</option>
-                <option>Přátelský</option>
-                <option>Profesionální</option>
-                <option>Stručný</option>
-              </select>
+            <div class="ai-inline-hint">
+              <strong>Styl profilu</strong><br>
+              Tón, délka i podpis se převezmou z nastavení připojeného účtu.
             </div>
             <button class="btn btn-primary" id="ed-open-composer" type="button">✨ Navrhnout odpověď</button>
           </div>
-          <p class="ai-inline-note">AI použije uložené nastavení účtu, případně vybraný tón. Výsledek si můžete upravit před odesláním.</p>
+          <p class="ai-inline-note">AI použije uložené nastavení účtu automaticky. Výsledek si můžete upravit před odesláním.</p>
         </div>
       </div>
     </div>
@@ -3268,9 +3225,6 @@ const aiComposer = (() => {
   if (!overlay) return null;
 
   const instructionsEl = document.getElementById('aiComposerInstructions');
-  const toneSelectEl = document.getElementById('aiComposerTone');
-  const lengthSelectEl = document.getElementById('aiComposerLength');
-  const signatureSelectEl = document.getElementById('aiComposerSignature');
   const emailSelectEl = document.getElementById('aiComposerEmailSelect');
   const contextLabel = document.getElementById('aiComposerContext');
   const profileLabel = document.getElementById('aiComposerProfile');
@@ -3319,7 +3273,7 @@ const aiComposer = (() => {
     const tone = settings.tone || 'neuvedeno';
     const length = settings.length || 'neuvedeno';
     const hasSignature = (settings.signature || '').trim().length > 0;
-    profileLabel.textContent = `Profil: ${tone} • ${length} • ${hasSignature ? 'podpis se připojí' : 'bez podpisu'}`;
+    profileLabel.textContent = `Profil účtu: ${tone} • ${length} • ${hasSignature ? 'podpis se připojí' : 'bez podpisu'}`;
   }
 
   function updateContextLabel() {
@@ -3400,15 +3354,6 @@ const aiComposer = (() => {
     if (instructionsEl && typeof opts.instructions === 'string') {
       instructionsEl.value = opts.instructions;
     }
-    if (toneSelectEl) {
-      toneSelectEl.value = typeof opts.toneOverride === 'string' ? opts.toneOverride : '';
-    }
-    if (lengthSelectEl) {
-      lengthSelectEl.value = typeof opts.lengthOverride === 'string' ? opts.lengthOverride : '';
-    }
-    if (signatureSelectEl) {
-      signatureSelectEl.value = opts.includeSignature === false ? 'omit' : 'include';
-    }
     if (opts.resultText) {
       toggleResult(true, opts.resultText);
     } else {
@@ -3462,9 +3407,9 @@ const aiComposer = (() => {
     }
 
     const instructions = instructionsEl?.value?.trim() || '';
-    const toneOverride = toneSelectEl?.value?.trim() || '';
-    const lengthOverride = lengthSelectEl?.value?.trim() || '';
-    const includeSignature = !signatureSelectEl || signatureSelectEl.value !== 'omit';
+    const toneOverride = (CURRENT_SETTINGS?.tone || '').trim();
+    const lengthOverride = (CURRENT_SETTINGS?.length || '').trim();
+    const includeSignature = Boolean(CURRENT_SETTINGS?.signature?.trim());
 
     const payload = {
       dashboardUserEmail,
@@ -3573,8 +3518,7 @@ const aiComposer = (() => {
     const inlineCtx = window.__currentEmailCtx
       || buildEmailContextFromRow(document.querySelector(`.email-item[data-id="${window.__currentEmailCtx?.id || ''}"]`));
     const instructions = document.getElementById('ed-ai-instructions')?.value || '';
-    const tone = document.getElementById('ed-ai-tone')?.value || '';
-    openComposer(inlineCtx, { instructions, toneOverride: tone, focusInstructions: !instructions });
+    openComposer(inlineCtx, { instructions, focusInstructions: !instructions });
   });
 
   return { open: openComposer, close: closeComposer };
@@ -6768,10 +6712,8 @@ function syncProMeta(){
     document.body.style.overflow = '';
 
     const inlineInstructions = document.getElementById('ed-ai-instructions')?.value || '';
-    const inlineTone = document.getElementById('ed-ai-tone')?.value || '';
     window.aiComposer?.open(ctx, {
       instructions: inlineInstructions,
-      toneOverride: inlineTone,
       focusInstructions: !inlineInstructions
     });
   };
@@ -7171,6 +7113,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
