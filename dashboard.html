@@ -2127,8 +2127,8 @@
         <div class="ai-composer-tag">Návrh odpovědi</div>
         <textarea id="aiComposerResult" readonly></textarea>
         <div class="ai-composer-result-actions">
-          <button class="btn btn-secondary" id="aiComposerCopy" type="button">📋 Zkopírovat</button>
-        </div>
+          <button class="btn btn-primary" id="aiComposerSend" type="button">📤 Odeslat</button>
+        </div
       </div>
     </div>
     <div class="ai-composer-footer">
@@ -3258,7 +3258,7 @@ const aiComposer = (() => {
   const loaderEl = document.getElementById('aiComposerLoader');
   const resultWrap = document.getElementById('aiComposerResultWrap');
   const resultTextarea = document.getElementById('aiComposerResult');
-  const copyBtn = document.getElementById('aiComposerCopy');
+  const sendBtn = document.getElementById('aiComposerSend');
   const generateBtn = document.getElementById('aiComposerGenerate');
   const cancelBtn = document.getElementById('aiComposerCancel');
   const closeBtn = document.getElementById('aiComposerClose');
@@ -3268,6 +3268,41 @@ const aiComposer = (() => {
   let currentContext = null;
   let isGenerating = false;
   let previousOverflow = '';
+  let lastGeneratedContext = null;
+  let lastGeneratedReply = '';
+
+  function updateSendButtonAvailability() {
+    if (!sendBtn) return;
+    if (sendBtn.dataset.loading === '1') {
+      sendBtn.disabled = true;
+      return;
+    }
+    const ready = Boolean(lastGeneratedReply) && lastGeneratedContext && lastGeneratedContext.id;
+    sendBtn.disabled = isGenerating || !ready;
+  }
+
+  function setSendButtonLoading(isLoading) {
+    if (!sendBtn) return;
+    sendBtn.dataset.loading = isLoading ? '1' : '0';
+    sendBtn.textContent = isLoading ? 'Odesílám…' : '📤 Odeslat';
+    if (isLoading) {
+      sendBtn.disabled = true;
+    } else {
+      updateSendButtonAvailability();
+    }
+  }
+
+  function resetGeneratedData() {
+    lastGeneratedContext = null;
+    lastGeneratedReply = '';
+    if (sendBtn) {
+      sendBtn.dataset.loading = '0';
+      sendBtn.textContent = '📤 Odeslat';
+    }
+    updateSendButtonAvailability();
+  }
+
+  resetGeneratedData();
 
   function toggleResult(show, text = null) {
     if (!resultWrap || !resultTextarea) return;
@@ -3277,7 +3312,9 @@ const aiComposer = (() => {
     } else {
       resultWrap.classList.remove('show');
       if (text === null) resultTextarea.value = '';
+      resetGeneratedData();
     }
+    updateSendButtonAvailability();
   }
 
   function toggleLoader(show) {
@@ -3286,6 +3323,7 @@ const aiComposer = (() => {
     loaderEl.style.display = show ? 'block' : 'none';
     generateBtn.disabled = show;
     generateBtn.textContent = show ? 'Upravuji…' : '✨ Upravit odpověď';
+    updateSendButtonAvailability();
   }
 
   function updateProfileHint() {
@@ -3382,7 +3420,7 @@ const aiComposer = (() => {
     if (opts.resultText) {
       toggleResult(true, opts.resultText);
     } else {
-      toggleResult(false);
+      toggleResult(false, null);
     }
   }
 
@@ -3390,6 +3428,7 @@ const aiComposer = (() => {
     currentContext = ctx ? { ...ctx } : guessContext();
     populateEmailOptions(currentContext);
     updateContextLabel();
+    resetGeneratedData();
     applyOverrides(opts);
     updateProfileHint();
     if (typeof ensureSettingsLoaded === 'function') {
@@ -3413,6 +3452,7 @@ const aiComposer = (() => {
     document.body.style.overflow = previousOverflow || '';
     toggleLoader(false);
     footerStatusLabel && (footerStatusLabel.textContent = '');
+    resetGeneratedData();
   }
 
   async function generateReply() {
@@ -3480,31 +3520,142 @@ const aiComposer = (() => {
         throw new Error('AI neposlala návrh odpovědi.');
       }
       toggleResult(true, replyBody);
-      if (footerStatusLabel) footerStatusLabel.textContent = 'Návrh připraven. Zkopírujte ho nebo vložte do odpovědi.';
+      lastGeneratedReply = replyBody;
+      lastGeneratedContext = {
+        id: currentContext.id,
+        pendingId: currentContext.pendingId || null,
+        src: (currentContext.src || 'gmail').toLowerCase(),
+        account: currentContext.account || localStorage.getItem('primaryEmail') || '',
+        replyTo: currentContext.replyTo || '',
+        from: currentContext.from || '',
+        subject: currentContext.subject || '',
+        headers: data?.headers || null
+      };
+      updateSendButtonAvailability();
+      if (footerStatusLabel) footerStatusLabel.textContent = 'Návrh připraven. Odešlete ho tlačítkem „Odeslat“.';
       if (typeof showToast === 'function') {
         showToast('AI návrh je připraven.', 'success');
       }
     } catch (err) {
       if (statusLabel) statusLabel.textContent = err.message || 'Nepodařilo se připravit návrh odpovědi.';
-      toggleResult(false);
+      toggleResult(false, null);
     } finally {
       toggleLoader(false);
     }
   }
 
-  function onCopy() {
-    if (!resultTextarea) return;
-    const text = resultTextarea.value;
-    if (!text) return;
-    navigator.clipboard?.writeText(text).then(() => {
+  async function onSend() {
+    if (!sendBtn || sendBtn.dataset.loading === '1') return;
+    const replyBody = (resultTextarea?.value || '').trim();
+    if (!replyBody) {
       if (typeof showToast === 'function') {
-        showToast('Odpověď zkopírována do schránky.', 'success');
+        showToast('Není připraven žádný text k odeslání.', 'warning');
       }
-    }).catch(() => {
+      return;
+    }
+
+    if (!lastGeneratedContext || !lastGeneratedContext.id || !currentContext || currentContext.id !== lastGeneratedContext.id) {
       if (typeof showToast === 'function') {
-        showToast('Nepodařilo se zkopírovat odpověď.', 'error');
+        showToast('Nejprve upravte odpověď pro vybraný e-mail.', 'warning');
       }
-    });
+      return;
+    }
+
+    const dashboardUserEmail = localStorage.getItem('userEmail');
+    const accountEmail = lastGeneratedContext.account || currentContext.account || localStorage.getItem('primaryEmail');
+    if (!dashboardUserEmail || !accountEmail) {
+      const msg = 'Chybí přihlášený uživatel nebo e-mailový účet.';
+      if (footerStatusLabel) footerStatusLabel.textContent = msg;
+      if (typeof showToast === 'function') {
+        showToast(msg, 'error');
+      }
+      return;
+    }
+
+    setSendButtonLoading(true);
+    if (statusLabel) statusLabel.textContent = '';
+    if (footerStatusLabel) footerStatusLabel.textContent = 'Odesílám odpověď…';
+
+    try {
+      const src = (lastGeneratedContext.src || '').toLowerCase();
+      let url = '';
+      let payload = null;
+
+      if (src === 'custom') {
+        const headers = lastGeneratedContext.headers || {};
+        const origMessageId = headers?.messageId || headers?.MessageId || null;
+        const origReferences = headers?.references || headers?.References || null;
+        const replyTargetRaw = lastGeneratedContext.replyTo || lastGeneratedContext.from || '';
+        const toAddress = extractEmailAddress(replyTargetRaw || '');
+        const subject = (lastGeneratedContext.subject || '').trim();
+        const replyToUid = Number(lastGeneratedContext.pendingId || lastGeneratedContext.id);
+
+        if (!replyTargetRaw || !toAddress) {
+          throw new Error('Nepodařilo se určit adresáta odpovědi.');
+        }
+        if (!origMessageId) {
+          throw new Error('Chybí identifikátor původní zprávy.');
+        }
+        if (!Number.isFinite(replyToUid) || replyToUid <= 0) {
+          throw new Error('Chybí UID původní zprávy.');
+        }
+
+        url = `${window.BACKEND}/api/custom-email/send-reply`;
+        payload = {
+          dashboardUserEmail,
+          emailAddress: accountEmail,
+          to: toAddress,
+          replyTo: replyTargetRaw,
+          subject: subject ? `Re: ${subject}` : 'Re:',
+          text: replyBody,
+          replyToUid,
+          origMessageId,
+          origReferences: origReferences || null
+        };
+      } else {
+        url = `${window.BACKEND}/api/gmail/send-reply`;
+        payload = {
+          dashboardUserEmail,
+          email: accountEmail,
+          messageId: lastGeneratedContext.id,
+          replyBody
+        };
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.message || 'Odeslání odpovědi selhalo.');
+      }
+
+      if (typeof showToast === 'function') {
+        showToast(data?.message || 'Odpověď byla odeslána.', 'success');
+      }
+      if (footerStatusLabel) footerStatusLabel.textContent = 'Odpověď byla odeslána.';
+
+      resetGeneratedData();
+      closeComposer();
+
+      if (typeof afterSuccessfulSend === 'function') {
+        try { await afterSuccessfulSend(); } catch (e) { console.warn(e); }
+      }
+      if (typeof fetchEmails === 'function') {
+        try { await fetchEmails(); } catch (e) { console.warn(e); }
+      }
+    } catch (err) {
+      const message = err?.message || 'Odeslání odpovědi selhalo.';
+      if (footerStatusLabel) footerStatusLabel.textContent = message;
+      if (typeof showToast === 'function') {
+        showToast(message, 'error');
+      }
+    } finally {
+      setSendButtonLoading(false);
+    }
   }
 
   function onEmailSelectChange() {
@@ -3523,6 +3674,7 @@ const aiComposer = (() => {
       date: option.dataset.date || '',
       replyTo: option.dataset.from || ''
     };
+    toggleResult(false, null);
     window.__currentEmailCtx = { ...currentContext };
     updateContextLabel();
   }
@@ -3531,7 +3683,7 @@ const aiComposer = (() => {
   generateBtn?.addEventListener('click', generateReply);
   cancelBtn?.addEventListener('click', closeComposer);
   closeBtn?.addEventListener('click', closeComposer);
-  copyBtn?.addEventListener('click', onCopy);
+  sendBtn?.addEventListener('click', onSend);
   overlay.addEventListener('click', (evt) => {
     if (evt.target === overlay) closeComposer();
   });
@@ -7144,6 +7296,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
