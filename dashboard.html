@@ -159,6 +159,170 @@
     padding: 1.5rem 2rem; display: flex; gap: 1rem; justify-content: flex-end;
     border-top: 1px solid #e2e8f0; background: #f8fafc; border-radius: 0 0 20px 20px; flex-shrink: 0;
 }
+.list-action-group { display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
+.list-action-group .btn { width: 190px; }
+.quick-ai-btn { background:#f1f5f9; color:#0f172a; border:1px solid #e2e8f0; }
+.quick-ai-btn:hover { background:#e2e8f0; color:#0f172a; }
+.ai-launcher {
+    border:none;
+    background:linear-gradient(135deg,#fef3c7,#fde68a);
+    color:#7c2d12;
+    font-weight:600;
+    padding:0.6rem 1rem;
+    border-radius:12px;
+    display:flex;
+    align-items:center;
+    gap:0.5rem;
+    cursor:pointer;
+    transition:.2s ease;
+    box-shadow:0 10px 25px rgba(251,191,36,.25);
+}
+.ai-launcher:hover { transform:translateY(-1px); box-shadow:0 12px 30px rgba(251,191,36,.3); }
+.ai-launcher span { font-size:1.05rem; }
+
+.ai-composer-overlay {
+    position:fixed;
+    inset:0;
+    background:rgba(15,23,42,0.45);
+    backdrop-filter:blur(6px);
+    display:none;
+    align-items:flex-end;
+    justify-content:center;
+    z-index:2300;
+    transition:opacity .25s ease;
+    opacity:0;
+}
+.ai-composer-overlay.show { display:flex; opacity:1; }
+.ai-composer-panel {
+    width:min(960px,96vw);
+    background:#ffffff;
+    border-radius:24px 24px 0 0;
+    box-shadow:0 -18px 60px rgba(15,23,42,0.18);
+    overflow:hidden;
+    transform:translateY(24px);
+    transition:transform .25s ease;
+    display:flex;
+    flex-direction:column;
+    max-height:90vh;
+}
+.ai-composer-overlay.show .ai-composer-panel { transform:translateY(0); }
+.ai-composer-header {
+    padding:1.5rem 2rem;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background:linear-gradient(135deg,#e0e7ff,#c7d2fe);
+}
+.ai-composer-title { font-size:1.4rem; font-weight:700; color:#1e1b4b; display:flex; align-items:center; gap:.65rem; }
+.ai-composer-title span { font-size:1.6rem; }
+.ai-composer-context { color:#4338ca; font-weight:500; font-size:.95rem; }
+.ai-composer-close {
+    border:none;
+    background:rgba(255,255,255,0.65);
+    color:#4338ca;
+    width:42px;
+    height:42px;
+    border-radius:14px;
+    display:grid;
+    place-items:center;
+    font-size:1.4rem;
+    cursor:pointer;
+    transition:.2s ease;
+}
+.ai-composer-close:hover { background:rgba(255,255,255,0.9); transform:rotate(90deg); }
+.ai-composer-body {
+    padding:1.75rem 2rem;
+    overflow:auto;
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:1.4rem;
+}
+.ai-composer-field label { display:block; font-weight:600; margin-bottom:.5rem; color:#0f172a; }
+.ai-composer-field textarea {
+    width:100%;
+    border:1px solid #e2e8f0;
+    border-radius:14px;
+    padding:1rem 1.1rem;
+    font-size:1rem;
+    line-height:1.6;
+    resize:vertical;
+    min-height:120px;
+    background:#f8fafc;
+}
+.ai-composer-field textarea:focus { outline:none; border-color:#818cf8; box-shadow:0 0 0 3px rgba(129,140,248,0.15); background:#fff; }
+.ai-composer-options {
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:1rem;
+}
+.ai-composer-select {
+    width:100%;
+    border:1px solid #e2e8f0;
+    border-radius:12px;
+    padding:.75rem;
+    font-size:.95rem;
+    background:#fff;
+    color:#0f172a;
+}
+.ai-composer-tag {
+    font-size:.85rem;
+    color:#475569;
+    background:#e2e8f0;
+    padding:.4rem .7rem;
+    border-radius:999px;
+    display:inline-flex;
+    align-items:center;
+    gap:.35rem;
+}
+.ai-composer-profile { color:#64748b; font-size:.9rem; }
+.ai-composer-status { font-size:.9rem; color:#334155; }
+.ai-composer-loader {
+    width:44px;
+    height:44px;
+    border-radius:50%;
+    border:4px solid #e2e8f0;
+    border-top-color:#6366f1;
+    animation:spin 1s linear infinite;
+    margin:1rem auto;
+}
+.ai-composer-result {
+    border:1px solid #e2e8f0;
+    border-radius:16px;
+    background:#f8fafc;
+    padding:1rem;
+    display:none;
+    flex-direction:column;
+    gap:.75rem;
+}
+.ai-composer-result.show { display:flex; }
+.ai-composer-result textarea {
+    width:100%;
+    border:none;
+    background:transparent;
+    resize:vertical;
+    min-height:220px;
+    line-height:1.6;
+    font-size:.97rem;
+    color:#0f172a;
+}
+.ai-composer-result textarea:focus { outline:none; }
+.ai-composer-result-actions { display:flex; justify-content:flex-end; gap:.75rem; }
+.ai-composer-footer {
+    padding:1.25rem 2rem 2rem;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:1rem;
+    flex-wrap:wrap;
+}
+.ai-composer-footer .btn-primary { min-width:180px; }
+.ai-inline-card .pro-body-card__content { display:flex; flex-direction:column; gap:.75rem; }
+.ai-inline-input { min-height:90px; resize:vertical; }
+.ai-inline-controls { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; justify-content:space-between; }
+.ai-inline-controls select { border-radius:10px; padding:.5rem .75rem; border:1px solid #cbd5f5; background:#f8fafc; }
+.ai-inline-note { font-size:.85rem; color:#64748b; }
+
 .analysis-section {
     background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px;
     padding: 1.5rem; margin-bottom: 1.5rem;
@@ -1716,7 +1880,11 @@
         <!-- Main Content -->
         <main class="main-content">
             <!-- Top Bar -->
-            <div class="user-info">
+           <div class="user-info">
+    <button class="ai-launcher" id="openAiComposerGlobal" type="button">
+        <span>✨</span>
+        <span>AI odpověď</span>
+    </button>
     <button class="notifications">
         <span>🔔</span>
         <span class="notification-badge">3</span>
@@ -1911,6 +2079,78 @@
   </div>
 </div>
 
+<!-- AI Composer Panel -->
+<div class="ai-composer-overlay" id="aiComposer">
+  <div class="ai-composer-panel" role="dialog" aria-modal="true" aria-labelledby="aiComposerTitle">
+    <div class="ai-composer-header">
+      <div>
+        <div class="ai-composer-title" id="aiComposerTitle"><span>✨</span>AI odpověď</div>
+        <div class="ai-composer-context" id="aiComposerContext">Vyberte e-mail, ke kterému chcete připravit odpověď.</div>
+      </div>
+      <button class="ai-composer-close" id="aiComposerClose" type="button" aria-label="Zavřít">×</button>
+    </div>
+    <div class="ai-composer-body">
+      <div class="ai-composer-field">
+        <label for="aiComposerEmailSelect">Pracovní e-mail</label>
+        <select id="aiComposerEmailSelect" class="ai-composer-select">
+          <option value="">Vyberte e-mail ze seznamu…</option>
+        </select>
+        <div class="ai-composer-profile" id="aiComposerProfile">Styl profilu se načítá…</div>
+      </div>
+      <div class="ai-composer-field">
+        <label for="aiComposerInstructions">Co má odpověď obsahovat?</label>
+        <textarea id="aiComposerInstructions" placeholder="Shrňte hlavní body, které má AI do odpovědi přidat…"></textarea>
+      </div>
+      <div class="ai-composer-options">
+        <div>
+          <label for="aiComposerTone">Tón</label>
+          <select id="aiComposerTone" class="ai-composer-select">
+            <option value="">Dle nastavení</option>
+            <option>Formální</option>
+            <option>Neformální</option>
+            <option>Přátelský</option>
+            <option>Profesionální</option>
+            <option>Stručný</option>
+          </select>
+        </div>
+        <div>
+          <label for="aiComposerLength">Délka</label>
+          <select id="aiComposerLength" class="ai-composer-select">
+            <option value="">Dle nastavení</option>
+            <option>Krátká (1-2 věty)</option>
+            <option>Střední (1 odstavec)</option>
+            <option>Dlouhá (více odstavců)</option>
+            <option>Adaptivní</option>
+          </select>
+        </div>
+        <div>
+          <label for="aiComposerSignature">Podpis</label>
+          <select id="aiComposerSignature" class="ai-composer-select">
+            <option value="include">Připojit uložený podpis</option>
+            <option value="omit">Bez podpisu</option>
+          </select>
+        </div>
+      </div>
+      <div class="ai-composer-status" id="aiComposerStatus"></div>
+      <div class="ai-composer-loader" id="aiComposerLoader" style="display:none;"></div>
+      <div class="ai-composer-result" id="aiComposerResultWrap">
+        <div class="ai-composer-tag">Návrh odpovědi</div>
+        <textarea id="aiComposerResult" readonly></textarea>
+        <div class="ai-composer-result-actions">
+          <button class="btn btn-secondary" id="aiComposerCopy" type="button">📋 Zkopírovat</button>
+        </div>
+      </div>
+    </div>
+    <div class="ai-composer-footer">
+      <div class="ai-composer-status" id="aiComposerFooterStatus"></div>
+      <div style="display:flex; gap:.75rem; flex-wrap:wrap; justify-content:flex-end;">
+        <button class="btn btn-secondary" id="aiComposerCancel" type="button">Zavřít</button>
+        <button class="btn btn-primary" id="aiComposerGenerate" type="button">✨ Vygenerovat</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Email Detail Modal -->
 <div class="modal-overlay" id="emailDetailModal">
   <div class="modal pro-modal">
@@ -1969,6 +2209,32 @@
             <div><strong>Sentiment:</strong> <span id="ed-ai-sentiment">—</span></div>
           </div>
           <div id="ed-ai-reply" style="white-space: pre-wrap; line-height:1.55; color:#111827;"></div>
+        </div>
+      </div>
+
+      <div class="pro-body-card ai-inline-card">
+        <div class="pro-body-card__title">Rychlá AI odpověď</div>
+        <div class="pro-body-card__content">
+          <div>
+            <label class="form-label" for="ed-ai-instructions" style="margin-bottom:.35rem;">Co má odpověď obsahovat?</label>
+            <textarea id="ed-ai-instructions" class="form-control ai-inline-input" rows="3" placeholder="Napište body nebo tón odpovědi, který má AI dodržet…"></textarea>
+          </div>
+          <div class="ai-inline-controls">
+            <div style="display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;">
+              <span class="ai-composer-tag">Styl profilu</span>
+              <label for="ed-ai-tone" style="font-weight:500; color:#475569;">Tón</label>
+              <select id="ed-ai-tone">
+                <option value="">Dle nastavení</option>
+                <option>Formální</option>
+                <option>Neformální</option>
+                <option>Přátelský</option>
+                <option>Profesionální</option>
+                <option>Stručný</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" id="ed-open-composer" type="button">✨ Navrhnout odpověď</button>
+          </div>
+          <p class="ai-inline-note">AI použije uložené nastavení účtu, případně vybraný tón. Výsledek si můžete upravit před odesláním.</p>
         </div>
       </div>
     </div>
@@ -2695,6 +2961,56 @@ let allEmails = [];
 let currentMessageId = null;
 
 
+function findEmailEntryById(id, pendingId = '') {
+  if (!Array.isArray(allEmails) || (!id && !pendingId)) return null;
+  const pendingKey = pendingId ? String(pendingId) : '';
+  const idKey = id ? String(id) : '';
+  return allEmails.find(entry => {
+    if (pendingKey) return String(entry?.pendingId ?? '') === pendingKey;
+    return String(entry?.id ?? '') === idKey;
+  }) || null;
+}
+
+function buildEmailContextFromRow(row) {
+  if (!row) return null;
+  const id = row.dataset.id || row.dataset.messageId || '';
+  const pendingId = row.dataset.pendingId || '';
+  const srcRaw = (row.dataset.src || '').toLowerCase();
+  const replyTo = row.dataset.replyTo || '';
+  const originalFrom = row.dataset.fromOriginal || '';
+  const accountEmail = row.dataset.account || localStorage.getItem('primaryEmail') || '';
+  const subject = row.querySelector('.email-subject')?.textContent?.trim()
+    || row.dataset.subject
+    || '';
+  const from = row.dataset.from || '';
+  const dateTxt = row.querySelector('.email-meta > div')?.textContent?.trim() || '';
+
+  const entry = findEmailEntryById(id, pendingId);
+  const context = {
+    id: id || entry?.id || '',
+    pendingId,
+    src: srcRaw || entry?._src || entry?.source || 'gmail',
+    account: accountEmail || entry?.account || '',
+    from: from || entry?.sender || entry?.from || '',
+    subject: subject || entry?.subject || '',
+    date: dateTxt || entry?.date || '',
+    replyTo: replyTo || entry?.replyTo || entry?.sender || '',
+    originalFrom: originalFrom || entry?.originalFrom || ''
+  };
+
+  if (!context.id && entry?.pendingId) {
+    context.id = String(entry.pendingId);
+  }
+
+  if (context.src !== 'custom' && /^\d+$/.test(String(context.id))) {
+    context.src = 'custom';
+  }
+
+  return context;
+}
+
+
+
 window.__lastUsedTemplateId = null;
 
 
@@ -2946,6 +3262,327 @@ function setPrimaryEmail(email) {
 
 window.CURRENT_EMAIL = { id:'', subject:'', from:'', date:'', bodyText:'', analysis:{}, account:'' };
 window.CURRENT_SETTINGS = null;
+
+const aiComposer = (() => {
+  const overlay = document.getElementById('aiComposer');
+  if (!overlay) return null;
+
+  const instructionsEl = document.getElementById('aiComposerInstructions');
+  const toneSelectEl = document.getElementById('aiComposerTone');
+  const lengthSelectEl = document.getElementById('aiComposerLength');
+  const signatureSelectEl = document.getElementById('aiComposerSignature');
+  const emailSelectEl = document.getElementById('aiComposerEmailSelect');
+  const contextLabel = document.getElementById('aiComposerContext');
+  const profileLabel = document.getElementById('aiComposerProfile');
+  const statusLabel = document.getElementById('aiComposerStatus');
+  const footerStatusLabel = document.getElementById('aiComposerFooterStatus');
+  const loaderEl = document.getElementById('aiComposerLoader');
+  const resultWrap = document.getElementById('aiComposerResultWrap');
+  const resultTextarea = document.getElementById('aiComposerResult');
+  const copyBtn = document.getElementById('aiComposerCopy');
+  const generateBtn = document.getElementById('aiComposerGenerate');
+  const cancelBtn = document.getElementById('aiComposerCancel');
+  const closeBtn = document.getElementById('aiComposerClose');
+  const launcherBtn = document.getElementById('openAiComposerGlobal');
+  const inlineTrigger = document.getElementById('ed-open-composer');
+
+  let currentContext = null;
+  let isGenerating = false;
+  let previousOverflow = '';
+
+  function toggleResult(show, text = null) {
+    if (!resultWrap || !resultTextarea) return;
+    if (show) {
+      resultWrap.classList.add('show');
+      if (typeof text === 'string') resultTextarea.value = text;
+    } else {
+      resultWrap.classList.remove('show');
+      if (text === null) resultTextarea.value = '';
+    }
+  }
+
+  function toggleLoader(show) {
+    if (!loaderEl || !generateBtn) return;
+    isGenerating = show;
+    loaderEl.style.display = show ? 'block' : 'none';
+    generateBtn.disabled = show;
+    generateBtn.textContent = show ? 'Generuji…' : '✨ Vygenerovat';
+  }
+
+  function updateProfileHint() {
+    if (!profileLabel) return;
+    const settings = window.CURRENT_SETTINGS;
+    if (!settings) {
+      profileLabel.textContent = 'Styl profilu se načítá…';
+      return;
+    }
+    const tone = settings.tone || 'neuvedeno';
+    const length = settings.length || 'neuvedeno';
+    const hasSignature = (settings.signature || '').trim().length > 0;
+    profileLabel.textContent = `Profil: ${tone} • ${length} • ${hasSignature ? 'podpis se připojí' : 'bez podpisu'}`;
+  }
+
+  function updateContextLabel() {
+    if (!contextLabel) return;
+    if (!currentContext || !currentContext.id) {
+      contextLabel.textContent = 'Vyberte e-mail, ke kterému chcete připravit odpověď.';
+      return;
+    }
+    const subj = currentContext.subject || '(bez předmětu)';
+    const sender = currentContext.from || currentContext.replyTo || 'neznámý odesílatel';
+    contextLabel.textContent = `${subj} • ${sender}`;
+  }
+
+  function guessContext() {
+    if (window.__currentEmailCtx && window.__currentEmailCtx.id) {
+      return { ...window.__currentEmailCtx };
+    }
+    if (Array.isArray(allEmails) && allEmails.length > 0) {
+      const email = allEmails[0];
+      return {
+        id: email.id || email.pendingId || '',
+        src: (email._src || email.source || 'gmail').toLowerCase(),
+        account: email.account || localStorage.getItem('primaryEmail') || '',
+        from: email.sender || email.from || '',
+        subject: email.subject || '',
+        date: email.date || '',
+        replyTo: email.replyTo || email.sender || '',
+        originalFrom: email.originalFrom || ''
+      };
+    }
+    return null;
+  }
+
+  function populateEmailOptions(activeCtx) {
+    if (!emailSelectEl) return;
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Vyberte e-mail ze seznamu…';
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(placeholder);
+
+    const seen = new Set();
+    (Array.isArray(allEmails) ? allEmails : []).forEach(email => {
+      if (!email || (!email.id && !email.pendingId)) return;
+      const id = String(email.id || email.pendingId);
+      if (seen.has(id)) return;
+      seen.add(id);
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = `${email.subject || '(bez předmětu)'} — ${(email.sender || email.from || '').trim()}`.slice(0, 120);
+      option.dataset.src = (email._src || email.source || 'gmail').toLowerCase();
+      option.dataset.account = email.account || localStorage.getItem('primaryEmail') || '';
+      option.dataset.from = email.sender || email.from || '';
+      option.dataset.subject = email.subject || '';
+      option.dataset.date = email.date || '';
+      if (activeCtx && String(activeCtx.id) === id) option.selected = true;
+      fragment.appendChild(option);
+    });
+
+    if (activeCtx && activeCtx.id && !seen.has(String(activeCtx.id))) {
+      const extra = document.createElement('option');
+      extra.value = String(activeCtx.id);
+      extra.textContent = `${activeCtx.subject || '(bez předmětu)'} — ${(activeCtx.from || '').trim()}`.slice(0, 120);
+      extra.dataset.src = (activeCtx.src || 'gmail').toLowerCase();
+      extra.dataset.account = activeCtx.account || localStorage.getItem('primaryEmail') || '';
+      extra.dataset.from = activeCtx.from || '';
+      extra.dataset.subject = activeCtx.subject || '';
+      extra.dataset.date = activeCtx.date || '';
+      extra.selected = true;
+      fragment.appendChild(extra);
+    }
+
+    emailSelectEl.innerHTML = '';
+    emailSelectEl.appendChild(fragment);
+  }
+
+  function applyOverrides(opts = {}) {
+    if (instructionsEl && typeof opts.instructions === 'string') {
+      instructionsEl.value = opts.instructions;
+    }
+    if (toneSelectEl) {
+      toneSelectEl.value = typeof opts.toneOverride === 'string' ? opts.toneOverride : '';
+    }
+    if (lengthSelectEl) {
+      lengthSelectEl.value = typeof opts.lengthOverride === 'string' ? opts.lengthOverride : '';
+    }
+    if (signatureSelectEl) {
+      signatureSelectEl.value = opts.includeSignature === false ? 'omit' : 'include';
+    }
+    if (opts.resultText) {
+      toggleResult(true, opts.resultText);
+    } else {
+      toggleResult(false);
+    }
+  }
+
+  function openComposer(ctx = null, opts = {}) {
+    currentContext = ctx ? { ...ctx } : guessContext();
+    populateEmailOptions(currentContext);
+    updateContextLabel();
+    applyOverrides(opts);
+    updateProfileHint();
+    if (typeof ensureSettingsLoaded === 'function') {
+      ensureSettingsLoaded().then(updateProfileHint).catch(() => {});
+    }
+    previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    overlay.classList.add('show');
+    statusLabel && (statusLabel.textContent = '');
+    footerStatusLabel && (footerStatusLabel.textContent = '');
+    toggleLoader(false);
+    setTimeout(() => {
+      if (instructionsEl && (opts.focusInstructions ?? true)) {
+        instructionsEl.focus({ preventScroll: false });
+      }
+    }, 50);
+  }
+
+  function closeComposer() {
+    overlay.classList.remove('show');
+    document.body.style.overflow = previousOverflow || '';
+    toggleLoader(false);
+    footerStatusLabel && (footerStatusLabel.textContent = '');
+  }
+
+  async function generateReply() {
+    if (isGenerating) return;
+    if (!currentContext || !currentContext.id) {
+      if (statusLabel) statusLabel.textContent = 'Vyberte prosím e-mail, pro který mám připravit odpověď.';
+      emailSelectEl?.focus();
+      toggleResult(false);
+      return;
+    }
+
+    const dashboardUserEmail = localStorage.getItem('userEmail');
+    const accountEmail = currentContext.account || localStorage.getItem('primaryEmail');
+    if (!dashboardUserEmail || !accountEmail) {
+      if (statusLabel) statusLabel.textContent = 'Chybí přihlášený uživatel nebo vybraný e-mailový účet.';
+      return;
+    }
+
+    const instructions = instructionsEl?.value?.trim() || '';
+    const toneOverride = toneSelectEl?.value?.trim() || '';
+    const lengthOverride = lengthSelectEl?.value?.trim() || '';
+    const includeSignature = !signatureSelectEl || signatureSelectEl.value !== 'omit';
+
+    const payload = {
+      dashboardUserEmail,
+      instructions,
+      toneOverride,
+      lengthOverride,
+      includeSignature
+    };
+
+    let endpoint = '';
+    let body;
+    const src = (currentContext.src || '').toLowerCase();
+    if (src === 'custom') {
+      endpoint = `${window.BACKEND}/api/custom-email/analyze-email`;
+      body = { ...payload, emailAddress: accountEmail, uid: currentContext.id };
+    } else {
+      endpoint = `${window.BACKEND}/api/gmail/analyze-email`;
+      body = { ...payload, email: accountEmail, messageId: currentContext.id };
+    }
+
+    toggleLoader(true);
+    if (statusLabel) statusLabel.textContent = '';
+    if (footerStatusLabel) footerStatusLabel.textContent = '';
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data?.message || 'Generování odpovědi selhalo.');
+      }
+      const replyBody = String(data?.analysis?.suggested_reply || '').trim();
+      if (!replyBody) {
+        throw new Error('AI neposlala návrh odpovědi.');
+      }
+      toggleResult(true, replyBody);
+      if (footerStatusLabel) footerStatusLabel.textContent = 'Návrh připraven. Zkopírujte ho nebo vložte do odpovědi.';
+      if (typeof showToast === 'function') {
+        showToast('AI návrh je připraven.', 'success');
+      }
+    } catch (err) {
+      if (statusLabel) statusLabel.textContent = err.message || 'Nepodařilo se připravit návrh odpovědi.';
+      toggleResult(false);
+    } finally {
+      toggleLoader(false);
+    }
+  }
+
+  function onCopy() {
+    if (!resultTextarea) return;
+    const text = resultTextarea.value;
+    if (!text) return;
+    navigator.clipboard?.writeText(text).then(() => {
+      if (typeof showToast === 'function') {
+        showToast('Odpověď zkopírována do schránky.', 'success');
+      }
+    }).catch(() => {
+      if (typeof showToast === 'function') {
+        showToast('Nepodařilo se zkopírovat odpověď.', 'error');
+      }
+    });
+  }
+
+  function onEmailSelectChange() {
+    const option = emailSelectEl?.selectedOptions?.[0];
+    if (!option || !option.value) {
+      currentContext = null;
+      updateContextLabel();
+      return;
+    }
+    currentContext = {
+      id: option.value,
+      src: (option.dataset.src || '').toLowerCase() || 'gmail',
+      account: option.dataset.account || localStorage.getItem('primaryEmail') || '',
+      from: option.dataset.from || '',
+      subject: option.dataset.subject || '',
+      date: option.dataset.date || '',
+      replyTo: option.dataset.from || ''
+    };
+    window.__currentEmailCtx = { ...currentContext };
+    updateContextLabel();
+  }
+
+  emailSelectEl?.addEventListener('change', onEmailSelectChange);
+  generateBtn?.addEventListener('click', generateReply);
+  cancelBtn?.addEventListener('click', closeComposer);
+  closeBtn?.addEventListener('click', closeComposer);
+  copyBtn?.addEventListener('click', onCopy);
+  overlay.addEventListener('click', (evt) => {
+    if (evt.target === overlay) closeComposer();
+  });
+  document.addEventListener('keydown', (evt) => {
+    if (evt.key === 'Escape' && overlay.classList.contains('show')) {
+      closeComposer();
+    }
+  });
+
+  launcherBtn?.addEventListener('click', () => {
+    openComposer(guessContext());
+  });
+
+  inlineTrigger?.addEventListener('click', () => {
+    const inlineCtx = window.__currentEmailCtx
+      || buildEmailContextFromRow(document.querySelector(`.email-item[data-id="${window.__currentEmailCtx?.id || ''}"]`));
+    const instructions = document.getElementById('ed-ai-instructions')?.value || '';
+    const tone = document.getElementById('ed-ai-tone')?.value || '';
+    openComposer(inlineCtx, { instructions, toneOverride: tone, focusInstructions: !instructions });
+  });
+
+  return { open: openComposer, close: closeComposer };
+})();
+
+if (aiComposer) {
+  window.aiComposer = aiComposer;
+}
 
 // Pomocná funkce: aktuálně vybraný připojený účet (přepiš, pokud už něco máš)
 function getSelectedAccountEmail() {
@@ -4195,8 +4832,10 @@ function renderEmailList(emails, total) {
                 <button class="btn btn-success btn-sm approve-btn" data-pending-id="${pendingIdAttr}" data-src="${srcAttr}">✅ Schválit</button>
                 <button class="btn btn-danger btn-sm reject-btn" data-pending-id="${pendingIdAttr}" data-src="${srcAttr}">❌ Zamítnout</button>
               </div>`
-        : `<button class="btn btn-primary analyze-btn" data-message-id="${email.id}" style="margin-top: 5px;">Analyzovat 🤖</button>`;
-
+        : `<div class="list-action-group">
+             <button class="btn btn-primary analyze-btn" data-message-id="${email.id}" type="button">Analyzovat 🤖</button>
+             <button class="btn quick-ai-btn" data-message-id="${email.id}" type="button">AI odpověď ✨</button>
+           </div>`;
       const replyPreviewRaw = (email.replyBody || '').trim();
       const replyPreview = replyPreviewRaw ? replyPreviewRaw.slice(0, 180) + (replyPreviewRaw.length > 180 ? '…' : '') : '';
       const summaryText = (email.summary || email.snippet || '').trim();
@@ -4218,7 +4857,8 @@ function renderEmailList(emails, total) {
       ];
       if (email.replyTo) datasetParts.push(`data-reply-to="${escapeHtml(email.replyTo)}"`);
       if (email.originalFrom) datasetParts.push(`data-from-original="${escapeHtml(email.originalFrom)}"`);
-      if (email.account) datasetParts.push(`data-account="${escapeHtml(email.account)}"`);
+      const accountValue = email.account || localStorage.getItem('primaryEmail') || '';
+      if (accountValue) datasetParts.push(`data-account="${escapeHtml(accountValue)}"`);
       if (pendingIdValue !== null && pendingIdValue !== undefined) datasetParts.push(`data-pending-id="${pendingIdAttr}"`);
       if (email.messageId) datasetParts.push(`data-message-id="${escapeHtml(email.messageId)}"`);
        if (email._pending) datasetParts.push('data-pending="1"');
@@ -5219,6 +5859,21 @@ document.getElementById('tpl-save-btn')?.addEventListener('click', (e) => {
 
     if (emailListContainer) {
         emailListContainer.addEventListener('click', async (event) => {
+            const quickAiButton = event.target.closest('.quick-ai-btn');
+            if (quickAiButton) {
+                event.preventDefault();
+                event.stopPropagation();
+                const row = quickAiButton.closest('.email-item');
+                const ctx = buildEmailContextFromRow(row);
+                if (!ctx || !ctx.id) {
+                    showToast('Nepodařilo se připravit kontext e-mailu.', 'error');
+                    return;
+                }
+                window.__currentEmailCtx = ctx;
+                window.aiComposer?.open(ctx, { focusInstructions: true });
+                return;
+            }
+
             const analyzeButton = event.target.closest('.analyze-btn');
             if (analyzeButton) {
                 currentMessageId = analyzeButton.dataset.messageId;
@@ -5270,7 +5925,9 @@ modalBody.innerHTML = `
 
                     // z karty zprávy si vezmeme zdroj (gmail/custom)
 const item = analyzeButton.closest('.email-item');
-let src = item?.dataset?.src;
+const analyzeCtx = buildEmailContextFromRow(item);
+window.__currentEmailCtx = analyzeCtx || window.__currentEmailCtx;
+let src = (analyzeCtx?.src || item?.dataset?.src || '').toLowerCase();
  // 1) pokud je název listu/hlavička "Custom IMAP", ber to jako custom
  const hdr = document.getElementById('email-count');
  const headerText = hdr?.textContent || '';
@@ -5332,12 +5989,12 @@ if (data.success && modalBody) {
       <textarea class="form-control" id="response-editor" style="display: none;"></textarea>
     </div>`;
 
-  const datasetReplyTo = item?.dataset?.replyTo || '';
-  const datasetFrom = item?.dataset?.from || '';
-  const datasetOriginalFrom = item?.dataset?.fromOriginal || datasetFrom;
+  const datasetReplyTo = analyzeCtx?.replyTo || item?.dataset?.replyTo || '';
+  const datasetFrom = analyzeCtx?.from || item?.dataset?.from || '';
+  const datasetOriginalFrom = analyzeCtx?.originalFrom || item?.dataset?.fromOriginal || datasetFrom;
   window.CURRENT_EMAIL = {
     id: currentMessageId,
-    subject: item?.querySelector('.email-subject')?.textContent?.trim() || '',
+    subject: analyzeCtx?.subject || item?.querySelector('.email-subject')?.textContent?.trim() || '',
     from: datasetReplyTo || datasetFrom || '',
     replyTo: datasetReplyTo || '',
     originalFrom: datasetOriginalFrom || '',
@@ -5430,29 +6087,16 @@ if (dlg) dlg.classList.add('modal-xl');
 
  const item = event.target.closest('.email-item');
     if (item && !event.target.closest('.analyze-btn')) {
-      const id  = item.dataset.id;
-      const src = (item.dataset.src || '').toLowerCase(); // 'gmail' | 'custom'
-      const from = item.dataset.from || '';
-      const subject = item.querySelector('.email-subject')?.textContent?.trim() || '';
-      const dateTxt = item.querySelector('.email-meta > div')?.textContent?.trim() || '';
-      const pendingId = item.dataset.pendingId || '';
+      const ctx = buildEmailContextFromRow(item);
+      window.__currentEmailCtx = ctx;
+      const id  = ctx?.id || item.dataset.id;
+      const src = (ctx?.src || item.dataset.src || 'gmail').toLowerCase();
+      const from = ctx?.from || item.dataset.from || '';
+      const subject = ctx?.subject || item.querySelector('.email-subject')?.textContent?.trim() || '';
+      const dateTxt = ctx?.date || item.querySelector('.email-meta > div')?.textContent?.trim() || '';
+      const pendingId = ctx?.pendingId || item.dataset.pendingId || '';
 
-      const emailEntry = allEmails.find(entry => {
-        if (pendingId) {
-          return String(entry?.pendingId ?? '') === String(pendingId);
-        }
-        return String(entry?.id ?? '') === String(id);
-      });
-
-      window.__currentEmailCtx = {
-        id,                                   // stejné "id" co už máš (messageId nebo UID)
-        src,                                  // 'gmail' | 'custom'
-        account: (item.dataset.account || localStorage.getItem('primaryEmail') || ''),
-        from,
-        subject,
-        date: dateTxt,
-        pendingId: pendingId || (emailEntry?.pendingId ? String(emailEntry.pendingId) : '')
-      };
+      const emailEntry = findEmailEntryById(id, pendingId);
 
       // otevři modal + loading
       const modal = document.getElementById('emailDetailModal');
@@ -5488,9 +6132,11 @@ if (dlg) dlg.classList.add('modal-xl');
       document.body.style.overflow = 'hidden';
 
       try {
-        const dashboardUserEmail = localStorage.getItem('userEmail');
+       const dashboardUserEmail = localStorage.getItem('userEmail');
         const primaryEmail       = localStorage.getItem('primaryEmail');
-        const isCustom = (src === 'custom') || /^\d+$/.test(String(id)); // UID = custom
+        const isCustom = (src === 'custom');
+
+        const requestId = ctx?.id || id;
 
         const shouldFetchBody = !(emailEntry && emailEntry._pending && emailEntry.originalBody);
 
@@ -5498,9 +6144,9 @@ if (dlg) dlg.classList.add('modal-xl');
           // Volání lehkého backend endpointu pro tělo zprávy (viz změny v serveru níže)
           let url;
           if (isCustom) {
-            url = `${window.BACKEND}/api/custom-email/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&uid=${encodeURIComponent(id)}`;
+            url = `${window.BACKEND}/api/custom-email/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&uid=${encodeURIComponent(requestId)}`;
           } else {
-            url = `${window.BACKEND}/api/gmail/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}&messageId=${encodeURIComponent(id)}`;
+            url = `${window.BACKEND}/api/gmail/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}&messageId=${encodeURIComponent(requestId)}`;
           }
 
           const r = await fetch(url);
@@ -6104,64 +6750,30 @@ function syncProMeta(){
 
 // "Odpovědět" spustí stejnou AI analýzu jako tlačítko "Analyzovat 🤖"
 (function wireReplyToAI(){
-  const triggerAiFromDetail = async () => {
+  const triggerAiFromDetail = () => {
     const ctx = window.__currentEmailCtx;
     if (!ctx || !ctx.id) {
-      alert('Chybí kontext zprávy – otevři nejdřív detail e-mailu.');
+      if (typeof showToast === 'function') {
+        showToast('Nejprve otevřete detail konkrétního e-mailu.', 'warning');
+      } else {
+        alert('Chybí kontext zprávy – otevři nejdřív detail e-mailu.');
+      }
       return;
     }
 
-    // --- zavři otevřený detailový modal, ať nepřekáží ---
     const detailModal = document.getElementById('emailDetailModal');
     if (detailModal) {
       detailModal.classList.remove('show');
     }
-    const readerModal = document.getElementById('emailReader');
-    if (readerModal) {
-      readerModal.classList.remove('show');
-    }
-    // vrať scrollování body, pokud bylo zamknuté
     document.body.style.overflow = '';
 
-    // 1) Zkus najít původní řádek v seznamu a "kliknout" na jeho tlačítko .analyze-btn
-    const row = document.querySelector(`.email-item[data-id="${ctx.id}"]`);
-    const btn = row?.querySelector('.analyze-btn');
-    if (btn) {
-      btn.click();        // → použije přesně tvoji existující analýzu v UI
-      return;
-    }
-
-    // 2) Fallback: zavolej přímo backend analýzu (kdyby řádek nebyl v DOM)
-    try {
-      const dashboardUserEmail = localStorage.getItem('userEmail');
-      const primaryEmail       = ctx.account || localStorage.getItem('primaryEmail');
-
-      const url  = ctx.src === 'gmail'
-        ? `${window.BACKEND}/api/gmail/analyze-email`
-        : `${window.BACKEND}/api/custom-email/analyze-email`;
-
-      const body = ctx.src === 'gmail'
-        ? { dashboardUserEmail, email: primaryEmail, messageId: ctx.id }
-        : { dashboardUserEmail, emailAddress: primaryEmail, uid: ctx.id };
-
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify(body)
-      });
-      const j = await r.json();
-      if (!r.ok || !j.success) throw new Error(j.message || 'AI analýza selhala.');
-
-      // zobraz výsledek stejně jako to dělá tvoje AI UI (zachovej si vlastní funkci, název jen příklad)
-      if (typeof window.showAiAnalysisModal === 'function') {
-        window.showAiAnalysisModal(j);  // pokud máš vlastní vykreslení AI modalu
-      } else {
-        alert('AI hotovo – připoj sem volání své funkce pro zobrazení výsledku.');
-        console.log('AI analysis result:', j);
-      }
-    } catch (e) {
-      alert(e.message || 'Nepodařilo se spustit AI analýzu.');
-    }
+    const inlineInstructions = document.getElementById('ed-ai-instructions')?.value || '';
+    const inlineTone = document.getElementById('ed-ai-tone')?.value || '';
+    window.aiComposer?.open(ctx, {
+      instructions: inlineInstructions,
+      toneOverride: inlineTone,
+      focusInstructions: !inlineInstructions
+    });
   };
 
   // napoj obě tlačítka v headeru/footru detailu
@@ -6559,6 +7171,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
