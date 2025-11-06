@@ -2020,47 +2020,48 @@
 
 
 
-                <div class="page-content" id="emails">
-                <div class="emails-header">
-                    <h3>Správa emailů</h3>
-                    <br>
-    <div class="search-container">
-        <div class="search-box">
-            <span class="search-icon">🔍</span>
-            <input type="search" class="form-control" placeholder="Vyhledat emaily " id="search-bar">
-        </div>
-    </div>
-    <div class="filter-row">
-        <select class="form-control" id="status-filter">
-            <option value="all">Všechny stavy</option>
-                    <option value="unread">📧 Nepřečtené</option>
-                    <option value="processed">✅ Zpracované</option>
-                    <option value="approval">⏳ Čekající</option>
-                    <option value="spam">🚫 Spam</option>
-        </select>
-        <select class="form-control" id="period-filter">
-            <option value="all">Všechna období</option>
-                    <option value="today">📅 Dnes</option>
-                    <option value="week">📅 Tento týden</option>
-                    <option value="month">📅 Tento měsíc</option>
-        </select>
-       
-    </div>
-</div>
+               <div class="page-content" id="emails">
+                    <div class="emails-header">
+                        <h3>Správa emailů</h3>
+                        <br>
+                        <div class="search-container">
+                            <div class="search-box">
+                                <span class="search-icon">🔍</span>
+                                <input type="search" class="form-control" placeholder="Vyhledat emaily " id="search-bar">
+                            </div>
+                        </div>
+                        <div class="filter-row">
+                            <select class="form-control" id="status-filter">
+                                <option value="all">Všechny stavy</option>
+                                <option value="unread">📧 Nepřečtené</option>
+                                <option value="processed">✅ Zpracované</option>
+                                <option value="approval">⏳ Čekající</option>
+                                <option value="spam">🚫 Spam</option>
+                            </select>
+                            <select class="form-control" id="period-filter">
+                                <option value="all">Všechna období</option>
+                                <option value="today">📅 Dnes</option>
+                                <option value="week">📅 Tento týden</option>
+                                <option value="month">📅 Tento měsíc</option>
+                            </select>
+                        </div>
+                    </div>
 
+                    <div class="email-list">
+                        <div class="email-list-header">
+                            <h3 id="email-count-header">Všechny emaily</h3>
+                        </div>
+                        <div id="email-list-container">
+                            <div style="padding: 2rem; text-align: center; color: #94a3b8;">
+                                📧 Načítám emaily...
+                            </div>
+                        </div>
+                        <div id="email-pagination" class="pagination-container" style="display:none;"></div>
+                    </div>
+                </div>
 
-<div class="email-list">
-    <div class="email-list-header">
-        <h3 id="email-count-header">Všechny emaily</h3>
-    </div>
-    <div id="email-list-container">
-        <div style="padding: 2rem; text-align: center; color: #94a3b8;">
-            📧 Načítám emaily...
-        </div>
-    </div>
-    <div id="email-pagination" class="pagination-container" style="display:none;"></div>
-</div>
-                    <div class="modal-overlay" id="templatePicker">
+                <!-- Template Picker Modal -->
+                <div class="modal-overlay" id="templatePicker">
   <div class="modal">
     <div class="modal-header">
       <h2 class="modal-title">📚 Vyberte šablonu</h2>
@@ -7296,6 +7297,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
