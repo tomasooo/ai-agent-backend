@@ -154,22 +154,13 @@
             color: white;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             text-decoration: none;
         }
 
-        .logo img {
-            height: 100px;
-            width: 100px;
-            border-radius: 10px;
-            object-fit: contain;
-            background: none; 
-            padding: 0;       
-            box-shadow: none; 
-        }
-
-        .logo span {
-            display: inline-block;
+        .logo::before {
+            content: "🤖";
+            font-size: 1.8rem;
         }
 
         .back-link {
@@ -687,10 +678,7 @@
     <header class="header">
         <div class="container">
             <div class="header-content">
-                 <a href="#" class="logo">
-                    <img src="logo-Agent.png" alt="Logo AI Emailový Agent">
-                    <span>AI Emailový Agent</span>
-                </a>
+                 <a href="#" class="logo">AI Emailový Agent</a>
                 <a href="home.html" class="back-link">← Zpět na hlavní stránku</a>
             </div>
         </div>
@@ -1026,6 +1014,7 @@
 
 </body>
 </html>
+
 
 
 
