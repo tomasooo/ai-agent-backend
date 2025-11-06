@@ -3182,10 +3182,11 @@ async function handleCustomAnalyzeEmail(req, res) {
   let db;
   try {
     // podpora POST (body) i GET (query)
-    const src = req.method === 'GET' ? (req.query || {}) : (req.body || {});
+   const src = req.method === 'GET' ? (req.query || {}) : (req.body || {});
     const { dashboardUserEmail, emailAddress, uid } = src;
     const rawInstructions = typeof src.instructions === 'string' ? src.instructions : '';
     const instructions = rawInstructions.trim();
+    const hasInstructionsField = Object.prototype.hasOwnProperty.call(src, 'instructions');
     const toneOverride = typeof src.toneOverride === 'string' ? src.toneOverride.trim() : '';
     const lengthOverride = typeof src.lengthOverride === 'string' ? src.lengthOverride.trim() : '';
     let includeSignature = true;
@@ -3195,6 +3196,9 @@ async function handleCustomAnalyzeEmail(req, res) {
 
     if (!dashboardUserEmail || !emailAddress || !uid) {
       return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, emailAddress, uid).' });
+    }
+    if (hasInstructionsField && !instructions) {
+      return res.status(400).json({ success:false, message:'Zadejte text odpovědi, který mám upravit.' });
     }
 
     // načíst limity
@@ -3299,9 +3303,11 @@ Pravidla pro tvorbu "suggested_reply":
       faqContext += '\n---\n\n';
     }
     
-    const trimmedInstruction = instructions ? instructions.slice(0, 1200) : '';
-    const instructionBlock = trimmedInstruction
-      ? `Specifická přání uživatele k odpovědi:\n"""${trimmedInstruction}"""\nDodrž je při psaní suggested_reply.\n\n`
+    const trimmedDraft = instructions.slice(0, 1600);
+    const instructionBlock = hasInstructionsField && instructions
+      ? `Uživatel již připravil návrh odpovědi, který chce pouze stylisticky upravit. Původní text odpovědi:
+"""${trimmedDraft}"""
+Tvůj úkol: uprav tento text tak, aby byl plynulý, profesionální a odpovídal STYLE_PROFILE. Zachovej význam, fakta, závazky i strukturu. Nepřidávej žádné nové informace, témata ani sliby, které se v původním textu nenachází. Pozdravy a podpis, pokud jsou uvedeny, ponech. Můžeš upravit formulace, větnou skladbu a pravopis, ale nevynechávej důležité věty.\n\n`
       : '';
 
     const task = `${faqContext}${instructionBlock}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
@@ -4052,11 +4058,15 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
   const email = (req.body && req.body.email) || undefined;
   const rawInstructions = typeof req.body?.instructions === 'string' ? req.body.instructions : '';
   const instructions = rawInstructions.trim();
+  const hasInstructionsField = Object.prototype.hasOwnProperty.call(req.body || {}, 'instructions');
   const toneOverride = typeof req.body?.toneOverride === 'string' ? req.body.toneOverride.trim() : '';
   const lengthOverride = typeof req.body?.lengthOverride === 'string' ? req.body.lengthOverride.trim() : '';
   const includeSignature = req.body?.includeSignature === false || req.body?.includeSignature === 'false'
     ? false
     : true;
+  if (hasInstructionsField && !instructions) {
+    return res.status(400).json({ success: false, message: 'Zadejte text odpovědi, který mám upravit.' });
+  }
   if (!messageId && emailAddress && uid) {
     // FE poslal custom data omylem na /api/gmail/analyze-email -> obsloužíme
     return handleCustomAnalyzeEmail(req, res);
@@ -4161,9 +4171,11 @@ Pravidla pro tvorbu "suggested_reply":
       faqContext += '\n---\n\n';
     }
 
-   const trimmedInstruction = instructions ? instructions.slice(0, 1200) : '';
-    const instructionBlock = trimmedInstruction
-      ? `Specifická přání uživatele k odpovědi:\n"""${trimmedInstruction}"""\nDodrž je při psaní suggested_reply.\n\n`
+   const trimmedDraft = instructions.slice(0, 1600);
+    const instructionBlock = hasInstructionsField && instructions
+      ? `Uživatel již připravil návrh odpovědi, který chce pouze stylisticky upravit. Původní text odpovědi:
+"""${trimmedDraft}"""
+Tvůj úkol: uprav tento text tak, aby byl plynulý, profesionální a odpovídal STYLE_PROFILE. Zachovej význam, fakta, závazky i strukturu. Nepřidávej žádné nové informace, témata ani sliby, které se v původním textu nenachází. Pozdravy a podpis, pokud jsou uvedeny, ponech. Můžeš upravit formulace, větnou skladbu a pravopis, ale nevynechávej důležité věty.\n\n`
       : '';
 
     const task = `${faqContext}${instructionBlock}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
@@ -5377,6 +5389,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
