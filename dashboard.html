@@ -304,20 +304,45 @@
     flex-wrap:wrap;
 }
 .ai-composer-footer .btn-primary { min-width:180px; }
-.ai-inline-card .pro-body-card__content { display:flex; flex-direction:column; gap:.75rem; }
-.ai-inline-input { min-height:90px; resize:vertical; }
-.ai-inline-controls { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; justify-content:space-between; }
+.ai-inline-card { grid-column: 1 / -1; }
+.ai-inline-card .pro-body-card__content { display:grid; gap:1rem; }
+.ai-inline-input { min-height:120px; resize:vertical; }
+.ai-inline-controls { display:flex; flex-direction:column; gap:.9rem; align-items:stretch; padding:1rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; }
 .ai-inline-hint {
-    flex:1;
-    min-width:220px;
     background:#eef2ff;
     border-radius:12px;
-    padding:.65rem .9rem;
-    color:#475569;
+    padding:.9rem 1.1rem;
+    color:#1e293b;
     font-size:.9rem;
-    line-height:1.4;
+    line-height:1.5;
 }
-.ai-inline-note { font-size:.85rem; color:#64748b; }
+.ai-inline-hint strong { display:block; margin-bottom:.35rem; }
+.ai-inline-note { font-size:.85rem; color:#475569; }
+
+@media (min-width: 900px) {
+    .ai-inline-card .pro-body-card__content {
+        grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+        align-items: stretch;
+        gap: 1.2rem 1.6rem;
+    }
+    .ai-inline-card .pro-body-card__content > div:first-child {
+        grid-row: 1 / span 2;
+    }
+    .ai-inline-controls {
+        padding: 1.25rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+    }
+    .ai-inline-controls .btn {
+        align-self: flex-end;
+    }
+    .ai-inline-note {
+        grid-column: 1 / -1;
+        margin-top: -0.15rem;
+    }
+}
 
 .analysis-section {
     background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px;
@@ -2090,8 +2115,8 @@
         <div class="ai-composer-profile" id="aiComposerProfile">Styl profilu se načítá…</div>
       </div>
       <div class="ai-composer-field">
-        <label for="aiComposerInstructions">Co má odpověď obsahovat?</label>
-        <textarea id="aiComposerInstructions" placeholder="Shrňte hlavní body, které má AI do odpovědi přidat…"></textarea>
+        <label for="aiComposerInstructions">Vložte svůj návrh odpovědi ke stylistické úpravě</label>
+        <textarea id="aiComposerInstructions" placeholder="Napište nebo vložte svůj text odpovědi. AI ho jen uhladí a nic nového nepřidá…"></textarea>
       </div>
      <div class="ai-composer-note">
         Tón, délka i podpis se automaticky přebírají z nastavení připojeného e-mailového účtu.
@@ -2110,7 +2135,7 @@
       <div class="ai-composer-status" id="aiComposerFooterStatus"></div>
       <div style="display:flex; gap:.75rem; flex-wrap:wrap; justify-content:flex-end;">
         <button class="btn btn-secondary" id="aiComposerCancel" type="button">Zavřít</button>
-        <button class="btn btn-primary" id="aiComposerGenerate" type="button">✨ Vygenerovat</button>
+        <button class="btn btn-primary" id="aiComposerGenerate" type="button">✨ Upravit odpověď</button>
       </div>
     </div>
   </div>
@@ -2181,17 +2206,17 @@
         <div class="pro-body-card__title">Rychlá AI odpověď</div>
         <div class="pro-body-card__content">
           <div>
-            <label class="form-label" for="ed-ai-instructions" style="margin-bottom:.35rem;">Co má odpověď obsahovat?</label>
-            <textarea id="ed-ai-instructions" class="form-control ai-inline-input" rows="3" placeholder="Napište body nebo tón odpovědi, který má AI dodržet…"></textarea>
+            <label class="form-label" for="ed-ai-instructions" style="margin-bottom:.35rem;">Vložte svůj text odpovědi</label>
+            <textarea id="ed-ai-instructions" class="form-control ai-inline-input" rows="3" placeholder="Zkopírujte sem odpověď, kterou chcete jen stylisticky vylepšit…"></textarea>
           </div>
           <div class="ai-inline-controls">
             <div class="ai-inline-hint">
-              <strong>Styl profilu</strong><br>
-              Tón, délka i podpis se převezmou z nastavení připojeného účtu.
+              <strong>AI jen uhladí váš text</strong>
+              Zachová význam, důležité informace i podpis podle nastavení účtu.
             </div>
-            <button class="btn btn-primary" id="ed-open-composer" type="button">✨ Navrhnout odpověď</button>
+            <button class="btn btn-primary" id="ed-open-composer" type="button">✨ Upravit odpověď</button>
           </div>
-          <p class="ai-inline-note">AI použije uložené nastavení účtu automaticky. Výsledek si můžete upravit před odesláním.</p>
+          <p class="ai-inline-note">AI nepřidá žádné nové body – pouze zlepší formulace podle stylu účtu.</p>
         </div>
       </div>
     </div>
@@ -3260,7 +3285,7 @@ const aiComposer = (() => {
     isGenerating = show;
     loaderEl.style.display = show ? 'block' : 'none';
     generateBtn.disabled = show;
-    generateBtn.textContent = show ? 'Generuji…' : '✨ Vygenerovat';
+    generateBtn.textContent = show ? 'Upravuji…' : '✨ Upravit odpověď';
   }
 
   function updateProfileHint() {
@@ -3407,6 +3432,12 @@ const aiComposer = (() => {
     }
 
     const instructions = instructionsEl?.value?.trim() || '';
+    if (!instructions) {
+      toggleResult(false);
+      if (statusLabel) statusLabel.textContent = 'Vložte text odpovědi, který mám upravit.';
+      instructionsEl?.focus({ preventScroll: false });
+      return;
+    }
     const toneOverride = (CURRENT_SETTINGS?.tone || '').trim();
     const lengthOverride = (CURRENT_SETTINGS?.length || '').trim();
     const includeSignature = Boolean(CURRENT_SETTINGS?.signature?.trim());
@@ -7113,6 +7144,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
