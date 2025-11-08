@@ -2924,38 +2924,10 @@ let lastEmailTotal = 0;
 function showEmailDetailModal(modal) {
   if (!modal) return;
 
-  // Zobrazíme overlay hned, aby klik nečekal na další interakci
-  modal.style.display = 'flex';
-  modal.setAttribute('aria-hidden', 'false');
-
-  // Přidání třídy ve stejném framu zajistí, že se nevynechá první vykreslení
-  modal.classList.add('show');
-}
-
-function hideEmailDetailModal(modal) {
-  if (!modal) return;
-
-  modal.classList.remove('show');
-  modal.setAttribute('aria-hidden', 'true');
-
-  const finalize = () => {
-    modal.style.display = 'none';
-  };
-
-  const { transitionDuration, transitionDelay } = getComputedStyle(modal);
-  const hasTransition = (parseFloat(transitionDuration) || 0) > 0 || (parseFloat(transitionDelay) || 0) > 0;
-
-  if (hasTransition) {
-    modal.addEventListener('transitionend', finalize, { once: true });
-    // Pojistka pro případy, kdy se událost nevyvolá (např. display:none)
-    setTimeout(finalize, 350);
-  } else {
-    finalize();
+  if (modal.parentElement !== document.body) {
+    document.body.appendChild(modal);
   }
-}
 
-function showEmailDetailModal(modal) {
-  if (!modal) return;
   modal.style.display = 'flex';
   modal.setAttribute('aria-hidden', 'false');
   requestAnimationFrame(() => modal.classList.add('show'));
@@ -2963,6 +2935,7 @@ function showEmailDetailModal(modal) {
 
 function hideEmailDetailModal(modal) {
   if (!modal) return;
+
   modal.classList.remove('show');
   modal.setAttribute('aria-hidden', 'true');
 
@@ -7351,6 +7324,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
