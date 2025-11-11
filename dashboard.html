@@ -13,19 +13,23 @@
 
 /* === PRO EMAIL MODAL === */
 .pro-modal {
-  padding: 0;
+  padding: 12px;
   overflow: hidden;
-  border-radius: 18px;
+  border-radius: 20px;
   box-shadow: 0 20px 60px rgba(0,0,0,.25);
   max-height: min(920px, 90vh);
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  background: linear-gradient(160deg, rgba(14,165,233,0.18) 0%, rgba(59,130,246,0.14) 48%, rgba(99,102,241,0.12) 100%);
 }
 .pro-modal__header {
-  display:flex; align-items:center; justify-content:space-between; gap:1rem;
-  padding: 16px 18px;
+  display:flex; align-items:center; justify-content:space-between; gap:.85rem;
+  padding: 12px 16px;
   background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 60%, #6366f1 100%);
   color:#fff;
+  border-radius: 16px;
+  box-shadow: 0 6px 20px rgba(14, 116, 233, 0.28);
 }
 .pro-modal__id { display:flex; align-items:center; gap: 12px; min-width:0; }
 .pro-headings { min-width:0; }
@@ -54,16 +58,19 @@
 .pro-close:hover { background: rgba(255,255,255,.28); }
 
 .pro-modal__body {
-  padding: 18px;
+  padding: 16px 18px 18px;
   display:grid;
-  grid-template-columns: minmax(250px, 320px) minmax(0,1fr);
-  gap: 20px;
+  grid-template-columns: minmax(220px, 300px) minmax(0,1fr);
+  gap: 16px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
   align-items: stretch;
-  padding-bottom: clamp(72px, 12vh, 140px);
-  scroll-padding-bottom: clamp(72px, 12vh, 140px);
+  padding-bottom: clamp(66px, 11vh, 120px);
+  scroll-padding-bottom: clamp(66px, 11vh, 120px);
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 18px 40px rgba(15,23,42,0.12);
 }
 .pro-modal__body > * { min-width:0; }
 @media (max-width: 860px) {
@@ -74,24 +81,29 @@
 }
 
 .pro-meta {
-  background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 14px; padding: 12px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 14px;
+  padding: 10px 12px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
 }
-.pro-meta__row { display:grid; grid-template-columns: 110px 1fr; gap: 12px; padding: 10px 8px; align-items:start; }
+.pro-meta__row { display:grid; grid-template-columns: 108px 1fr; gap: 10px; padding: 10px 6px; align-items:start; }
 .pro-meta__label { font-size:.8rem; color:#64748b; }
 .pro-meta__value { font-size:.95rem; color:#0f172a; word-break:break-word; overflow-wrap:anywhere; }
 
 .pro-body-card {
   background:#ffffff;
-  border:1px solid #e5e7eb;
+  border:1px solid rgba(148, 163, 184, 0.35);
   border-radius: 14px;
   overflow:hidden;
   display:flex;
   flex-direction:column;
   min-height:0;
+  box-shadow: 0 10px 24px rgba(15,23,42,0.08);
 }
-.pro-body-card__title { padding:10px 14px; font-weight:600; color:#0f172a; background:#f8fafc; border-bottom:1px solid #e5e7eb; }
+.pro-body-card__title { padding:12px 16px; font-weight:600; color:#0f172a; background:#f8fafc; border-bottom:1px solid rgba(148,163,184,0.35); }
 .pro-body-card__content {
-  padding: 16px 14px;
+  padding: 18px 16px;
   white-space: pre-wrap;
   line-height:1.55;
   color:#111827;
@@ -99,10 +111,10 @@
 }
 #ed-body {
   overflow-y: auto;
-  max-height: clamp(420px, calc(88vh - 260px), 820px);
-  min-height: clamp(320px, 40vh, 520px);
-  padding-right: 4px;
-  scrollbar-gutter: stable;
+  max-height: clamp(460px, calc(88vh - 220px), 840px);
+  min-height: clamp(360px, 45vh, 640px);
+  padding-right: 6px;
+  scrollbar-gutter: stable both-edges;
 }
 @media (max-width: 860px) {
   #ed-body {
@@ -313,26 +325,27 @@
     width: 100%;
     max-width: none;
     align-self: stretch;
-    min-height: clamp(280px, 42vh, 460px);
+    min-height: clamp(300px, 44vh, 500px);
     display: flex;
     flex-direction: column;
 }
 .ai-inline-card .pro-body-card__title { display:flex; align-items:center; gap:.75rem; }
 .ai-inline-icon { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; font-size:1.15rem; }
 .ai-inline-content {
-    display:grid;
-    gap:1.4rem;
+    display:flex;
+    gap:1.25rem;
     align-items:stretch;
-    grid-template-columns: minmax(0, 1fr);
     flex: 1;
     min-height: 0;
+    flex-wrap:wrap;
 }
 .ai-inline-main {
     display:flex;
     flex-direction:column;
     gap:.75rem;
-    min-width:0;
+    min-width:260px;
     min-height:0;
+    flex:1 1 340px;
 }
 .ai-inline-lead { font-size:.95rem; color:#475569; line-height:1.55; }
 .ai-inline-input {
@@ -349,16 +362,16 @@
     min-width:0;
 }
 .ai-inline-input:focus { outline:none; border-color:#818cf8; box-shadow:0 0 0 3px rgba(99,102,241,0.18); background:#fff; }
-.ai-inline-side { display:flex; flex-direction:column; gap:1rem; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:16px; padding:1.1rem 1.25rem; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6); min-width:0; align-self:stretch; }
+.ai-inline-side { display:flex; flex-direction:column; gap:1rem; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:16px; padding:1.1rem 1.25rem; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6); min-width:260px; align-self:stretch; flex:1 1 260px; }
 .ai-inline-hint { background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.18); border-radius:12px; padding:1rem 1.15rem; color:#312e81; line-height:1.5; }
 .ai-inline-hint-title { display:block; font-weight:600; margin-bottom:.55rem; font-size:.92rem; color:#1e1b4b; }
 .ai-inline-list { margin:0; padding-left:1.1rem; display:flex; flex-direction:column; gap:.45rem; font-size:.9rem; color:#4338ca; }
-.ai-inline-button { width:100%; display:inline-flex; justify-content:center; gap:.5rem; font-weight:600; box-shadow:0 12px 25px rgba(99,102,241,0.18); }
+.ai-inline-button { width:100%; display:inline-flex; justify-content:center; gap:.5rem; font-weight:600; box-shadow:0 12px 25px rgba(99,102,241,0.18); align-self:flex-start; }
 .ai-inline-note { font-size:.85rem; color:#475569; text-align:center; }
 
 @media (min-width: 720px) {
-    .ai-inline-content {
-        grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+   .ai-inline-content {
+        flex-wrap:nowrap;
         min-height: clamp(360px, 48vh, 560px);
     }
 }
@@ -7357,6 +7370,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
