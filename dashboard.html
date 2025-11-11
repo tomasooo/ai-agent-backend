@@ -308,11 +308,11 @@
 .ai-inline-card .pro-body-card__title { display:flex; align-items:center; gap:.75rem; }
 .ai-inline-icon { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; font-size:1.15rem; }
 .ai-inline-content { display:grid; gap:1.4rem; align-items:start; }
-.ai-inline-main { display:flex; flex-direction:column; gap:.75rem; }
+.ai-inline-main { display:flex; flex-direction:column; gap:.75rem; min-width:0; }
 .ai-inline-lead { font-size:.95rem; color:#475569; line-height:1.55; }
 .ai-inline-input { min-height:130px; resize:vertical; background:#f8fafc; border:1px solid #dbe3f3; border-radius:14px; padding:1rem 1.1rem; line-height:1.6; box-shadow: inset 0 1px 0 rgba(255,255,255,0.8); transition:border-color .2s ease, box-shadow .2s ease; }
 .ai-inline-input:focus { outline:none; border-color:#818cf8; box-shadow:0 0 0 3px rgba(99,102,241,0.18); background:#fff; }
-.ai-inline-side { display:flex; flex-direction:column; gap:1rem; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:16px; padding:1.1rem 1.25rem; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6); }
+.ai-inline-side { display:flex; flex-direction:column; gap:1rem; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:16px; padding:1.1rem 1.25rem; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6); min-width:0; }
 .ai-inline-hint { background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.18); border-radius:12px; padding:1rem 1.15rem; color:#312e81; line-height:1.5; }
 .ai-inline-hint-title { display:block; font-weight:600; margin-bottom:.55rem; font-size:.92rem; color:#1e1b4b; }
 .ai-inline-list { margin:0; padding-left:1.1rem; display:flex; flex-direction:column; gap:.45rem; font-size:.9rem; color:#4338ca; }
@@ -7319,6 +7319,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
