@@ -62,6 +62,7 @@
   flex: 1;
   min-height: 0;
   align-items: stretch;
+  padding-bottom: 26px;
 }
 .pro-modal__body > * { min-width:0; }
 @media (max-width: 860px) {
@@ -304,7 +305,27 @@
     flex-wrap:wrap;
 }
 .ai-composer-footer .btn-primary { min-width:180px; }
-.ai-inline-card { grid-column: 1 / -1; }
+.ai-inline-card {
+    grid-column: 1 / -1;
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    box-shadow: 0 -12px 32px rgba(15,23,42,0.08);
+}
+.ai-inline-card::before {
+    content:"";
+    position:absolute;
+    inset:0;
+    background: linear-gradient(to top, rgba(255,255,255,0.98), rgba(255,255,255,0.9) 45%, rgba(255,255,255,0));
+    border-radius: inherit;
+    pointer-events:none;
+    z-index:-1;
+}
+.ai-inline-card .pro-body-card__content,
+.ai-inline-card .pro-body-card__title {
+    position: relative;
+    z-index: 1;
+}
 .ai-inline-card .pro-body-card__title { display:flex; align-items:center; gap:.75rem; }
 .ai-inline-icon { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; font-size:1.15rem; }
 .ai-inline-content { display:grid; gap:1.4rem; align-items:start; }
@@ -7319,6 +7340,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
