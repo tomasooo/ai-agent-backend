@@ -62,7 +62,8 @@
   flex: 1;
   min-height: 0;
   align-items: stretch;
-  padding-bottom: 26px;
+  padding-bottom: clamp(140px, 18vh, 220px);
+  scroll-padding-bottom: clamp(140px, 18vh, 220px);
 }
 .pro-modal__body > * { min-width:0; }
 @media (max-width: 860px) {
@@ -308,9 +309,10 @@
 .ai-inline-card {
     grid-column: 1 / -1;
     position: sticky;
-    bottom: 0;
+    bottom: clamp(16px, 4vh, 36px);
     z-index: 2;
     box-shadow: 0 -12px 32px rgba(15,23,42,0.08);
+    margin-bottom: clamp(120px, 16vh, 240px);
 }
 .ai-inline-card::before {
     content:"";
@@ -7340,6 +7342,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
