@@ -309,6 +309,9 @@
 .ai-inline-card {
     grid-column: 1 / -1;
     position: relative;
+    width: 100%;
+    max-width: none;
+    align-self: stretch;
 }
 .ai-inline-card .pro-body-card__title { display:flex; align-items:center; gap:.75rem; }
 .ai-inline-icon { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; font-size:1.15rem; }
@@ -316,6 +319,7 @@
     display:grid;
     gap:1.4rem;
     align-items:stretch;
+    grid-template-columns: minmax(0, 1fr);
 }
 .ai-inline-main { display:flex; flex-direction:column; gap:.75rem; min-width:0; }
 .ai-inline-lead { font-size:.95rem; color:#475569; line-height:1.55; }
@@ -330,7 +334,7 @@
 
 @media (min-width: 720px) {
     .ai-inline-content {
-        grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
     }
 }
 
@@ -7328,6 +7332,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
