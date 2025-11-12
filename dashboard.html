@@ -1962,6 +1962,8 @@
     .users-table th, .users-table td { padding: 1rem 1.5rem; text-align: left; border-bottom: 1px solid #f1f5f9; }
     .users-table th { background: #f8fafc; font-weight: 600; color: #374151; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px; }
     .users-table tbody tr:hover { background: #f8fafc; }
+    .activity-action { font-weight: 600; color: #1e293b; }
+    .activity-detail { margin-top: 0.25rem; color: #64748b; font-size: 0.85rem; white-space: pre-line; }
     .user-info-cell { display: flex; align-items: center; gap: 0.75rem; }
     .user-avatar-small { width: 32px; height: 32px; border-radius: 50%; background: #667eea; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.8rem; font-weight: 600; }
     .user-details { display: flex; flex-direction: column; }
@@ -7117,6 +7119,7 @@ function syncProMeta(){
 // Globální proměnná pro ukládání načtených uživatelů
 let allAdminUsers = [];
 
+const ACTIVITY_LOG_LIMIT = 500;
 const ACTIVITY_LOGS_PER_PAGE = 10;
 let activityLogEntries = [];
 let currentActivityPage = 1;
@@ -7293,7 +7296,7 @@ async function loadActivityLog() {
     const dashboardUserEmail = localStorage.getItem('userEmail');
 
     try {
-        const response = await fetch(`${window.BACKEND}/api/admin/activity-log?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`);
+        const response = await fetch(`${window.BACKEND}/api/admin/activity-log?limit=${ACTIVITY_LOG_LIMIT}&dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`);
         const contentType = response.headers.get('content-type') || '';
 
         if (!contentType.includes('application/json')) {
@@ -7336,6 +7339,23 @@ function hideActivityPagination() {
     activityPaginationContainer.style.display = 'none';
 }
 
+function formatActivityDetails(details) {
+    if (!details) return '';
+    if (typeof details === 'string') return details;
+    if (typeof details === 'object') {
+        if (details.reason) return details.reason;
+        const parts = Object.entries(details)
+            .filter(([key, value]) => value !== undefined && value !== null && value !== '')
+            .map(([key, value]) => `${key}: ${value}`);
+        if (parts.length) return parts.join(', ');
+    }
+    try {
+        return JSON.stringify(details);
+    } catch (error) {
+        return '';
+    }
+}
+
 function renderActivityLogPage(page = 1) {
     const tableBody = document.getElementById('activityLogTableBody');
     if (!tableBody) return;
@@ -7357,19 +7377,25 @@ function renderActivityLogPage(page = 1) {
 
     const rows = pageEntries.map(entry => {
         const timestamp = entry?.timestamp ? new Date(entry.timestamp) : null;
-        const time = timestamp && !isNaN(timestamp) ? timestamp.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '—';
+        const time = timestamp && !isNaN(timestamp)
+            ? `${timestamp.toLocaleDateString('cs-CZ')} ${timestamp.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}`
+            : '—';
         const isError = entry?.status === 'error';
         const statusClass = isError ? 'role-admin' : 'role-user';
         const statusText = isError ? 'Chyba' : 'Úspěch';
         const actionButton = isError
             ? '<button class="btn btn-secondary btn-sm">Zkontrolovat</button>'
             : '<button class="btn btn-secondary btn-sm" style="opacity: 0.5; cursor: default;">Zobrazit</button>';
+        const detailText = formatActivityDetails(entry?.details);
 
         return `
                 <tr>
                     <td>${escapeHtml(time)}</td>
                     <td>${escapeHtml(entry?.user_email || '—')}</td>
-                    <td>${escapeHtml(entry?.action || '—')}</td>
+                    <td>
+                        <div class="activity-action">${escapeHtml(entry?.action || '—')}</div>
+                        ${detailText ? `<div class="activity-detail">${escapeHtml(detailText)}</div>` : ''}
+                    </td>
                     <td><span class="role-badge ${statusClass}">${statusText}</span></td>
                     <td>${actionButton}</td>
                 </tr>
@@ -7492,6 +7518,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
