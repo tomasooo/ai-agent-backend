@@ -60,25 +60,127 @@
 .pro-modal__body {
   padding: 16px 18px 18px;
   display:grid;
-  grid-template-columns: minmax(220px, 300px) minmax(0,1fr);
-  gap: 16px;
-  overflow-y: auto;
+  grid-template-columns: minmax(220px, 280px) minmax(0,1fr);
+  gap: 18px;
   flex: 1;
   min-height: 0;
   align-items: stretch;
-  padding-bottom: clamp(66px, 11vh, 120px);
-  scroll-padding-bottom: clamp(66px, 11vh, 120px);
   background: #ffffff;
   border-radius: 18px;
   box-shadow: 0 18px 40px rgba(15,23,42,0.12);
+  overflow: hidden;
 }
 .pro-modal__body > * { min-width:0; }
+@media (max-width: 1080px) {
+  .pro-modal__body {
+    grid-template-columns: minmax(200px, 240px) minmax(0,1fr);
+  }
+}
 @media (max-width: 860px) {
   .pro-modal__body {
     grid-template-columns: 1fr;
     gap: 16px;
+    overflow-y: auto;
   }
 }
+
+.pro-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+}
+
+.pro-sidebar .pro-meta {
+  border: none;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.pro-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable both-edges;
+}
+
+.pro-content::-webkit-scrollbar {
+  width: 10px;
+}
+
+.pro-content::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 8px;
+}
+
+.pro-content::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.8);
+  border-radius: 8px;
+}
+
+.pro-body-card--email {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.pro-body-card--ai {
+  flex: 0 0 auto;
+}
+
+.ai-inline-card {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  box-shadow: 0 -16px 30px rgba(15,23,42,0.12);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.ai-inline-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0) 0%, #ffffff 40%);
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0.92;
+}
+
+.ai-inline-card .pro-body-card__content {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 860px) {
+  .pro-sidebar {
+    background: transparent;
+    border: none;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .pro-content {
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .ai-inline-card {
+    position: static;
+    box-shadow: 0 10px 24px rgba(15,23,42,0.08);
+  }
+
+  .ai-inline-card::before {
+    display: none;
+  }
+}
+
 
 .pro-meta {
   background: #f8fafc;
@@ -111,8 +213,8 @@
 }
 #ed-body {
   overflow-y: auto;
-  max-height: clamp(460px, calc(88vh - 220px), 840px);
-  min-height: clamp(360px, 45vh, 640px);
+  max-height: clamp(360px, calc(74vh - 220px), 620px);
+  min-height: clamp(280px, 38vh, 520px);
   padding-right: 6px;
   scrollbar-gutter: stable both-edges;
 }
@@ -2210,59 +2312,63 @@
 
     <!-- Body -->
     <div class="pro-modal__body">
-      <div class="pro-meta">
-        <div class="pro-meta__row">
-          <div class="pro-meta__label">Odesílatel</div>
-          <div class="pro-meta__value" id="ed-from-meta">—</div>
-        </div>
-        <div class="pro-meta__row">
-          <div class="pro-meta__label">Předmět</div>
-          <div class="pro-meta__value" id="ed-subject-meta">—</div>
-        </div>
-        <div class="pro-meta__row">
-          <div class="pro-meta__label">Datum</div>
-          <div class="pro-meta__value" id="ed-date-meta">—</div>
-        </div>
-      </div>
-
-      <div class="pro-body-card">
-        <div class="pro-body-card__title">Obsah zprávy</div>
-        <div class="pro-body-card__content" id="ed-body">Načítám…</div>
-      </div>
-
-      <div class="pro-body-card" id="ed-ai-card" style="display: none;">
-        <div class="pro-body-card__title">Návrh odpovědi (AI)</div>
-        <div class="pro-body-card__content">
-          <div style="color:#0f172a; margin-bottom:12px; line-height:1.6;">
-            <div><strong>Shrnutí:</strong> <span id="ed-ai-summary">—</span></div>
-            <div><strong>Sentiment:</strong> <span id="ed-ai-sentiment">—</span></div>
+      <aside class="pro-sidebar">
+        <div class="pro-meta">
+          <div class="pro-meta__row">
+            <div class="pro-meta__label">Odesílatel</div>
+            <div class="pro-meta__value" id="ed-from-meta">—</div>
           </div>
-          <div id="ed-ai-reply" style="white-space: pre-wrap; line-height:1.55; color:#111827;"></div>
-        </div>
-      </div>
-
-      <div class="pro-body-card ai-inline-card">
-        <div class="pro-body-card__title">
-          <span class="ai-inline-icon">✨</span>
-          <span>Rychlá AI odpověď</span>
-        </div>
-        <div class="pro-body-card__content ai-inline-content">
-          <div class="ai-inline-main">
-            <p class="ai-inline-lead">Vložte sem odpověď, kterou chcete nechat AI uhladit. Zachováme význam i podpis.</p>
-            <label class="form-label" for="ed-ai-instructions">Text k doladění</label>
-            <textarea id="ed-ai-instructions" class="form-control ai-inline-input" rows="3" placeholder="Zkopírujte sem odpověď, kterou chcete jen stylisticky vylepšit…"></textarea>
+          <div class="pro-meta__row">
+            <div class="pro-meta__label">Předmět</div>
+            <div class="pro-meta__value" id="ed-subject-meta">—</div>
           </div>
-          <div class="ai-inline-side">
-            <div class="ai-inline-hint">
-              <span class="ai-inline-hint-title">Co pro vás AI udělá</span>
-              <ul class="ai-inline-list">
-                <li>Vylepší tón a pravopis bez zbytečných okolků.</li>
-                <li>Nechá všechny důležité informace na svém místě.</li>
-                <li>Podpis i jazyk zachová podle profilu.</li>
-              </ul>
+          <div class="pro-meta__row">
+            <div class="pro-meta__label">Datum</div>
+            <div class="pro-meta__value" id="ed-date-meta">—</div>
+          </div>
+        </div>
+      </aside>
+
+      <div class="pro-content">
+        <div class="pro-body-card pro-body-card--email">
+          <div class="pro-body-card__title">Obsah zprávy</div>
+          <div class="pro-body-card__content" id="ed-body">Načítám…</div>
+        </div>
+
+        <div class="pro-body-card pro-body-card--ai" id="ed-ai-card" style="display: none;">
+          <div class="pro-body-card__title">Návrh odpovědi (AI)</div>
+          <div class="pro-body-card__content">
+            <div style="color:#0f172a; margin-bottom:12px; line-height:1.6;">
+              <div><strong>Shrnutí:</strong> <span id="ed-ai-summary">—</span></div>
+              <div><strong>Sentiment:</strong> <span id="ed-ai-sentiment">—</span></div>
             </div>
-            <button class="btn btn-primary ai-inline-button" id="ed-open-composer" type="button">✨ Upravit odpověď</button>
-            <p class="ai-inline-note">Hotovo během pár sekund – stačí vložit text a kliknout.</p>
+            <div id="ed-ai-reply" style="white-space: pre-wrap; line-height:1.55; color:#111827;"></div>
+          </div>
+        </div>
+
+        <div class="pro-body-card ai-inline-card">
+          <div class="pro-body-card__title">
+            <span class="ai-inline-icon">✨</span>
+            <span>Rychlá AI odpověď</span>
+          </div>
+          <div class="pro-body-card__content ai-inline-content">
+            <div class="ai-inline-main">
+              <p class="ai-inline-lead">Vložte sem odpověď, kterou chcete nechat AI uhladit. Zachováme význam i podpis.</p>
+              <label class="form-label" for="ed-ai-instructions">Text k doladění</label>
+              <textarea id="ed-ai-instructions" class="form-control ai-inline-input" rows="3" placeholder="Zkopírujte sem odpověď, kterou chcete jen stylisticky vylepšit…"></textarea>
+            </div>
+            <div class="ai-inline-side">
+              <div class="ai-inline-hint">
+                <span class="ai-inline-hint-title">Co pro vás AI udělá</span>
+                <ul class="ai-inline-list">
+                  <li>Vylepší tón a pravopis bez zbytečných okolků.</li>
+                  <li>Nechá všechny důležité informace na svém místě.</li>
+                  <li>Podpis i jazyk zachová podle profilu.</li>
+                </ul>
+              </div>
+              <button class="btn btn-primary ai-inline-button" id="ed-open-composer" type="button">✨ Upravit odpověď</button>
+              <p class="ai-inline-note">Hotovo během pár sekund – stačí vložit text a kliknout.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -7370,6 +7476,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
