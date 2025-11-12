@@ -10,7 +10,7 @@
 
 
 
-/* === PRO EMAIL MODAL === */
+
 /* === PRO EMAIL MODAL === */
 .pro-modal {
   padding: 12px;
@@ -5276,47 +5276,55 @@ document.getElementById('email-list-container')?.addEventListener('click', async
   const rejectBtn  = e.target.closest('.reject-btn');
   if (!approveBtn && !rejectBtn) return;
 
- const row = e.target.closest('.email-item');
-    const pendingId = row?.dataset.pendingId;
-    const src = row?.dataset.src || 'gmail';
+  const row = e.target.closest('.email-item');
+  const pendingIdRaw = approveBtn?.dataset.pendingId
+    || rejectBtn?.dataset.pendingId
+    || row?.dataset.pendingId;
+  const pendingId = pendingIdRaw !== undefined && pendingIdRaw !== null
+    ? String(pendingIdRaw).trim()
+    : '';
+  const src = approveBtn?.dataset.src
+    || rejectBtn?.dataset.src
+    || row?.dataset.src
+    || 'gmail';
 
-    const dashboardUserEmail = localStorage.getItem('userEmail');
-    const accountEmail       = localStorage.getItem('primaryEmail');
+  const dashboardUserEmail = localStorage.getItem('userEmail');
+  const accountEmail       = localStorage.getItem('primaryEmail');
 
-    const triggerBtn = approveBtn || rejectBtn;
+  const triggerBtn = approveBtn || rejectBtn;
 
-    try {
-      if (!pendingId) throw new Error('Chybí ID návrhu.');
-      if (!dashboardUserEmail || !accountEmail) throw new Error('Chybí kontext účtu.');
-      if (!['gmail', 'custom'].includes(src)) throw new Error('Nepodporovaný typ účtu.');
+  try {
+    if (!pendingId) throw new Error('Chybí ID návrhu.');
+    if (!dashboardUserEmail || !accountEmail) throw new Error('Chybí kontext účtu.');
+    if (!['gmail', 'custom'].includes(src)) throw new Error('Nepodporovaný typ účtu.');
 
-      if (triggerBtn) triggerBtn.disabled = true;
+    if (triggerBtn) triggerBtn.disabled = true;
 
-      const endpoint = approveBtn ? 'approve' : 'reject';
-      const url = src === 'custom'
-        ? `${window.BACKEND}/api/custom-email/pending-replies/${pendingId}/${endpoint}`
-        : `${window.BACKEND}/api/gmail/pending-replies/${pendingId}/${endpoint}`;
+    const endpoint = approveBtn ? 'approve' : 'reject';
+    const url = src === 'custom'
+      ? `${window.BACKEND}/api/custom-email/pending-replies/${encodeURIComponent(pendingId)}/${endpoint}`
+      : `${window.BACKEND}/api/gmail/pending-replies/${encodeURIComponent(pendingId)}/${endpoint}`;
 
-      const payload = src === 'custom'
-        ? { dashboardUserEmail, emailAddress: accountEmail }
-        : { dashboardUserEmail, email: accountEmail };
+    const payload = src === 'custom'
+      ? { dashboardUserEmail, emailAddress: accountEmail }
+      : { dashboardUserEmail, email: accountEmail };
 
-      const r = await fetch(url, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const j = await r.json();
-      if (!r.ok || !j.success) throw new Error(j.message || 'Akce selhala.');
+    const r = await fetch(url, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const j = await r.json();
+    if (!r.ok || !j.success) throw new Error(j.message || 'Akce selhala.');
 
-      showToast(j.message || (approveBtn ? 'Odpověď byla odeslána.' : 'Návrh byl zamítnut.'), 'success');
-      await fetchEmails();
-    } catch (err) {
-      showToast(err.message || 'Chyba akce.', 'error');
-    } finally {
-      if (triggerBtn) triggerBtn.disabled = false;
-    }
-  });
+    showToast(j.message || (approveBtn ? 'Odpověď byla odeslána.' : 'Návrh byl zamítnut.'), 'success');
+    await fetchEmails();
+  } catch (err) {
+    showToast(err.message || 'Chyba akce.', 'error');
+  } finally {
+    if (triggerBtn) triggerBtn.disabled = false;
+  }
+});
 
 
 
@@ -7476,6 +7484,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
