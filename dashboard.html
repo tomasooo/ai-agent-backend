@@ -5280,9 +5280,17 @@ document.getElementById('email-list-container')?.addEventListener('click', async
   const pendingIdRaw = approveBtn?.dataset.pendingId
     || rejectBtn?.dataset.pendingId
     || row?.dataset.pendingId;
-  const pendingId = pendingIdRaw !== undefined && pendingIdRaw !== null
+  let pendingId = pendingIdRaw !== undefined && pendingIdRaw !== null
     ? String(pendingIdRaw).trim()
     : '';
+
+  if (!pendingId && row) {
+    const rowId = row.dataset.id || row.dataset.messageId || '';
+    const fallbackEntry = findEmailEntryById(rowId || '', '');
+    if (fallbackEntry?.pendingId) {
+      pendingId = String(fallbackEntry.pendingId).trim();
+    }
+  }
   const src = approveBtn?.dataset.src
     || rejectBtn?.dataset.src
     || row?.dataset.src
@@ -7484,6 +7492,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
