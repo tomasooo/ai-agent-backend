@@ -709,19 +709,40 @@ async function getGmailClientFor(dashboardUserEmail, email) {
 }
 
 
+function normaliseLogDetails(details) {
+  if (details === null || details === undefined) return {};
+  if (typeof details === 'object' && !Array.isArray(details)) return details;
+  return { message: String(details) };
+}
+
 async function logActivity(user_email, action, status, details = {}) {
-    let client;
-    try {
-        client = await pool.connect();
-        await client.query(
-            'INSERT INTO audit_log (user_email, action, status, details) VALUES ($1, $2, $3, $4)',
-            [user_email, action, status, details]
-        );
-    } catch (e) {
-        console.error('Chyba při zápisu do audit_log:', e);
-    } finally {
-        if (client) client.release();
-    }
+  let client;
+  const emailForLog = user_email || (typeof details === 'object' ? details?.user_email : undefined) || 'system';
+  try {
+    client = await pool.connect();
+    await client.query(
+      'INSERT INTO audit_log (user_email, action, status, details) VALUES ($1, $2, $3, $4)',
+      [emailForLog, action, status, normaliseLogDetails(details)]
+    );
+  } catch (e) {
+    console.error('Chyba při zápisu do audit_log:', e);
+  } finally {
+    if (client) client.release();
+  }
+}
+
+function extractEmailFromIdToken(idToken) {
+  if (typeof idToken !== 'string') return null;
+  const parts = idToken.split('.');
+  if (parts.length < 2) return null;
+  try {
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(normalized.length + (4 - (normalized.length % 4 || 4)), '=');
+    const payload = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+    return payload?.email || null;
+  } catch (_) {
+    return null;
+  }
 }
 
 
@@ -1675,37 +1696,40 @@ const oauth2Client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, RE
 
 // ENDPOINT PRO PŘIHLÁŠENÍ
 app.post('/api/auth/google', async (req, res) => {
-    let client;
-    try {
-        const { token } = req.body;
-        const ticket = await loginClient.verifyIdToken({
-            idToken: token,
-            audience: GOOGLE_CLIENT_ID,
-        });
-        const payload = ticket.getPayload();
+  let client;
+  const { token } = req.body || {};
+  let emailForLog = extractEmailFromIdToken(token);
+  try {
+    const ticket = await loginClient.verifyIdToken({
+      idToken: token,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    emailForLog = payload?.email || emailForLog;
 
-        client = await pool.connect();
-        // Vytvoříme uživatele, pokud neexistuje (s výchozí rolí 'user')
-        await client.query(
-            `INSERT INTO dashboard_users (email, name, plan, role)
+    client = await pool.connect();
+    // Vytvoříme uživatele, pokud neexistuje (s výchozí rolí 'user')
+    await client.query(
+      `INSERT INTO dashboard_users (email, name, plan, role)
              VALUES ($1, $2, 'Starter', 'user')
              ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name`,
-            [payload.email, payload.name]
-        );
-        
-        
-        const userResult = await client.query(
-            'SELECT email, name, plan, role FROM dashboard_users WHERE email = $1',
-            [payload.email]
-        );
-        await logActivity(payload.email, 'Přihlášení (Google)', 'success');
-        res.status(200).json({ success: true, user: userResult.rows[0] });
-    } catch (error) {
-        console.error("Chyba při ověřování přihlašovacího tokenu:", error);
-        res.status(401).json({ success: false, message: 'Ověření selhalo.' });
-    } finally {
-        if (client) client.release();
-    }
+      [payload.email, payload.name]
+    );
+
+
+    const userResult = await client.query(
+      'SELECT email, name, plan, role FROM dashboard_users WHERE email = $1',
+      [payload.email]
+    );
+    await logActivity(emailForLog, 'Přihlášení (Google)', 'success');
+    res.status(200).json({ success: true, user: userResult.rows[0] });
+  } catch (error) {
+    console.error("Chyba při ověřování přihlašovacího tokenu:", error);
+    await logActivity(emailForLog, 'Přihlášení (Google)', 'error', { reason: error.message || String(error) });
+    res.status(401).json({ success: false, message: 'Ověření selhalo.' });
+  } finally {
+    if (client) client.release();
+  }
 });
 
 
@@ -2339,6 +2363,7 @@ app.post('/api/accounts/set-active', async (req, res) => {
 app.post('/api/auth/register', async (req, res) => {
   const { fullName, email, password } = req.body || {};
   if (!fullName || !email || !password || password.length < 8) {
+    await logActivity(email, 'Registrace', 'error', { reason: 'Neplatné vstupy' });
     return res.status(400).json({ success: false, message: 'Chybné parametry.' });
   }
 
@@ -2367,12 +2392,14 @@ app.post('/api/auth/register', async (req, res) => {
 
     // TODO: odeslání verifikačního e-mailu (volitelné)
     // Zatím vrátíme úspěch a „přihlásíme“
+    await logActivity(email, 'Registrace', 'success');
     return res.json({
       success: true,
       user: { email, name: fullName, plan: 'Starter' }
     });
   } catch (e) {
     console.error('REG ERROR', e);
+    await logActivity(email, 'Registrace', 'error', { reason: e.message || String(e) });
     return res.status(500).json({ success: false, message: 'Registrace selhala.' });
   } finally {
     client.release();
@@ -2385,6 +2412,7 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) {
+    await logActivity(email, 'Přihlášení (heslo)', 'error', { reason: 'Chybí email nebo heslo' });
     return res.status(400).json({ success: false, message: 'Zadejte email i heslo.' });
   }
   const client = await pool.connect();
@@ -2394,14 +2422,19 @@ app.post('/api/auth/login', async (req, res) => {
       [email]
     );
     if (r.rowCount === 0 || !r.rows[0].password_hash) {
+      await logActivity(email, 'Přihlášení (heslo)', 'error', { reason: 'Uživatel nenalezen nebo bez hesla' });
       return res.status(401).json({ success: false, message: 'Nesprávný email nebo heslo.' });
     }
     const ok = await bcrypt.compare(password, r.rows[0].password_hash);
-    if (!ok) return res.status(401).json({ success: false, message: 'Nesprávný email nebo heslo.' });
+    if (!ok) {
+      await logActivity(email, 'Přihlášení (heslo)', 'error', { reason: 'Neplatné heslo' });
+      return res.status(401).json({ success: false, message: 'Nesprávný email nebo heslo.' });
+    }
       await logActivity(email, 'Přihlášení (heslo)', 'success');
      return res.json({ success: true, user: { email: r.rows[0].email, name: r.rows[0].name, role: r.rows[0].role, plan: r.rows[0].plan }});
   } catch (e) {
     console.error('LOGIN ERROR', e);
+    await logActivity(email, 'Přihlášení (heslo)', 'error', { reason: e.message || String(e) });
     return res.status(500).json({ success: false, message: 'Přihlášení selhalo.' });
   } finally {
     client.release();
@@ -2436,7 +2469,8 @@ app.get('/api/oauth/google/callback', async (req, res) => {
             throw new Error('Chybí email nebo refresh token z Google OAuth.');
         }
 
-        client = await pool.connect();
+      client = await pool.connect();
+
 
 const canAdd = await canAddConnectedAccount(client, dashboardUserEmail || connectedEmail);
 if (!canAdd.ok) {
@@ -2473,11 +2507,14 @@ if (!canAdd.ok) {
             [dashboardUserEmail || connectedEmail, connectedEmail]
         );
 
+        await logActivity(dashboardUserEmail || connectedEmail, 'Připojení Gmail účtu', 'success', { connectedEmail });
         // zpět do FE
         res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success&new-email=${encodeURIComponent(connectedEmail)}`);
     } catch (error) {
         console.error("Chyba při zpracování OAuth callbacku:", error.message);
-        await logActivity(dashboardUserEmail, 'Připojení Gmail účtu', 'success', { connectedEmail });
+        const dashboardUserEmail = decodeURIComponent(req.query.state || '') || null;
+        const fallbackEmail = extractEmailFromIdToken(req.query.id_token || req.body?.id_token) || dashboardUserEmail;
+        await logActivity(fallbackEmail || dashboardUserEmail, 'Připojení Gmail účtu', 'error', { reason: error.message });
         res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=error`);
     } finally {
         if (client) client.release();
@@ -2513,11 +2550,15 @@ app.post('/api/user/plan', async (req, res) => {
   const client = await pool.connect();
   try {
     const p = await client.query(`SELECT max_accounts FROM plans WHERE code = $1`, [plan]);
-    if (p.rowCount === 0) return res.status(400).json({ success: false, message: "Neznámý plán." });
+    if (p.rowCount === 0) {
+      await logActivity(email, `Změna tarifu na ${plan}`, 'error', { reason: 'Neznámý plán' });
+      return res.status(400).json({ success: false, message: "Neznámý plán." });
+    }
     const maxAcc = p.rows[0].max_accounts;
 
     const c = await client.query(`SELECT COUNT(*)::INT AS c FROM connected_accounts WHERE dashboard_user_email = $1`, [email]);
     if (c.rows[0].c > maxAcc) {
+      await logActivity(email, `Změna tarifu na ${plan}`, 'error', { reason: 'Překročen limit účtů', have: c.rows[0].c, max: maxAcc });
       return res.status(400).json({
         success: false,
         message: `Nelze přejít na ${plan}. Máte připojeno ${c.rows[0].c} účtů, limit je ${maxAcc}.`
@@ -2529,6 +2570,7 @@ app.post('/api/user/plan', async (req, res) => {
     res.json({ success: true, message: "Plán byl změněn." });
   } catch (err) {
     console.error("Chyba při ukládání tarifu:", err);
+    await logActivity(email, `Změna tarifu na ${plan}`, 'error', { reason: err.message || String(err) });
     res.status(500).json({ success: false, message: "Nepodařilo se změnit tarif." });
   } finally {
     client.release();
@@ -5363,14 +5405,14 @@ app.delete('/api/admin/users/:email', isAdmin, async (req, res) => {
 app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req, res) => {
   let client;
   try {
-    const { limit = 200, offset = 0 } = req.query || {};
+    const { limit = 500, offset = 0 } = req.query || {};
     client = await pool.connect();
     const r = await client.query(
       `SELECT id, timestamp, user_email, action, status, details
          FROM audit_log
         ORDER BY timestamp DESC
         LIMIT $1 OFFSET $2`,
-      [Math.min(Number(limit) || 200, 1000), Math.max(Number(offset) || 0, 0)]
+      [Math.min(Number(limit) || 500, 2000), Math.max(Number(offset) || 0, 0)]
     );
     return res.json({
       success: true,
@@ -5389,6 +5431,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
