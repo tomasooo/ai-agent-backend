@@ -57,26 +57,23 @@
             z-index: 2;
         }
 
-       .logo {
+        .logo {
             font-size: 1.8rem;
             font-weight: 700;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
 
-        .logo img {
-            height: 42px;
-            width: 42px;
-            border-radius: 12px;
-            object-fit: contain;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            background: white;
-            padding: 4px;
+        .logo::before {
+            content: "🤖";
+            font-size: 2rem;
+            animation: pulse 2s infinite;
         }
 
-        .logo span {
-            display: inline-block;
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
         }
 
         .nav-links {
@@ -463,12 +460,8 @@
     <header>
         <div class="header-bg"></div>
         <div class="container">
-           <nav>
-                <div class="logo">
-                    <img src="logo-Agent.png" alt="Logo AI Emailový Agent">
-                    <span>AI Emailový Agent</span>
-                </div>
-                
+            <nav>
+                <div class="logo">AI Emailový Agent</div>
                 <ul class="nav-links">
                     <li><a href="#features">Funkce</a></li>
                     <li><a href="#how-it-works">Jak to funguje</a></li>
@@ -755,6 +748,3 @@
     </script>
 </body>
 </html>
-
-
-
