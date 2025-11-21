@@ -134,6 +134,23 @@ function flagIncludes(flags, flagName) {
   return false;
 }
 
+function getHeaderValue(headers, name) {
+  if (!headers || !name) return '';
+
+  const lowerName = String(name).toLowerCase();
+
+  try {
+    if (typeof headers.get === 'function') {
+      const val = headers.get(name) ?? headers.get(lowerName);
+      if (val !== undefined && val !== null) return val;
+    }
+  } catch (_) {}
+
+  const rawVal = headers[name] ?? headers[lowerName];
+  if (Array.isArray(rawVal)) return rawVal[0] ?? '';
+  return rawVal ?? '';
+}
+
 
 async function resolveAWithSNI(hostname) {
   try {
@@ -3129,16 +3146,16 @@ await imap.mailboxOpen('INBOX');
         // unread
         if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
 
- const spamFlag = (msg.headers?.get('x-spam-flag') || '').toString().toLowerCase();
-  const spamStatus = (msg.headers?.get('x-spam-status') || '').toString().toLowerCase();
-  const isSpam = spamFlag.includes('yes') || spamStatus.startsWith('yes');
-  if (isSpam) {
-    // označ spam jako přečtený, aby se nezobrazoval mezi nepřečtenými
-    try {
-      await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true });
-    } catch (_) {}
-    continue;
-  }
+  const spamFlag = getHeaderValue(msg.headers, 'x-spam-flag').toString().toLowerCase();
+        const spamStatus = getHeaderValue(msg.headers, 'x-spam-status').toString().toLowerCase();
+        const isSpam = spamFlag.includes('yes') || spamStatus.startsWith('yes');
+        if (isSpam) {
+          // označ spam jako přečtený, aby se nezobrazoval mezi nepřečtenými
+          try {
+            await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true });
+          } catch (_) {}
+          continue;
+        }
         
         // period
         const d = msg.internalDate;
@@ -5467,6 +5484,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
