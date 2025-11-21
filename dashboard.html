@@ -841,9 +841,10 @@
             cursor: pointer;
         }
 
-        /* Content Area */
         .content-area {
             padding: 2rem;
+            min-height: 100vh;
+            overflow-y: auto;
         }
 
         .page-content {
@@ -4639,10 +4640,22 @@ async function fetchEmails(options = {}) {
   emailListContainer.innerHTML = `<div class="empty-state"><span>📧</span><p>Načítám emaily pro ${primaryEmail}…</p></div>`;
 
   try {
-    const accountType = prim?.type || '';
-    const isGmailAccount = !accountType || accountType === 'gmail';
-    const isCustomAccount = !accountType || accountType === 'custom';
+    const accountType = (prim?.type || '').toLowerCase();
+    const looksLikeGmail = /@(gmail|googlemail)\.com$/i.test(primaryEmail || '');
 
+    let isGmailAccount = accountType === 'gmail';
+    let isCustomAccount = accountType === 'custom';
+
+    if (!accountType) {
+      // Fallback heuristika: pokud není typ definován, rozliš podle domény
+      isGmailAccount = looksLikeGmail;
+      isCustomAccount = !looksLikeGmail;
+    }
+
+    // Bezpečný default: když nepoznáme typ, preferuj custom (neblokuje IMAP účty)
+    if (!isGmailAccount && !isCustomAccount) {
+      isCustomAccount = true;
+    }
     let res = null;
 
     if (status === 'approval') {
@@ -7555,6 +7568,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
