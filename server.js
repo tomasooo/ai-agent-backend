@@ -3111,14 +3111,21 @@ await imap.mailboxOpen('INBOX');
       const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 500);
       for await (let msg of imap.fetch(
   { seq: `${startSeq}:*` },
-  { uid: true, envelope: true, internalDate: true, flags: true }
+  { uid: true, envelope: true, internalDate: true, flags: true, headers: true }
 )) {
         // unread
         if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
 
  const spamFlag = (msg.headers?.get('x-spam-flag') || '').toString().toLowerCase();
   const spamStatus = (msg.headers?.get('x-spam-status') || '').toString().toLowerCase();
-  if (spamFlag.includes('yes') || spamStatus.startsWith('yes')) continue;
+  const isSpam = spamFlag.includes('yes') || spamStatus.startsWith('yes');
+  if (isSpam) {
+    // označ spam jako přečtený, aby se nezobrazoval mezi nepřečtenými
+    try {
+      await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true });
+    } catch (_) {}
+    continue;
+  }
         
         // period
         const d = msg.internalDate;
@@ -5431,6 +5438,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
