@@ -4409,7 +4409,9 @@ function parseSenderName(s='') {
 async function tryGmailEmails(primaryEmail, status, period, searchQuery, page = 1, limit = EMAILS_PER_PAGE) {
   if (!primaryEmail) return null;
 
-  if (status === 'approval') {
+  const normalizedStatus = String(status || 'all').toLowerCase();
+
+  if (normalizedStatus === 'approval') {
     try {
       const pendingUrl = new URL(`${window.BACKEND}/api/gmail/pending-replies`);
       pendingUrl.searchParams.set('dashboardUserEmail', dashboardUserEmail);
@@ -4495,7 +4497,8 @@ async function tryGmailEmails(primaryEmail, status, period, searchQuery, page = 
       _src: 'gmail',
       _pending: false,
       account: primaryEmail,
-      unread: e.unread === true
+      unread: e.unread === true,
+      status: normalizedStatus === 'spam' ? 'spam' : (e.status || e.folder || '')
     };
   });
   return { src:'gmail', total:j.total || normalized.length, emails: normalized };
@@ -4672,12 +4675,29 @@ async function fetchEmails(options = {}) {
       throw new Error('Nepodařilo se načíst emaily.');
     }
 
-   const rawEmails = Array.isArray(res.emails) ? res.emails : [];
-    let filteredEmails = rawEmails;
-    if (status === 'unread') {
-      filteredEmails = rawEmails.filter(email => email.unread === true);
-    } else if (status === 'processed') {
-      filteredEmails = rawEmails.filter(email => email.unread === false);
+  const normalizedStatus = String(status || 'all').toLowerCase();
+    const rawEmails = Array.isArray(res.emails) ? res.emails : [];
+
+    const mappedEmails = rawEmails.map(email => {
+      if (normalizedStatus === 'spam' && !isSpamEmail(email)) {
+        return { ...email, status: 'spam' };
+      }
+      if (normalizedStatus !== 'spam' && isSpamEmail(email)) {
+        // spam zprávy rovnou považuj za přečtené, aby se nepletly v nepřečtených filtrech
+        return { ...email, unread: false };
+      }
+      return email;
+    });
+
+    let filteredEmails = mappedEmails;
+    if (normalizedStatus !== 'spam') {
+      filteredEmails = filteredEmails.filter(email => !isSpamEmail(email));
+    }
+
+    if (normalizedStatus === 'unread') {
+      filteredEmails = filteredEmails.filter(email => email.unread === true);
+    } else if (normalizedStatus === 'processed') {
+      filteredEmails = filteredEmails.filter(email => email.unread === false);
     }
 
     allEmails = filteredEmails.map(email => ({
@@ -5095,8 +5115,25 @@ document.getElementById('tplCategory')?.addEventListener('change', refreshPicker
 
 
 
+function isSpamEmail(email = {}) {
+  const status = String(email.status || '').toLowerCase();
+  const folder = String(email.folder || email.label || email._folder || '').toLowerCase();
+  const labels = Array.isArray(email.labels) ? email.labels : Array.isArray(email.labelIds) ? email.labelIds : [];
+  const labelsContainSpam = labels.some(l => String(l).toLowerCase().includes('spam'));
+  return status === 'spam' || folder === 'spam' || email.isSpam === true || labelsContainSpam;
+}
+
+
+
 
 function renderEmailList(emails, total) {
+
+
+
+
+
+
+
     if (!emailListContainer) return;
     const safeEmails = Array.isArray(emails) ? emails : [];
     const currentStatusFilter = document.getElementById('status-filter')?.value;
@@ -7518,6 +7555,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
