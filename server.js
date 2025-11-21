@@ -979,7 +979,7 @@ function htmlToPlainText(html = '') {
     .trim();
 }
 
-function isSpamByHeadersMap(headers) {
+function isSpamByHeadersMap(headers, subject = '') {
   const listUnsub = headerMapValue(headers, 'List-Unsubscribe');
   if (listUnsub) return true;
 
@@ -995,8 +995,15 @@ function isSpamByHeadersMap(headers) {
   const spamStatus = headerMapValue(headers, 'X-Spam-Status').toLowerCase();
   if (spamStatus.startsWith('yes')) return true;
 
+  const subjectText = String(subject || headerMapValue(headers, 'Subject') || '');
+  const normalizedSubject = subjectText.toLowerCase();
+  const isSubjectTaggedSpam = /^(?:\s*\*+\s*)?spam(?:\s*\*+)?\b/.test(normalizedSubject)
+    || /^\s*\[spam\]/.test(normalizedSubject);
+  if (isSubjectTaggedSpam) return true;
+
   return false;
 }
+
 
 function firstLineSnippet(text = '', max = 280) {
   return String(text || '')
@@ -1369,8 +1376,10 @@ app.get('/api/custom-email/emails', async (req, res) => {
         continue;
       }
 
-       // Spam zprávy přeskoč, zároveň je označ jako přečtené, aby se v "nepřečtené" neukazovaly
-      const isSpam = isSpamByHeadersMap(msg.headers);
+      const decodedSubject = decodeHeader(msg.envelope?.subject || '');
+
+      // Spam zprávy přeskoč, zároveň je označ jako přečtené, aby se v "nepřečtené" neukazovaly
+      const isSpam = isSpamByHeadersMap(msg.headers, decodedSubject);
       if (isSpam) {
         try { await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }); } catch {}
         continue;
@@ -1399,7 +1408,6 @@ app.get('/api/custom-email/emails', async (req, res) => {
         continue;
       }
 
-      const decodedSubject = decodeHeader(msg.envelope?.subject || '');
       const decodedName = decodeHeader(fromRaw.name || '');
       const fromAddress = (fromRaw.address || '').trim();
       const replyToName = decodeHeader(replyToRaw.name || '');
@@ -3147,9 +3155,9 @@ await imap.mailboxOpen('INBOX');
         // unread
         if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
 
-  const spamFlag = getHeaderValue(msg.headers, 'x-spam-flag').toString().toLowerCase();
-        const spamStatus = getHeaderValue(msg.headers, 'x-spam-status').toString().toLowerCase();
-        const isSpam = spamFlag.includes('yes') || spamStatus.startsWith('yes');
+        const subjRaw = msg.envelope?.subject || '';
+        const subjDecoded = decodeWords(String(subjRaw));
+        const isSpam = isSpamByHeadersMap(msg.headers, subjDecoded);
         if (isSpam) {
           // označ spam jako přečtený, aby se nezobrazoval mezi nepřečtenými
           try {
@@ -3163,7 +3171,7 @@ await imap.mailboxOpen('INBOX');
         if (period === 'today' && (!d || d < startOfToday)) continue;
         if (period === 'week' && (!d || d < oneWeekAgo)) continue;
 
-        const subj = msg.envelope?.subject || '';
+        const subj = subjDecoded;
         const from = (msg.envelope?.from?.[0]?.address || '').trim();
 
         // searchQuery (subject + from)
@@ -4805,13 +4813,14 @@ ${String(bodyText).slice(0, 3000)}
         for await (const msg of imap.fetch({ seq: `${startSeq}:*` }, { uid: true, envelope: true, internalDate: true, headers: true, flags: true })) {
           if (msg.flags?.has?.('\\Seen')) continue;
 
-          if (acc.spam_filter && isSpamByHeadersMap(msg.headers)) {
+          const rawSubject = msg.envelope?.subject || '';
+          const subject = decodeWords(String(rawSubject));
+
+          if (acc.spam_filter && isSpamByHeadersMap(msg.headers, subject)) {
             await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => {});
             continue;
           }
 
-          const rawSubject = msg.envelope?.subject || '';
-          const subject = decodeWords(String(rawSubject));
           const fromAddr = (msg.envelope?.from?.[0]?.address || '').trim();
 
           const { content } = await imap.download(msg.uid, null, { uid: true });
@@ -5486,6 +5495,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
