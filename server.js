@@ -1335,7 +1335,7 @@ app.get('/api/custom-email/emails', async (req, res) => {
       };
     }
 
-    const fetchOptions = { uid: true, envelope: true, internalDate: true, flags: true };
+    const fetchOptions = { uid: true, envelope: true, internalDate: true, flags: true, headers: true };
     const seenUids = new Set();
     let skipped = 0;
 
@@ -1346,6 +1346,15 @@ app.get('/api/custom-email/emails', async (req, res) => {
       seenUids.add(msg.uid);
 
       if (flagIncludes(msg.flags, '\\Deleted')) {
+        continue;
+      }
+
+      // Spam zprávy přeskoč, zároveň je označ jako přečtené, aby se v "nepřečtené" neukazovaly
+      const spamFlag = (msg.headers?.get('x-spam-flag') || '').toString().toLowerCase();
+      const spamStatus = (msg.headers?.get('x-spam-status') || '').toString().toLowerCase();
+      const isSpam = spamFlag.includes('yes') || spamStatus.startsWith('yes');
+      if (isSpam) {
+        try { await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }); } catch {}
         continue;
       }
 
@@ -5458,6 +5467,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
