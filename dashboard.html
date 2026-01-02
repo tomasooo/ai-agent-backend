@@ -3051,6 +3051,7 @@ const collapseBtn = document.getElementById('collapseBtn');
 const navLinks = document.querySelectorAll('.nav-link');
 const pageContents = document.querySelectorAll('.page-content');
 const pageTitle = document.getElementById('pageTitle');
+const contentArea = document.querySelector('.content-area');
 const settingsTabs = document.querySelectorAll('.settings-tab');
 const settingsContents = document.querySelectorAll('.settings-content');
 const emailListContainer = document.getElementById('email-list-container');
@@ -6152,16 +6153,19 @@ if (planTab) {
        link.addEventListener('click', (e) => {
             e.preventDefault();
             
-            navLinks.forEach(l => l.classList.remove('active'));
+           navLinks.forEach(l => l.classList.remove('active'));
             link.classList.add('active');
             
-           
+            
             pageContents.forEach(page => page.classList.remove('active'));
             
             const targetPageId = link.getAttribute('data-page');
             const targetElement = document.getElementById(targetPageId);
             if (targetElement) {
                 targetElement.classList.add('active');
+            }
+            if (contentArea) {
+                contentArea.scrollTop = 0;
             }
 
             if (pageTitle) {
@@ -7568,6 +7572,7 @@ if (adminTabLink) {
 
 </body>
 </html>
+
 
 
 
