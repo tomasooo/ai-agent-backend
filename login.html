@@ -952,6 +952,19 @@
     </main>
 
     <script>
+        // === BACKEND BASE ===
+        window.BACKEND = window.BACKEND || 'https://ai-email-server-stejdesign.onrender.com';
+
+        async function parseJsonResponse(response) {
+            const text = await response.text();
+            if (!text) return null;
+            try {
+                return JSON.parse(text);
+            } catch (err) {
+                throw new Error('Server vrátil neplatnou odpověď.');
+            }
+        }
+
         // === GOOGLE SIGN-IN ===
         window.onload = function () {
             google.accounts.id.initialize({
@@ -966,15 +979,18 @@
 
         function handleCredentialResponse(response) {
             const id_token = response.credential;
-            startLoading();
+           startLoading();
             fetch(`${window.BACKEND}/api/auth/google`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token: id_token }),
             })
-                .then(r => r.json())
-                .then(data => {
-                    if (!data.success) throw new Error(data.message || 'Ověření selhalo.');
+                .then(async (r) => {
+                    const data = await parseJsonResponse(r);
+                    return { ok: r.ok, data };
+                })
+                .then(({ ok, data }) => {
+                    if (!ok || !data?.success) throw new Error(data?.message || 'Ověření selhalo.');
                     localStorage.setItem('userName', data.user.name);
                     localStorage.setItem('userEmail', data.user.email);
                     localStorage.setItem('userRole', data.user.role);
@@ -1050,16 +1066,16 @@
             if (!ok) return;
 
             startLoading(step1Btn);
-            try {
+           try {
                 const r = await fetch(`${window.BACKEND}/api/auth/register`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ fullName, email, password })
                 });
-                const data = await r.json();
-                if (!r.ok || !data.success) throw new Error(data.message || 'Registrace selhala.');
+                const data = await parseJsonResponse(r);
+                if (!r.ok || !data?.success) throw new Error(data?.message || 'Registrace selhala.');
 
-                localStorage.setItem('userName', data.user.name);
+              localStorage.setItem('userName', data.user.name);
                 localStorage.setItem('userEmail', data.user.email);
                 window.location.href = 'dashboard.html';
             } catch (err) {
@@ -1087,8 +1103,8 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password })
                 });
-                const data = await r.json();
-                if (!r.ok || !data.success) throw new Error(data.message || 'Přihlášení selhalo.');
+                const data = await parseJsonResponse(r);
+                if (!r.ok || !data?.success) throw new Error(data?.message || 'Přihlášení selhalo.');
 
                 localStorage.setItem('userName', data.user.name);
                 localStorage.setItem('userEmail', data.user.email);
@@ -1119,3 +1135,4 @@
 </body>
 
 </html>
+
