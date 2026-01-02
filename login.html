@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="cs">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,119 +14,156 @@
         }
 
         .mode-login .signup-steps,
-.mode-login #authToggle,               /* „Máte už účet?“ link */
-.mode-login #step1                     /* registrační formulář */
-{ display: none !important; }
+        .mode-login #authToggle,
+        /* „Máte už účet?“ link */
+        .mode-login #step1
 
-.mode-login #loginForm { 
-  display: block !important; 
-}
+        /* registrační formulář */
+            {
+            display: none !important;
+        }
 
-.mode-login #formTitle { 
-  content: none; 
-}
+        .mode-login #loginForm {
+            display: block !important;
+        }
 
-.mode-login .signup-form-container { 
-  padding-top: 2.25rem; 
-}
+        .mode-login #formTitle {
+            content: none;
+        }
 
-.mode-login .form-header { 
-  margin-bottom: 1.25rem; 
-}
+        .mode-login .signup-form-container {
+            padding-top: 2.25rem;
+        }
 
-/* menší mezery, ať login působí kompaktněji */
-.mode-login #loginForm .form-group { 
-  margin-bottom: 1rem; 
-}
+        .mode-login .form-header {
+            margin-bottom: 1.25rem;
+        }
+
+        /* menší mezery, ať login působí kompaktněji */
+        .mode-login #loginForm .form-group {
+            margin-bottom: 1rem;
+        }
 
         /* Jemný overlay při odesílání */
 
-.overlay {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(250, 250, 255, 0.55);
-  backdrop-filter: blur(8px) saturate(1.2);
-  -webkit-backdrop-filter: blur(8px) saturate(1.2);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .25s ease;
-  z-index: 3000;
-}
+        .overlay {
+            position: fixed;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            background: rgba(250, 250, 255, 0.55);
+            backdrop-filter: blur(8px) saturate(1.2);
+            -webkit-backdrop-filter: blur(8px) saturate(1.2);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .25s ease;
+            z-index: 3000;
+        }
 
-.overlay.show {
-  opacity: 1;
-  pointer-events: auto;
-}
+        .overlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
 
-/* karta uprostřed */
-.loader {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 18px;
-  border-radius: 14px;
-  background: rgba(255,255,255,.75);
-  box-shadow: 0 8px 30px rgba(0,0,0,.12);
-}
+        /* karta uprostřed */
+        .loader {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 18px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, .75);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, .12);
+        }
 
-/* moderní spinner */
-.loader .ring {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background:
-    conic-gradient(from 0turn, #667eea, #764ba2, #667eea) border-box;
-  -webkit-mask: 
-    radial-gradient(farthest-side, transparent 55%, #000 57%) 
-    center/100% 100% no-repeat,
-    linear-gradient(#000 0 0) padding-box; 
-  mask: 
-    radial-gradient(farthest-side, transparent 55%, #000 57%) 
-    center/100% 100% no-repeat,
-    linear-gradient(#000 0 0) padding-box;
-  animation: spin 0.9s linear infinite;
-}
+        /* moderní spinner */
+        .loader .ring {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background:
+                conic-gradient(from 0turn, #667eea, #764ba2, #667eea) border-box;
+            -webkit-mask:
+                radial-gradient(farthest-side, transparent 55%, #000 57%) center/100% 100% no-repeat,
+                linear-gradient(#000 0 0) padding-box;
+            mask:
+                radial-gradient(farthest-side, transparent 55%, #000 57%) center/100% 100% no-repeat,
+                linear-gradient(#000 0 0) padding-box;
+            animation: spin 0.9s linear infinite;
+        }
 
-.loader p {
-  margin: 0;
-  font-weight: 600;
-  color: #2c3e50;
-  letter-spacing: .2px;
-}
+        .loader p {
+            margin: 0;
+            font-weight: 600;
+            color: #2c3e50;
+            letter-spacing: .2px;
+        }
 
-/* jemné „dýchání“ celé karty */
-.overlay.show .loader { animation: breathe 1.6s ease-in-out infinite; }
+        /* jemné „dýchání“ celé karty */
+        .overlay.show .loader {
+            animation: breathe 1.6s ease-in-out infinite;
+        }
 
-@keyframes spin {
-  to { transform: rotate(1turn); }
-}
-@keyframes breathe {
-  0%,100% { transform: translateZ(0) scale(1); }
-  50% { transform: translateZ(0) scale(.985); }
-}
+        @keyframes spin {
+            to {
+                transform: rotate(1turn);
+            }
+        }
 
-.pulse {
-  animation: pulse 1s ease-in-out infinite;
-}
-@keyframes pulse {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(0.98); opacity: 0.9; }
-  100% { transform: scale(1); opacity: 1; }
-}
+        @keyframes breathe {
 
-/* button loading transition */
-.btn .loading { transition: opacity .2s; }
+            0%,
+            100% {
+                transform: translateZ(0) scale(1);
+            }
+
+            50% {
+                transform: translateZ(0) scale(.985);
+            }
+        }
+
+        /* Animated Background Grid */
+        .header-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: -1;
+            opacity: 0.4;
+            background-image:
+                linear-gradient(rgba(102, 126, 234, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(102, 126, 234, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: gridMove 20s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes gridMove {
+            0% {
+                transform: translateY(0);
+            }
+
+            100% {
+                transform: translateY(50px);
+            }
+        }
+
+        /* button loading transition */
+        .btn .loading {
+            transition: opacity .2s;
+        }
 
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.6;
-            color: #333;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ecf0f1;
+            /* Lighter text for dark bg */
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
             min-height: 100vh;
             overflow-x: hidden;
+            position: relative;
         }
 
         .container {
@@ -137,9 +175,9 @@
         /* Header */
         .header {
             padding: 1rem 0;
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(10px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .header-content {
@@ -150,30 +188,50 @@
 
         .logo {
             font-size: 1.5rem;
-            font-weight: 700;
-            color: white;
+            font-weight: 800;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 15px;
+            color: white;
             text-decoration: none;
+            letter-spacing: 0.5px;
         }
 
-        .logo::before {
-            content: "🤖";
-            font-size: 1.8rem;
+        .logo-img-wrapper {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 15px;
+            border-radius: 50px;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s ease;
+        }
+
+        .logo:hover .logo-img-wrapper {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
+        }
+
+        .logo img {
+            height: 90px;
+            width: auto;
         }
 
         .back-link {
-            color: white;
+            color: rgba(255, 255, 255, 0.8);
             text-decoration: none;
             padding: 8px 20px;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 20px;
             transition: all 0.3s ease;
+            font-size: 0.9rem;
         }
 
         .back-link:hover {
             background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border-color: rgba(255, 255, 255, 0.4);
             transform: translateY(-2px);
         }
 
@@ -212,6 +270,7 @@
                 opacity: 0;
                 transform: translateX(-50px);
             }
+
             to {
                 opacity: 1;
                 transform: translateX(0);
@@ -254,13 +313,14 @@
 
         /* Signup Form */
         .signup-form-container {
-            background: white;
-            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 24px;
             padding: 3rem;
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
             animation: slideInRight 1s ease-out;
             position: relative;
             overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         @keyframes slideInRight {
@@ -268,12 +328,14 @@
                 opacity: 0;
                 transform: translateX(50px);
             }
+
             to {
                 opacity: 1;
                 transform: translateX(0);
             }
         }
 
+        /* Top Border Gradient */
         .signup-form-container::before {
             content: '';
             position: absolute;
@@ -281,7 +343,7 @@
             left: 0;
             right: 0;
             height: 4px;
-            background: linear-gradient(45deg, #667eea, #764ba2);
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
         }
 
         .form-header {
@@ -322,8 +384,8 @@
             width: 30px;
             height: 30px;
             border-radius: 50%;
-            background: #ecf0f1;
-            color: #7f8c8d;
+            background: #f1f2f6;
+            color: #a4b0be;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -333,20 +395,21 @@
         }
 
         .step.active .step-number {
-            background: #667eea;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
             color: white;
+            box-shadow: 0 4px 10px rgba(238, 90, 36, 0.3);
         }
 
         .step:not(:last-child)::after {
             content: '';
             width: 40px;
             height: 2px;
-            background: #ecf0f1;
+            background: #f1f2f6;
             margin: 0 1rem;
         }
 
         .step.active:not(:last-child)::after {
-            background: #667eea;
+            background: #ff6b6b;
         }
 
         /* Form Styles */
@@ -360,8 +423,15 @@
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .form-group {
@@ -505,14 +575,15 @@
         }
 
         .btn-primary {
-            background: linear-gradient(45deg, #667eea, #764ba2);
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
             color: white;
             width: 100%;
+            box-shadow: 0 4px 15px rgba(238, 90, 36, 0.3);
         }
 
         .btn-primary:hover:not(:disabled) {
             transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+            box-shadow: 0 8px 25px rgba(238, 90, 36, 0.4);
         }
 
         .btn-primary:disabled {
@@ -522,14 +593,15 @@
 
         .btn-secondary {
             background: transparent;
-            color: #667eea;
-            border: 2px solid #667eea;
+            color: #7f8c8d;
+            border: 2px solid #bdc3c7;
             margin-right: 1rem;
         }
 
         .btn-secondary:hover {
-            background: #667eea;
-            color: white;
+            border-color: #2c3e50;
+            color: #2c3e50;
+            background: transparent;
         }
 
         .form-actions {
@@ -585,9 +657,21 @@
         }
 
         @keyframes bounce {
-            0%, 20%, 60%, 100% { transform: translateY(0); }
-            40% { transform: translateY(-20px); }
-            80% { transform: translateY(-10px); }
+
+            0%,
+            20%,
+            60%,
+            100% {
+                transform: translateY(0);
+            }
+
+            40% {
+                transform: translateY(-20px);
+            }
+
+            80% {
+                transform: translateY(-10px);
+            }
         }
 
         /* Loading Animation */
@@ -612,8 +696,13 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         /* Responsive */
@@ -674,12 +763,19 @@
         }
     </style>
 </head>
+
 <body>
+    <div class="header-bg"></div>
     <header class="header">
         <div class="container">
             <div class="header-content">
-                 <a href="#" class="logo">AI Emailový Agent</a>
-                <a href="index.html" class="back-link">← Zpět na hlavní stránku</a>
+                <a href="#" class="logo">
+                    <div class="logo-img-wrapper">
+                        <img src="logo-Agent.png" alt="AI Agent Logo">
+                    </div>
+                    AI EMAILOVÝ AGENT
+                </a>
+                <a href="index.html" class="back-link">← Zpět</a>
             </div>
         </div>
     </header>
@@ -689,8 +785,9 @@
             <div class="signup-container">
                 <div class="signup-info">
                     <h1>Začněte šetřit čas už dnes</h1>
-                    <p>Připojte se k tisícům spokojených uživatelů, kteří automatizovali svou emailovou komunikaci pomocí AI.</p>
-                    
+                    <p>Připojte se k tisícům spokojených uživatelů, kteří automatizovali svou emailovou komunikaci
+                        pomocí AI.</p>
+
                     <ul class="benefits">
                         <li>Ušetřete až 5 hodin týdně</li>
                         <li>Nikdy nezmeškáte důležitý email</li>
@@ -701,34 +798,37 @@
                 </div>
 
                 <div class="signup-form-container">
-                   <div class="form-header">
-  <h2 id="formTitle">Vytvořte si účet</h2>
-  <p id="formSubtitle">Registrace trvá méně než 2 minuty</p>
-</div>
+                    <div class="form-header">
+                        <h2 id="formTitle">Vytvořte si účet</h2>
+                        <p id="formSubtitle">Registrace trvá méně než 2 minuty</p>
+                    </div>
 
-<p id="authToggle" style="text-align:center;margin:10px 0;">
-  Máte už účet? <a href="#" id="showLogin">Přihlásit se</a>
-</p>
- 
+                    <p id="authToggle" style="text-align:center;margin:10px 0;color:#2c3e50;">
+                        Máte už účet? <a href="#" id="showLogin">Přihlásit se</a>
+                    </p>
 
-<!-- Skrytý login formulář -->
-<form class="signup-form" id="loginForm" style="display:none;">
-  <div class="form-group">
-    <label for="loginEmail">Email</label>
-    <input type="email" id="loginEmail" class="form-control" placeholder="jan@priklad.cz" required>
-  </div>
-  <div class="form-group">
-    <label for="loginPassword">Heslo</label>
-    <input type="password" id="loginPassword" class="form-control" placeholder="Heslo" required>
-  </div>
-  <div class="form-actions">
-    <button type="button" class="btn btn-secondary" id="backToRegister">Zpět</button>
-    <button type="submit" class="btn btn-primary" id="loginBtn">
-      <span class="button-text">Přihlásit se</span>
-      <div class="loading"><div class="spinner"></div><span>Přihlašuji…</span></div>
-    </button>
-  </div>
-</form>
+
+                    <!-- Skrytý login formulář -->
+                    <form class="signup-form" id="loginForm" style="display:none;">
+                        <div class="form-group">
+                            <label for="loginEmail">Email</label>
+                            <input type="email" id="loginEmail" class="form-control" placeholder="jan@priklad.cz"
+                                required>
+                        </div>
+                        <div class="form-group">
+                            <label for="loginPassword">Heslo</label>
+                            <input type="password" id="loginPassword" class="form-control" placeholder="Heslo" required>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="backToRegister">Zpět</button>
+                            <button type="submit" class="btn btn-primary" id="loginBtn">
+                                <span class="button-text">Přihlásit se</span>
+                                <div class="loading">
+                                    <div class="spinner"></div><span>Přihlašuji…</span>
+                                </div>
+                            </button>
+                        </div>
+                    </form>
 
                     <div class="signup-steps">
                         <div class="step active">
@@ -747,7 +847,8 @@
 
                     <!-- Step 1: Account Creation -->
                     <form class="signup-form active" id="step1">
-                        <div id="googleSignup" style="margin-bottom: 1rem; display: flex; justify-content: center;"></div>
+                        <div id="googleSignup" style="margin-bottom: 1rem; display: flex; justify-content: center;">
+                        </div>
 
                         <div class="divider">
                             <span>nebo</span>
@@ -768,7 +869,8 @@
 
                         <div class="form-group">
                             <label for="password">Heslo</label>
-                            <input type="password" id="password" class="form-control" placeholder="Minimálně 8 znaků" required>
+                            <input type="password" id="password" class="form-control" placeholder="Minimálně 8 znaků"
+                                required>
                             <div class="password-strength">
                                 <div class="strength-bar">
                                     <div class="strength-fill" id="strengthFill"></div>
@@ -781,7 +883,8 @@
                         <div class="checkbox-group">
                             <input type="checkbox" id="terms" required>
                             <label for="terms">
-                                Souhlasím s <a href="#">podmínkami použití</a> a <a href="#">zásadami ochrany osobních údajů</a>
+                                Souhlasím s <a href="#">podmínkami použití</a> a <a href="#">zásadami ochrany osobních
+                                    údajů</a>
                             </label>
                         </div>
 
@@ -798,8 +901,9 @@
 
                     <!-- Step 2: Email Connection -->
                     <form class="signup-form" id="step2">
-                        <h3 style="text-align: center; margin-bottom: 2rem; color: #2c3e50;">Připojte svůj emailový účet</h3>
-                        
+                        <h3 style="text-align: center; margin-bottom: 2rem; color: #2c3e50;">Připojte svůj emailový účet
+                        </h3>
+
                         <div class="oauth-buttons">
                             <a href="#" class="oauth-button google" id="connectGmail">
                                 <span>📧</span>
@@ -849,176 +953,169 @@
 
     <script>
         // === GOOGLE SIGN-IN ===
-  window.onload = function () {
-    google.accounts.id.initialize({
-      client_id: "990614891314-kugic255rq68tt1m7uqg4rdp9jdig5lb.apps.googleusercontent.com",
-      callback: handleCredentialResponse
-    });
-    google.accounts.id.renderButton(
-      document.getElementById("googleSignup"),
-      { theme: "outline", size: "large", type: "standard", text: "signin_with", shape: "pill", width: "250" }
-    );
-  };
+        window.onload = function () {
+            google.accounts.id.initialize({
+                client_id: "990614891314-kugic255rq68tt1m7uqg4rdp9jdig5lb.apps.googleusercontent.com",
+                callback: handleCredentialResponse
+            });
+            google.accounts.id.renderButton(
+                document.getElementById("googleSignup"),
+                { theme: "outline", size: "large", type: "standard", text: "signin_with", shape: "pill", width: "250" }
+            );
+        };
 
-  function handleCredentialResponse(response) {
-    const id_token = response.credential;
-    startLoading();
-    fetch('https://ai-email-server-stejdesign.onrender.com/api/auth/google', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: id_token }),
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (!data.success) throw new Error(data.message || 'Ověření selhalo.');
-      localStorage.setItem('userName', data.user.name);
-      localStorage.setItem('userEmail', data.user.email);
-      localStorage.setItem('userRole', data.user.role);
-      localStorage.setItem('userPicture', data.user.picture || '');
-      window.location.href = 'dashboard.html';
-    })
-    .catch(err => alert(err.message || 'Chyba při přihlášení Googlem.'))
-    .finally(() => stopLoading());
-  }
+        function handleCredentialResponse(response) {
+            const id_token = response.credential;
+            startLoading();
+            fetch(`${window.BACKEND}/api/auth/google`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: id_token }),
+            })
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.success) throw new Error(data.message || 'Ověření selhalo.');
+                    localStorage.setItem('userName', data.user.name);
+                    localStorage.setItem('userEmail', data.user.email);
+                    localStorage.setItem('userRole', data.user.role);
+                    localStorage.setItem('userPicture', data.user.picture || '');
+                    window.location.href = 'dashboard.html';
+                })
+                .catch(err => alert(err.message || 'Chyba při přihlášení Googlem.'))
+                .finally(() => stopLoading());
+        }
 
-  // === UI helpers (jedna verze!) ===
-  function startLoading(btn) {
-    const overlay = document.getElementById('overlay');
-    const container = document.querySelector('.signup-form-container');
-    overlay?.classList.add('show');
-    container?.classList.add('pulse');
-    if (btn) {
-      btn.disabled = true;
-      btn.querySelector('.button-text')?.style && (btn.querySelector('.button-text').style.display = 'none');
-      btn.querySelector('.loading')?.classList.add('show');
-    }
-  }
-  function stopLoading(btn) {
-    const overlay = document.getElementById('overlay');
-    const container = document.querySelector('.signup-form-container');
-    overlay?.classList.remove('show');
-    container?.classList.remove('pulse');
-    if (btn) {
-      btn.disabled = false;
-      btn.querySelector('.button-text')?.style && (btn.querySelector('.button-text').style.display = 'inline');
-      btn.querySelector('.loading')?.classList.remove('show');
-    }
-  }
+        // === UI helpers (jedna verze!) ===
+        function startLoading(btn) {
+            const overlay = document.getElementById('overlay');
+            const container = document.querySelector('.signup-form-container');
+            overlay?.classList.add('show');
+            container?.classList.add('pulse');
+            if (btn) {
+                btn.disabled = true;
+                btn.querySelector('.button-text')?.style && (btn.querySelector('.button-text').style.display = 'none');
+                btn.querySelector('.loading')?.classList.add('show');
+            }
+        }
+        function stopLoading(btn) {
+            const overlay = document.getElementById('overlay');
+            const container = document.querySelector('.signup-form-container');
+            overlay?.classList.remove('show');
+            container?.classList.remove('pulse');
+            if (btn) {
+                btn.disabled = false;
+                btn.querySelector('.button-text')?.style && (btn.querySelector('.button-text').style.display = 'inline');
+                btn.querySelector('.loading')?.classList.remove('show');
+            }
+        }
 
-  // === Přepínání režimu login/registrace (pouze JEDEN způsob) ===
-  const formTitle    = document.getElementById('formTitle');
-  const formSubtitle = document.getElementById('formSubtitle');
-  const showLogin    = document.getElementById('showLogin');
-  const backToReg    = document.getElementById('backToRegister');
+        // === Přepínání režimu login/registrace (pouze JEDEN způsob) ===
+        const formTitle = document.getElementById('formTitle');
+        const formSubtitle = document.getElementById('formSubtitle');
+        const showLogin = document.getElementById('showLogin');
+        const backToReg = document.getElementById('backToRegister');
 
-  function enterLoginMode() {
-    document.body.classList.add('mode-login');
-    formTitle.textContent    = 'Přihlášení do účtu';
-    formSubtitle.textContent = 'Zadejte své přihlašovací údaje';
-  }
-  function enterRegisterMode() {
-    document.body.classList.remove('mode-login');
-    formTitle.textContent    = 'Vytvořte si účet';
-    formSubtitle.textContent = 'Registrace trvá méně než 2 minuty';
-  }
+        function enterLoginMode() {
+            document.body.classList.add('mode-login');
+            formTitle.textContent = 'Přihlášení do účtu';
+            formSubtitle.textContent = 'Zadejte své přihlašovací údaje';
+        }
+        function enterRegisterMode() {
+            document.body.classList.remove('mode-login');
+            formTitle.textContent = 'Vytvořte si účet';
+            formSubtitle.textContent = 'Registrace trvá méně než 2 minuty';
+        }
 
-  showLogin?.addEventListener('click', (e) => { e.preventDefault(); enterLoginMode(); });
-  backToReg?.addEventListener('click', (e) => { e.preventDefault(); enterRegisterMode(); });
+        showLogin?.addEventListener('click', (e) => { e.preventDefault(); enterLoginMode(); });
+        backToReg?.addEventListener('click', (e) => { e.preventDefault(); enterRegisterMode(); });
 
-  // === Registrace (jediný handler) ===
-  const step1Form = document.getElementById('step1');
-  const step1Btn  = document.getElementById('step1Submit');
+        // === Registrace (jediný handler) ===
+        const step1Form = document.getElementById('step1');
+        const step1Btn = document.getElementById('step1Submit');
 
-  step1Form?.addEventListener('submit', async (e) => {
-    e.preventDefault();
+        step1Form?.addEventListener('submit', async (e) => {
+            e.preventDefault();
 
-    const fullName = document.getElementById('fullName').value.trim();
-    const email    = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
+            const fullName = document.getElementById('fullName').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
 
-    // jednoduchá validace
-    let ok = true;
-    document.getElementById('fullNameError').style.display = fullName ? 'none' : 'block';
-    document.getElementById('emailError').style.display    =
-      (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ? 'block' : 'none';
-    document.getElementById('passwordError').style.display = (!password || password.length < 8) ? 'block' : 'none';
-    ok = fullName && email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && password && password.length >= 8;
-    if (!ok) return;
+            // jednoduchá validace
+            let ok = true;
+            document.getElementById('fullNameError').style.display = fullName ? 'none' : 'block';
+            document.getElementById('emailError').style.display =
+                (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ? 'block' : 'none';
+            document.getElementById('passwordError').style.display = (!password || password.length < 8) ? 'block' : 'none';
+            ok = fullName && email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && password && password.length >= 8;
+            if (!ok) return;
 
-    startLoading(step1Btn);
-    try {
-      const r = await fetch('https://ai-email-server-stejdesign.onrender.com/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({ fullName, email, password })
-      });
-      const data = await r.json();
-      if (!r.ok || !data.success) throw new Error(data.message || 'Registrace selhala.');
+            startLoading(step1Btn);
+            try {
+                const r = await fetch(`${window.BACKEND}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fullName, email, password })
+                });
+                const data = await r.json();
+                if (!r.ok || !data.success) throw new Error(data.message || 'Registrace selhala.');
 
-      localStorage.setItem('userName', data.user.name);
-      localStorage.setItem('userEmail', data.user.email);
-      window.location.href = 'dashboard.html';
-    } catch (err) {
-      console.error(err);
-      alert(err.message || 'Chyba při registraci.');
-    } finally {
-      stopLoading(step1Btn);
-    }
-  });
+                localStorage.setItem('userName', data.user.name);
+                localStorage.setItem('userEmail', data.user.email);
+                window.location.href = 'dashboard.html';
+            } catch (err) {
+                console.error(err);
+                alert(err.message || 'Chyba při registraci.');
+            } finally {
+                stopLoading(step1Btn);
+            }
+        });
 
-  // === Login (jediný handler) ===
-  const loginForm = document.getElementById('loginForm');
-  const loginBtn  = document.getElementById('loginBtn');
+        // === Login (jediný handler) ===
+        const loginForm = document.getElementById('loginForm');
+        const loginBtn = document.getElementById('loginBtn');
 
-  loginForm?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    if (!email || !password) return;
+        loginForm?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            if (!email || !password) return;
 
-    startLoading(loginBtn);
-    try {
-      const r = await fetch('https://ai-email-server-stejdesign.onrender.com/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await r.json();
-      if (!r.ok || !data.success) throw new Error(data.message || 'Přihlášení selhalo.');
+            startLoading(loginBtn);
+            try {
+                const r = await fetch(`${window.BACKEND}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await r.json();
+                if (!r.ok || !data.success) throw new Error(data.message || 'Přihlášení selhalo.');
 
-      localStorage.setItem('userName', data.user.name);
-      localStorage.setItem('userEmail', data.user.email);
-      localStorage.setItem('userRole', data.user.role);
-      window.location.href = 'dashboard.html';
-    } catch (err) {
-      console.error(err);
-      alert(err.message || 'Chyba při přihlášení.');
-    } finally {
-      stopLoading(loginBtn);
-    }
-  });
+                localStorage.setItem('userName', data.user.name);
+                localStorage.setItem('userEmail', data.user.email);
+                localStorage.setItem('userRole', data.user.role);
+                window.location.href = 'dashboard.html';
+            } catch (err) {
+                console.error(err);
+                alert(err.message || 'Chyba při přihlášení.');
+            } finally {
+                stopLoading(loginBtn);
+            }
+        });
 
-  // === Krok 2 a 3 – přesměrování ===
-  document.getElementById('step2Skip')?.addEventListener('click', () => window.location.href = 'dashboard.html');
-  document.getElementById('goToDashboard')?.addEventListener('click', () => window.location.href = 'dashboard.html');
+        // === Krok 2 a 3 – přesměrování ===
+        document.getElementById('step2Skip')?.addEventListener('click', () => window.location.href = 'dashboard.html');
+        document.getElementById('goToDashboard')?.addEventListener('click', () => window.location.href = 'dashboard.html');
 
-</script>
-    
-<div class="overlay" id="overlay">
-  <div class="loader">
-    <div class="ring" aria-hidden="true"></div>
-    <p>Probíhá přihlášení…</p>
-  </div>
-</div>
+    </script>
+
+    <div class="overlay" id="overlay">
+        <div class="loader">
+            <div class="ring" aria-hidden="true"></div>
+            <p>Probíhá přihlášení…</p>
+        </div>
+    </div>
 
 
 </body>
+
 </html>
-
-
-
-
-
-
-
-
