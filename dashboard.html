@@ -2695,9 +2695,11 @@
 
     /* Kontejner modálního okna */
     #modal-content {
-      background: white;
+      background: rgba(30, 41, 59, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
       width: 90%;
       max-width: 480px;
       transform: scale(0.9);
@@ -2710,19 +2712,33 @@
       }
     }
 
+    /* Add class .modal style for consistency with #modal-content */
+    .modal {
+      background: rgba(30, 41, 59, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      width: 90%;
+      max-width: 480px;
+      margin: auto;
+      transform: scale(0.9);
+      animation: modalAppear 0.3s ease forwards;
+    }
+
     /* Hlavička modálního okna */
     .modal-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       padding: 24px;
-      border-bottom: 1px solid #e9ecef;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
 
     .modal-title {
       font-size: 1.4em;
       font-weight: 600;
-      color: #2c3e50;
+      color: #ffffff;
     }
 
     .modal-close {
@@ -2730,12 +2746,12 @@
       border: none;
       font-size: 24px;
       cursor: pointer;
-      color: #6c757d;
+      color: #94a3b8;
       transition: all 0.3s ease;
     }
 
     .modal-close:hover {
-      color: #495057;
+      color: #ffffff;
       transform: rotate(90deg);
     }
 
@@ -2756,14 +2772,14 @@
       justify-content: center;
       gap: 12px;
       padding: 16px 24px;
-      border: 2px solid #e9ecef;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 12px;
-      background: white;
+      background: rgba(255, 255, 255, 0.05);
       font-size: 16px;
       font-weight: 500;
       cursor: pointer;
       transition: all 0.3s ease;
-      color: #495057;
+      color: #ffffff;
     }
 
     .provider-btn:hover {
@@ -2788,7 +2804,18 @@
     }
 
     .form-control {
-      padding-left: 45px;
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      background: rgba(0, 0, 0, 0.3);
+      color: #ffffff;
+    }
+
+    .form-control:focus {
+      outline: none;
+      border-color: #667eea;
     }
 
     .search-container {
@@ -3008,17 +3035,17 @@
     }
 
     .users-table tbody tr:hover {
-      background: #f8fafc;
+      background: rgba(255, 255, 255, 0.05);
     }
 
     .activity-action {
       font-weight: 600;
-      color: #1e293b;
+      color: #ffffff;
     }
 
     .activity-detail {
       margin-top: 0.25rem;
-      color: #64748b;
+      color: #94a3b8;
       font-size: 0.85rem;
       white-space: pre-line;
     }
@@ -3049,12 +3076,12 @@
 
     .user-name {
       font-weight: 600;
-      color: #1e293b;
+      color: #ffffff;
     }
 
     .user-email {
       font-size: 0.875rem;
-      color: #64748b;
+      color: #94a3b8;
     }
 
     .role-badge {
@@ -3112,6 +3139,224 @@
       100% {
         transform: translateY(50px);
       }
+    }
+
+    /* === PRO MODAL REDESIGN (Dark Theme) === */
+    .pro-modal {
+      background: rgba(30, 41, 59, 0.95);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6);
+      width: 95%;
+      max-width: 1000px;
+      margin: auto;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      max-height: 90vh;
+      animation: modalAppear 0.3s ease forwards;
+    }
+
+    .pro-modal__header {
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.1);
+    }
+
+    .pro-avatar {
+      width: 42px;
+      height: 42px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    }
+
+    .pro-modal__body {
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      background: transparent;
+    }
+
+    /* Hide sidebar as requested */
+    .pro-sidebar {
+      display: none !important;
+    }
+
+    .pro-content {
+      width: 100%;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    .pro-headings .pro-title {
+      color: white;
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .pro-headings .pro-subtitle {
+      color: #94a3b8;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .pro-dot {
+      color: rgba(255, 255, 255, 0.2);
+    }
+
+    .pro-body-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      padding: 1.75rem;
+      transition: all 0.2s ease;
+    }
+
+    .pro-body-card:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .pro-body-card__title {
+      font-size: 1rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1.25rem;
+      color: #94a3b8;
+      /* Muted header */
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .pro-body-card__content {
+      color: #e2e8f0;
+      line-height: 1.7;
+      font-size: 1rem;
+    }
+
+    /* AI Inline Card - Quick Reply Polish */
+    .ai-inline-card {
+      background: linear-gradient(to bottom right, rgba(102, 126, 234, 0.05), rgba(118, 75, 162, 0.05));
+      border: 1px solid rgba(102, 126, 234, 0.2);
+    }
+
+    .ai-inline-card .pro-body-card__content {
+      display: grid;
+      grid-template-columns: 3fr 2fr;
+      gap: 2.5rem;
+    }
+
+    .ai-inline-main {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .ai-inline-side {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 1.25rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .ai-inline-hint-title {
+      color: #a5b4fc;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      display: block;
+    }
+
+    .ai-inline-list {
+      list-style: none;
+      /* Remove default bullets */
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .ai-inline-list li {
+      position: relative;
+      padding-left: 1.25rem;
+      font-size: 0.9rem;
+      color: #cbd5e1;
+    }
+
+    .ai-inline-list li::before {
+      content: "•";
+      color: #667eea;
+      position: absolute;
+      left: 0;
+      font-weight: bold;
+    }
+
+    .ai-inline-input {
+      background: rgba(15, 23, 42, 0.6);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 1rem;
+      min-height: 100px;
+      font-size: 0.95rem;
+      resize: none;
+    }
+
+    .ai-inline-input:focus {
+      border-color: #667eea;
+      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+      outline: none;
+    }
+
+    .ai-inline-button {
+      width: 100%;
+      justify-content: center;
+      padding: 0.75rem;
+      font-weight: 600;
+      margin-top: 1rem;
+    }
+
+    .pro-modal__footer {
+      padding: 1.5rem 2rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      justify-content: flex-end;
+      gap: 1rem;
+      background: rgba(0, 0, 0, 0.1);
+    }
+
+    .pro-close {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.5);
+      cursor: pointer;
+      padding: 0.5rem;
+      transition: color 0.2s;
+    }
+
+    .pro-close:hover {
+      color: white;
     }
   </style>
 </head>
@@ -3539,37 +3784,27 @@
 
               <!-- Body -->
               <div class="pro-modal__body">
-                <aside class="pro-sidebar">
-                  <div class="pro-meta">
-                    <div class="pro-meta__row">
-                      <div class="pro-meta__label">Odesílatel</div>
-                      <div class="pro-meta__value" id="ed-from-meta">—</div>
-                    </div>
-                    <div class="pro-meta__row">
-                      <div class="pro-meta__label">Předmět</div>
-                      <div class="pro-meta__value" id="ed-subject-meta">—</div>
-                    </div>
-                    <div class="pro-meta__row">
-                      <div class="pro-meta__label">Datum</div>
-                      <div class="pro-meta__value" id="ed-date-meta">—</div>
-                    </div>
-                  </div>
-                </aside>
+                <!-- Sidebar Removed as requested -->
 
                 <div class="pro-content">
                   <div class="pro-body-card pro-body-card--email">
-                    <div class="pro-body-card__title">Obsah zprávy</div>
+                    <div class="pro-body-card__title">
+                      <span>📄</span> Obsah zprávy
+                    </div>
                     <div class="pro-body-card__content" id="ed-body">Načítám…</div>
                   </div>
 
                   <div class="pro-body-card pro-body-card--ai" id="ed-ai-card" style="display: none;">
-                    <div class="pro-body-card__title">Návrh odpovědi (AI)</div>
+                    <div class="pro-body-card__title">
+                      <span>🤖</span> Návrh odpovědi (AI)
+                    </div>
                     <div class="pro-body-card__content">
-                      <div style="color:#0f172a; margin-bottom:12px; line-height:1.6;">
+                      <div
+                        style="color:#e2e8f0; margin-bottom:12px; line-height:1.6; background:rgba(0,0,0,0.2); padding:1rem; border-radius:8px;">
                         <div><strong>Shrnutí:</strong> <span id="ed-ai-summary">—</span></div>
                         <div><strong>Sentiment:</strong> <span id="ed-ai-sentiment">—</span></div>
                       </div>
-                      <div id="ed-ai-reply" style="white-space: pre-wrap; line-height:1.55; color:#111827;"></div>
+                      <div id="ed-ai-reply" style="white-space: pre-wrap; line-height:1.55; color:#f1f5f9;"></div>
                     </div>
                   </div>
 
