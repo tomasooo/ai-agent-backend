@@ -3205,6 +3205,12 @@
       display: none !important;
     }
 
+    /* Hide top buttons as requested */
+    .pro-actions #ed-copy,
+    .pro-actions #ed-reply-open {
+      display: none !important;
+    }
+
     .pro-content {
       width: 100%;
       padding: 2rem;
@@ -3426,6 +3432,71 @@
 
     .pro-close:hover {
       color: white;
+    }
+
+    /* === AI COMPOSER DARK THEME === */
+    .ai-composer-panel {
+      background: #0f172a !important;
+      /* Extremely darker blue/slate */
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+      color: white;
+    }
+
+    .ai-composer-header {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+      background: rgba(15, 23, 42, 0.95);
+    }
+
+    .ai-composer-title {
+      color: white !important;
+    }
+
+    .ai-composer-context {
+      color: #94a3b8 !important;
+    }
+
+    .ai-composer-close {
+      color: #94a3b8 !important;
+    }
+
+    .ai-composer-close:hover {
+      color: white !important;
+      background: rgba(255, 255, 255, 0.1) !important;
+    }
+
+    .ai-composer-body {
+      background: #0f172a !important;
+    }
+
+    .ai-composer-select,
+    .ai-composer-field textarea,
+    .ai-composer-result textarea {
+      background: rgba(30, 41, 59, 0.6) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      color: white !important;
+      border-radius: 10px;
+    }
+
+    .ai-composer-select:focus,
+    .ai-composer-field textarea:focus {
+      border-color: #667eea !important;
+      outline: none;
+      background: rgba(30, 41, 59, 1) !important;
+    }
+
+    .ai-composer-note {
+      color: #64748b !important;
+    }
+
+    .ai-composer-footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+      background: rgba(0, 0, 0, 0.2) !important;
+    }
+
+    .ai-composer-tag {
+      background: #667eea !important;
+      color: white !important;
     }
   </style>
 </head>
@@ -3877,34 +3948,7 @@
                     </div>
                   </div>
 
-                  <div class="pro-body-card ai-inline-card">
-                    <div class="pro-body-card__title">
-                      <span class="ai-inline-icon">✨</span>
-                      <span>Rychlá AI odpověď</span>
-                    </div>
-                    <div class="pro-body-card__content ai-inline-content">
-                      <div class="ai-inline-main">
-                        <p class="ai-inline-lead">Vložte sem odpověď, kterou chcete nechat AI uhladit. Zachováme význam
-                          i podpis.</p>
-                        <label class="form-label" for="ed-ai-instructions">Text k doladění</label>
-                        <textarea id="ed-ai-instructions" class="form-control ai-inline-input" rows="3"
-                          placeholder="Zkopírujte sem odpověď, kterou chcete jen stylisticky vylepšit…"></textarea>
-                      </div>
-                      <div class="ai-inline-side">
-                        <div class="ai-inline-hint">
-                          <span class="ai-inline-hint-title">Co pro vás AI udělá</span>
-                          <ul class="ai-inline-list">
-                            <li>Vylepší tón a pravopis bez zbytečných okolků.</li>
-                            <li>Nechá všechny důležité informace na svém místě.</li>
-                            <li>Podpis i jazyk zachová podle profilu.</li>
-                          </ul>
-                        </div>
-                        <button class="btn btn-primary ai-inline-button" id="ed-open-composer" type="button">✨ Upravit
-                          odpověď</button>
-                        <p class="ai-inline-note">Hotovo během pár sekund – stačí vložit text a kliknout.</p>
-                      </div>
-                    </div>
-                  </div>
+                  <!-- Quick AI Reply Removed as requested -->
                 </div>
               </div>
 
