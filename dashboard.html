@@ -2880,11 +2880,12 @@
     }
 
     .stat-card {
-      background: white;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
       padding: 1.5rem;
       border-radius: 16px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-      border: 1px solid #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
     }
 
     .stat-header {
@@ -2896,7 +2897,7 @@
 
     .stat-title {
       font-size: 0.9rem;
-      color: #64748b;
+      color: #94a3b8;
       font-weight: 500;
     }
 
@@ -2904,30 +2905,32 @@
       font-size: 1.5rem;
       padding: 8px;
       border-radius: 10px;
-      background: #f1f5f9;
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
     }
 
     .stat-value {
       font-size: 2rem;
       font-weight: 700;
-      color: #1e293b;
+      color: #ffffff;
     }
 
     .users-section {
-      background: white;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
       border-radius: 16px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-      border: 1px solid #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       overflow: hidden;
     }
 
     .section-header {
       padding: 1.5rem 2rem;
-      border-bottom: 1px solid #e2e8f0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: #f8fafc;
+      background: transparent;
       flex-wrap: wrap;
       gap: 1rem;
     }
@@ -2935,7 +2938,7 @@
     .section-title {
       font-size: 1.3rem;
       font-weight: 600;
-      color: #1e293b;
+      color: #ffffff;
     }
 
     .search-filters {
@@ -2951,10 +2954,12 @@
 
     .search-input {
       padding: 8px 12px 8px 35px;
-      border: 2px solid #e5e7eb;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 8px;
       font-size: 0.9rem;
       width: 250px;
+      background: rgba(0, 0, 0, 0.3);
+      color: #ffffff;
     }
 
     .search-input:focus {
@@ -2972,10 +2977,11 @@
 
     .filter-select {
       padding: 8px 12px;
-      border: 2px solid #e5e7eb;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 8px;
       font-size: 0.9rem;
-      background: white;
+      background: rgba(0, 0, 0, 0.3);
+      color: #ffffff;
       cursor: pointer;
     }
 
@@ -2988,13 +2994,14 @@
     .users-table td {
       padding: 1rem 1.5rem;
       text-align: left;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: #cbd5e1;
     }
 
     .users-table th {
-      background: #f8fafc;
+      background: rgba(255, 255, 255, 0.05);
       font-weight: 600;
-      color: #374151;
+      color: #e2e8f0;
       font-size: 0.875rem;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -3249,7 +3256,13 @@
               <div class="stat-card">
                 <div class="stat-header">
                   <span class="stat-title">Zpracované emaily</span>
-                  <span class="stat-icon">📧</span>
+                  <span class="stat-icon" style="display: flex; align-items: center; justify-content: center;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                      <polyline points="22,6 12,13 2,6"></polyline>
+                    </svg>
+                  </span>
                 </div>
                 <div class="stat-value">1,247</div>
                 <div class="stat-change positive">
@@ -3261,7 +3274,13 @@
               <div class="stat-card">
                 <div class="stat-header">
                   <span class="stat-title">Ušetřený čas</span>
-                  <span class="stat-icon">⏰</span>
+                  <span class="stat-icon" style="display: flex; align-items: center; justify-content: center;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                  </span>
                 </div>
                 <div class="stat-value">24.5h</div>
                 <div class="stat-change positive">
@@ -3273,7 +3292,14 @@
               <div class="stat-card">
                 <div class="stat-header">
                   <span class="stat-title">Úspěšnost AI</span>
-                  <span class="stat-icon">🎯</span>
+                  <span class="stat-icon" style="display: flex; align-items: center; justify-content: center;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <circle cx="12" cy="12" r="6"></circle>
+                      <circle cx="12" cy="12" r="2"></circle>
+                    </svg>
+                  </span>
                 </div>
                 <div class="stat-value">94.2%</div>
                 <div class="stat-change positive">
@@ -3285,7 +3311,16 @@
               <div class="stat-card">
                 <div class="stat-header">
                   <span class="stat-title">Aktivní šablony</span>
-                  <span class="stat-icon">📝</span>
+                  <span class="stat-icon" style="display: flex; align-items: center; justify-content: center;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                      <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                  </span>
                 </div>
                 <div class="stat-value">12</div>
                 <div class="stat-change">
@@ -4043,34 +4078,37 @@
           <h3>Dostupné integrace</h3>
 
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
-            <div style="border: 2px solid #e2e8f0; border-radius: 16px; padding: 1.5rem; transition: all 0.3s ease;">
+            <div
+              style="border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 1.5rem; transition: all 0.3s ease;">
               <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
                 <span style="font-size: 2rem;">📅</span>
                 <div>
-                  <h4 style="margin: 0; color: #1e293b;">Google Calendar</h4>
-                  <p style="margin: 0; color: #64748b; font-size: 0.9rem;">Automatické plánování schůzek</p>
+                  <h4 style="margin: 0; color: #ffffff;">Google Calendar</h4>
+                  <p style="margin: 0; color: #94a3b8; font-size: 0.9rem;">Automatické plánování schůzek</p>
                 </div>
               </div>
               <button class="btn btn-primary" style="width: 100%;">Připojit</button>
             </div>
 
-            <div style="border: 2px solid #e2e8f0; border-radius: 16px; padding: 1.5rem; transition: all 0.3s ease;">
+            <div
+              style="border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 1.5rem; transition: all 0.3s ease;">
               <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
                 <span style="font-size: 2rem;">💼</span>
                 <div>
-                  <h4 style="margin: 0; color: #1e293b;">Slack</h4>
-                  <p style="margin: 0; color: #64748b; font-size: 0.9rem;">Notifikace o důležitých emailech</p>
+                  <h4 style="margin: 0; color: #ffffff;">Slack</h4>
+                  <p style="margin: 0; color: #94a3b8; font-size: 0.9rem;">Notifikace o důležitých emailech</p>
                 </div>
               </div>
               <button class="btn btn-secondary" style="width: 100%;">Připravuje se</button>
             </div>
 
-            <div style="border: 2px solid #e2e8f0; border-radius: 16px; padding: 1.5rem; transition: all 0.3s ease;">
+            <div
+              style="border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 1.5rem; transition: all 0.3s ease;">
               <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
                 <span style="font-size: 2rem;">📊</span>
                 <div>
-                  <h4 style="margin: 0; color: #1e293b;">CRM systémy</h4>
-                  <p style="margin: 0; color: #64748b; font-size: 0.9rem;">Synchronizace s vaším CRM</p>
+                  <h4 style="margin: 0; color: #ffffff;">CRM systémy</h4>
+                  <p style="margin: 0; color: #94a3b8; font-size: 0.9rem;">Synchronizace s vaším CRM</p>
                 </div>
               </div>
               <button class="btn btn-secondary" style="width: 100%;">Připravuje se</button>
@@ -4083,22 +4121,53 @@
       <div class="page-content" id="admin" style="margin-top: 0 !important; padding-top: 0 !important;">
         <div class="admin-stats" style="margin-top: 0 !important;">
           <div class="stat-card">
-            <div class="stat-header"><span class="stat-title">Celkem uživatelů</span><span class="stat-icon">👥</span>
+            <div class="stat-header"><span class="stat-title">Celkem uživatelů</span>
+              <span class="stat-icon" style="display: flex; align-items: center; justify-content: center;">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+              </span>
             </div>
             <div class="stat-value" id="admin-total-users">-</div>
           </div>
           <div class="stat-card">
-            <div class="stat-header"><span class="stat-title">Platící zákazníci</span><span class="stat-icon">⭐</span>
+            <div class="stat-header"><span class="stat-title">Platící zákazníci</span>
+              <span class="stat-icon" style="display: flex; align-items: center; justify-content: center;">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <polygon
+                    points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
+                  </polygon>
+                </svg>
+              </span>
             </div>
             <div class="stat-value" id="admin-paying-users">-</div>
           </div>
           <div class="stat-card">
-            <div class="stat-header"><span class="stat-title">Připojené emaily</span><span class="stat-icon">📧</span>
+            <div class="stat-header"><span class="stat-title">Připojené emaily</span>
+              <span class="stat-icon" style="display: flex; align-items: center; justify-content: center;">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                  <polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+              </span>
             </div>
             <div class="stat-value" id="admin-connected-emails">-</div>
           </div>
           <div class="stat-card">
-            <div class="stat-header"><span class="stat-title">AI akce dnes</span><span class="stat-icon"></span></div>
+            <div class="stat-header"><span class="stat-title">AI akce dnes</span>
+              <span class="stat-icon" style="display: flex; align-items: center; justify-content: center;">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                </svg>
+              </span>
+            </div>
             <div class="stat-value" id="admin-ai-today">-</div>
           </div>
         </div>
