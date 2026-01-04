@@ -1290,6 +1290,18 @@
     .nav-icon {
       font-size: 1.2rem;
       min-width: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .nav-icon svg {
+      width: 20px;
+      height: 20px;
+      opacity: 0.8;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
     }
 
     .nav-text {
@@ -1415,13 +1427,15 @@
     }
 
     .user-info {
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(10px);
-      padding: 1rem 2rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 1.5rem 2rem;
       display: flex;
+      justify-content: flex-end;
       align-items: center;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      gap: 20px;
+      /* Remove full width background to match preview "floating" look */
+      background: transparent;
+      box-shadow: none;
+      border-bottom: none;
     }
 
     .page-title {
@@ -1430,10 +1444,85 @@
       color: #ffffff;
     }
 
-    .user-info {
+    /* Component Styles from Index.html Preview */
+    .notification-bell {
+      position: relative;
+      width: 40px;
+      height: 40px;
+      background: white;
+      border-radius: 50%;
       display: flex;
       align-items: center;
-      gap: 1rem;
+      justify-content: center;
+      color: #f59e0b;
+      /* Orange/Gold icon */
+      cursor: pointer;
+      transition: transform 0.2s;
+      border: none;
+    }
+
+    .notification-bell:hover {
+      transform: scale(1.05);
+    }
+
+    .notification-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      background: #ef4444;
+      color: white;
+      font-size: 0.7rem;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid #232436;
+      /* Match dark bg for cut-out effect */
+    }
+
+    /* Redefine user-profile to match preview pill style */
+    .user-profile-pill {
+      background: #393a5b;
+      /* Lighter purple block */
+      border-radius: 30px;
+      padding: 6px 6px 6px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: white;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: default;
+    }
+
+    .user-avatar-pill {
+      width: 36px;
+      height: 36px;
+      background: #6366f1;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      color: white;
+    }
+
+    .logout-btn-styled {
+      background: white;
+      color: #1e1e2d;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: transform 0.2s;
+    }
+
+    .logout-btn-styled:hover {
+      transform: scale(1.05);
     }
 
     .notifications {
@@ -3041,43 +3130,87 @@
         <ul class="nav-menu">
           <li class="nav-item">
             <a href="#" class="nav-link active" data-page="dashboard">
-              <span class="nav-icon">📊</span>
+              <span class="nav-icon">
+                <svg viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="14" width="7" height="7"></rect>
+                  <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+              </span>
               <span class="nav-text">Dashboard</span>
             </a>
           </li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-page="emails">
-              <span class="nav-icon">📧</span>
+              <span class="nav-icon">
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                  <polyline points="22,6 12,13 2,6"></polyline>
+                </svg>
+              </span>
               <span class="nav-text">Emaily</span>
             </a>
           </li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-page="templates">
-              <span class="nav-icon">📝</span>
+              <span class="nav-icon">
+                <svg viewBox="0 0 24 24">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+              </span>
               <span class="nav-text">Šablony</span>
             </a>
           </li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-page="settings">
-              <span class="nav-icon">⚙️</span>
+              <span class="nav-icon">
+                <svg viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path
+                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                  </path>
+                </svg>
+              </span>
               <span class="nav-text">Nastavení</span>
             </a>
           </li>
           <li class="nav-item" id="admin-menu-item" style="display: none;">
             <a href="#" class="nav-link" data-page="admin">
-              <span class="nav-icon">👑</span>
+              <span class="nav-icon">
+                <svg viewBox="0 0 24 24">
+                  <polygon
+                    points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
+                  </polygon>
+                </svg>
+              </span>
               <span class="nav-text">Admin</span>
             </a>
           </li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-page="analytics">
-              <span class="nav-icon">📈</span>
+              <span class="nav-icon">
+                <svg viewBox="0 0 24 24">
+                  <line x1="18" y1="20" x2="18" y2="10"></line>
+                  <line x1="12" y1="20" x2="12" y2="4"></line>
+                  <line x1="6" y1="20" x2="6" y2="14"></line>
+                </svg>
+              </span>
               <span class="nav-text">Analytika</span>
             </a>
           </li>
           <li class="nav-item">
             <a href="#" class="nav-link" data-page="integrations">
-              <span class="nav-icon">🔗</span>
+              <span class="nav-icon">
+                <svg viewBox="0 0 24 24">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                </svg>
+              </span>
               <span class="nav-text">Integrace</span>
             </a>
           </li>
@@ -3089,16 +3222,22 @@
     <!-- Main Content -->
     <main class="main-content">
       <!-- Top Bar -->
+      <!-- Top Bar -->
       <div class="user-info">
-        <button class="notifications">
-          <span>🔔</span>
-          <span class="notification-badge">3</span>
+        <button class="notification-bell">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:20px;height:20px;">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+          <div class="notification-badge">3</div>
         </button>
-        <span id="user-name-display" style="font-weight: 500;"></span>
-        <div class="user-avatar"></div>
-        <button id="logout-button"
-          style="border:none; background:#f1f5f9; padding:8px 12px; border-radius:8px; cursor:pointer;">Odhlásit
-          se</button>
+
+        <div class="user-profile-pill">
+          <span id="user-name-display">Načítám...</span>
+          <div class="user-avatar-pill" id="user-avatar-display"></div>
+        </div>
+
+        <button id="logout-button" class="logout-btn-styled">Odhlásit se</button>
       </div>
 
       <!-- Content Area -->
@@ -7222,7 +7361,7 @@ S pozdravem
         window.location.href = 'login.html';
         return;
       }
-      const avatarDiv = document.querySelector('.user-avatar');
+      const avatarDiv = document.getElementById('user-avatar-display');
       const userNameDisplay = document.getElementById('user-name-display');
       if (userNameDisplay) userNameDisplay.textContent = userName;
       if (avatarDiv) {
