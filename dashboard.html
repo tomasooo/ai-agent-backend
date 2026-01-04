@@ -3141,20 +3141,22 @@
       }
     }
 
-    /* === PRO MODAL REDESIGN (Dark Theme) === */
+    /* === PRO MODAL REDESIGN (Dark Theme - Refined) === */
     .pro-modal {
-      background: rgba(30, 41, 59, 0.95);
-      backdrop-filter: blur(16px);
+      background: #0f172a;
+      /* Solid dark color to prevent transparency issues */
       border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 20px;
+      border-radius: 16px;
       box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6);
-      width: 95%;
-      max-width: 1000px;
+      width: 90%;
+      max-width: 1100px;
       margin: auto;
       color: #fff;
       display: flex;
       flex-direction: column;
-      max-height: 90vh;
+      height: 85vh;
+      /* Fixed height for consistency */
+      overflow: hidden;
       animation: modalAppear 0.3s ease forwards;
     }
 
@@ -3164,28 +3166,38 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: rgba(0, 0, 0, 0.1);
+      background: rgba(15, 23, 42, 0.95);
+      flex-shrink: 0;
     }
 
     .pro-avatar {
-      width: 42px;
-      height: 42px;
+      width: 48px;
+      height: 48px;
       background: linear-gradient(135deg, #667eea, #764ba2);
       color: white;
       border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.2rem;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+      font-size: 1.5rem;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      flex-shrink: 0;
+    }
+
+    .pro-modal__id {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
     }
 
     .pro-modal__body {
       padding: 0;
       display: flex;
       flex-direction: column;
+      flex: 1;
+      /* Take remaining height */
       overflow-y: auto;
-      background: transparent;
+      background: #0f172a;
     }
 
     /* Hide sidebar as requested */
@@ -3198,21 +3210,23 @@
       padding: 2rem;
       display: flex;
       flex-direction: column;
-      gap: 2rem;
+      gap: 1.5rem;
+      height: 100%;
     }
 
     .pro-headings .pro-title {
       color: white;
-      font-size: 1.2rem;
-      font-weight: 600;
-      margin-bottom: 2px;
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+      line-height: 1.2;
     }
 
     .pro-headings .pro-subtitle {
       color: #94a3b8;
-      font-size: 0.9rem;
+      font-size: 0.95rem;
       display: flex;
-      gap: 0.5rem;
+      gap: 0.75rem;
       align-items: center;
     }
 
@@ -3221,47 +3235,68 @@
     }
 
     .pro-body-card {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 16px;
-      padding: 1.75rem;
-      transition: all 0.2s ease;
+      padding: 0;
+      /* Remove padding from container to let header span full width if needed, or manage internally */
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
 
-    .pro-body-card:hover {
-      background: rgba(255, 255, 255, 0.04);
-      border-color: rgba(255, 255, 255, 0.1);
+    .pro-body-card--email {
+      flex: 1;
+      /* Expand to fill space */
+      min-height: 300px;
     }
 
     .pro-body-card__title {
-      font-size: 1rem;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 1rem 1.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.9rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      margin-bottom: 1.25rem;
       color: #94a3b8;
-      /* Muted header */
       display: flex;
       gap: 0.75rem;
       align-items: center;
     }
 
     .pro-body-card__content {
+      padding: 1.75rem;
       color: #e2e8f0;
-      line-height: 1.7;
-      font-size: 1rem;
+      line-height: 1.8;
+      font-size: 1.05rem;
     }
 
-    /* AI Inline Card - Quick Reply Polish */
+    /* AI Inline Card - Quick Reply Design Fix */
     .ai-inline-card {
-      background: linear-gradient(to bottom right, rgba(102, 126, 234, 0.05), rgba(118, 75, 162, 0.05));
-      border: 1px solid rgba(102, 126, 234, 0.2);
+      background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
+      border: 1px solid rgba(102, 126, 234, 0.3);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .ai-inline-card .pro-body-card__title {
+      background: linear-gradient(90deg, rgba(102, 126, 234, 0.1), transparent);
+      color: #a5b4fc;
+      border-bottom: 1px solid rgba(102, 126, 234, 0.15);
     }
 
     .ai-inline-card .pro-body-card__content {
       display: grid;
-      grid-template-columns: 3fr 2fr;
-      gap: 2.5rem;
+      grid-template-columns: 1.5fr 1fr;
+      /* Adjusted ratio */
+      gap: 2rem;
+      padding: 1.5rem 1.75rem;
+    }
+
+    @media (max-width: 768px) {
+      .ai-inline-card .pro-body-card__content {
+        grid-template-columns: 1fr;
+      }
     }
 
     .ai-inline-main {
@@ -3270,71 +3305,102 @@
       gap: 1rem;
     }
 
+    .ai-inline-lead {
+      font-size: 0.9rem;
+      color: #cbd5e1;
+      margin: 0;
+    }
+
     .ai-inline-side {
-      background: rgba(0, 0, 0, 0.2);
+      background: rgba(30, 41, 59, 0.4);
       padding: 1.25rem;
       border-radius: 12px;
       border: 1px solid rgba(255, 255, 255, 0.05);
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      gap: 1rem;
     }
 
     .ai-inline-hint-title {
-      color: #a5b4fc;
+      color: #fff;
       font-weight: 600;
-      margin-bottom: 0.75rem;
+      font-size: 0.9rem;
       display: block;
+      margin-bottom: 0.5rem;
     }
 
     .ai-inline-list {
       list-style: none;
-      /* Remove default bullets */
       padding: 0;
       margin: 0;
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: 0.6rem;
     }
 
     .ai-inline-list li {
       position: relative;
-      padding-left: 1.25rem;
-      font-size: 0.9rem;
-      color: #cbd5e1;
+      padding-left: 1.5rem;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      line-height: 1.4;
     }
 
     .ai-inline-list li::before {
-      content: "•";
-      color: #667eea;
+      content: "✨";
+      font-size: 0.8rem;
       position: absolute;
       left: 0;
-      font-weight: bold;
+      top: 2px;
     }
 
     .ai-inline-input {
-      background: rgba(15, 23, 42, 0.6);
+      background: rgba(15, 23, 42, 0.8);
       color: white;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
       padding: 1rem;
-      min-height: 100px;
+      min-height: 120px;
       font-size: 0.95rem;
       resize: none;
+      transition: all 0.2s;
+      width: 100%;
     }
 
     .ai-inline-input:focus {
       border-color: #667eea;
-      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
       outline: none;
+      background: rgba(15, 23, 42, 1);
+    }
+
+    .ai-inline-input::placeholder {
+      color: rgba(255, 255, 255, 0.3);
     }
 
     .ai-inline-button {
       width: 100%;
       justify-content: center;
-      padding: 0.75rem;
+      padding: 0.9rem;
       font-weight: 600;
-      margin-top: 1rem;
+      margin-top: auto;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+      border: none;
+      color: white;
+    }
+
+    .ai-inline-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .ai-inline-note {
+      font-size: 0.75rem;
+      color: #64748b;
+      text-align: center;
+      margin: 0.5rem 0 0 0;
     }
 
     .pro-modal__footer {
@@ -3343,7 +3409,8 @@
       display: flex;
       justify-content: flex-end;
       gap: 1rem;
-      background: rgba(0, 0, 0, 0.1);
+      background: rgba(15, 23, 42, 0.95);
+      flex-shrink: 0;
     }
 
     .pro-close {
@@ -3353,6 +3420,8 @@
       cursor: pointer;
       padding: 0.5rem;
       transition: color 0.2s;
+      font-size: 1.5rem;
+      line-height: 1;
     }
 
     .pro-close:hover {
