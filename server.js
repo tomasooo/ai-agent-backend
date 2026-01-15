@@ -1,3 +1,5 @@
+// server.js-test
+// This file is the main server file.
 import express from 'express';
 import cron from 'node-cron';
 import cors from 'cors';
@@ -3711,7 +3713,7 @@ async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending })
     requestBody: { removeLabelIds, addLabelIds: [] }
   });
 
-  await logActivity(dashboardUserEmail, 'Odeslání odpovědi (schváleno)', 'success', { account: email, to: targetRecipient });␊
+  await logActivity(dashboardUserEmail, 'Odeslání odpovědi (schváleno)', 'success', { account: email, to: targetRecipient });
 }
 
 app.post('/api/gmail/pending-replies/:id/approve', async (req, res) => {
@@ -5652,7 +5654,6 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
 
 
 
