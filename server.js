@@ -1,4 +1,5 @@
 // server.js-test
+// This file is the main server file.
 import express from 'express';
 import cron from 'node-cron';
 import cors from 'cors';
@@ -28,7 +29,7 @@ const ORIGINS = [
   'https://ai-agent-frontend-9nrf.onrender.com',
   'http://localhost:5500',
   'http://127.0.0.1:5500',
-   ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()) : []),
+  ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()) : []),
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
 ];
 
@@ -144,7 +145,7 @@ function getHeaderValue(headers, name) {
       const val = headers.get(name) ?? headers.get(lowerName);
       if (val !== undefined && val !== null) return val;
     }
-  } catch (_) {}
+  } catch (_) { }
 
   const rawVal = headers[name] ?? headers[lowerName];
   if (Array.isArray(rawVal)) return rawVal[0] ?? '';
@@ -187,11 +188,11 @@ function parseMozillaConfig(xmlText) {
   const imap = incoming.find(s => s?.['@_type']?.toLowerCase() === 'imap');
   const smtp = outgoing.find(s => s?.['@_type']?.toLowerCase() === 'smtp');
 
-  const mapSocket = (t='SSL') => {
+  const mapSocket = (t = 'SSL') => {
     t = String(t).toUpperCase();
     // Thunderbird používá "SSL", "STARTTLS", "plain"
     if (t.includes('START')) return { secure: false, starttls: true };
-    if (t.includes('SSL'))   return { secure: true,  starttls: false };
+    if (t.includes('SSL')) return { secure: true, starttls: false };
     return { secure: false, starttls: false };
   };
 
@@ -245,8 +246,8 @@ function hardcodedProvider(domain) {
   }
   if (d === 'outlook.com' || d === 'hotmail.com' || d === 'live.com' || d === 'office365.com' || d === 'microsoft.com') {
     return {
-      imap: { host: 'outlook.office365.com', port: 993, secure: true,  starttls: false, username: '%EMAILADDRESS%' },
-      smtp: { host: 'smtp.office365.com',   port: 587, secure: false, starttls: true,  username: '%EMAILADDRESS%' }
+      imap: { host: 'outlook.office365.com', port: 993, secure: true, starttls: false, username: '%EMAILADDRESS%' },
+      smtp: { host: 'smtp.office365.com', port: 587, secure: false, starttls: true, username: '%EMAILADDRESS%' }
     };
   }
   if (d === 'seznam.cz' || d.endsWith('.seznam.cz')) {
@@ -266,13 +267,17 @@ function hardcodedProvider(domain) {
 
 function guessByConvention(domain) {
   return {
-    imap: { host: `imap.${domain}`, port: 993, secure: true,  starttls: false, username: '%EMAILADDRESS%' },
-    smtp: { host: `smtp.${domain}`, port: 465, secure: true,  starttls: false, username: '%EMAILADDRESS%' },
+    imap: { host: `imap.${domain}`, port: 993, secure: true, starttls: false, username: '%EMAILADDRESS%' },
+    smtp: { host: `smtp.${domain}`, port: 465, secure: true, starttls: false, username: '%EMAILADDRESS%' },
     fallback: [
-      { imap: { host: `mail.${domain}`, port: 993, secure: true,  starttls: false },
-        smtp: { host: `mail.${domain}`, port: 465, secure: true,  starttls: false } },
-      { imap: { host: `imap.${domain}`, port: 143, secure: false, starttls: true  },
-        smtp: { host: `smtp.${domain}`, port: 587, secure: false, starttls: true  } }
+      {
+        imap: { host: `mail.${domain}`, port: 993, secure: true, starttls: false },
+        smtp: { host: `mail.${domain}`, port: 465, secure: true, starttls: false }
+      },
+      {
+        imap: { host: `imap.${domain}`, port: 143, secure: false, starttls: true },
+        smtp: { host: `smtp.${domain}`, port: 587, secure: false, starttls: true }
+      }
     ]
   };
 }
@@ -281,46 +286,46 @@ function guessByConvention(domain) {
 function matchProviderByMx(mxHost = '') {
   if (!mxHost) return null;
 
- if (mxHost.includes('cesky-hosting')) {
-  return {
-    imap: { host: 'mail.cesky-hosting.cz', port: 993, secure: true,  starttls: false },
-    smtp: { host: 'smtp.cesky-hosting.cz', port: 465, secure: false, starttls: true  }
-  };
-}
+  if (mxHost.includes('cesky-hosting')) {
+    return {
+      imap: { host: 'mail.cesky-hosting.cz', port: 993, secure: true, starttls: false },
+      smtp: { host: 'smtp.cesky-hosting.cz', port: 465, secure: false, starttls: true }
+    };
+  }
   if (mxHost.includes('wedos')) {
     return {
-      imap: { host: 'imap.wedos.net', port: 993, secure: true,  starttls: false },
-      smtp: { host: 'smtp.wedos.net', port: 465, secure: true,  starttls: false }
+      imap: { host: 'imap.wedos.net', port: 993, secure: true, starttls: false },
+      smtp: { host: 'smtp.wedos.net', port: 465, secure: true, starttls: false }
     };
   }
   if (mxHost.includes('forpsi')) {
     return {
-      imap: { host: 'imap.forpsi.com', port: 993, secure: true,  starttls: false },
-      smtp: { host: 'smtp.forpsi.com', port: 465, secure: true,  starttls: false }
+      imap: { host: 'imap.forpsi.com', port: 993, secure: true, starttls: false },
+      smtp: { host: 'smtp.forpsi.com', port: 465, secure: true, starttls: false }
     };
   }
   if (mxHost.includes('active24')) {
     return {
-      imap: { host: 'imap.active24.com', port: 993, secure: true,  starttls: false },
-      smtp: { host: 'smtp.active24.com', port: 465, secure: true,  starttls: false }
+      imap: { host: 'imap.active24.com', port: 993, secure: true, starttls: false },
+      smtp: { host: 'smtp.active24.com', port: 465, secure: true, starttls: false }
     };
   }
   if (mxHost.includes('google.com')) {
     return {
-      imap: { host: 'imap.gmail.com', port: 993, secure: true,  starttls: false },
-      smtp: { host: 'smtp.gmail.com', port: 465, secure: true,  starttls: false }
+      imap: { host: 'imap.gmail.com', port: 993, secure: true, starttls: false },
+      smtp: { host: 'smtp.gmail.com', port: 465, secure: true, starttls: false }
     };
   }
   if (mxHost.includes('outlook.com') || mxHost.includes('office365.com') || mxHost.includes('protection.outlook.com')) {
     return {
-      imap: { host: 'outlook.office365.com', port: 993, secure: true,  starttls: false },
-      smtp: { host: 'smtp.office365.com',   port: 587, secure: false, starttls: true  }
+      imap: { host: 'outlook.office365.com', port: 993, secure: true, starttls: false },
+      smtp: { host: 'smtp.office365.com', port: 587, secure: false, starttls: true }
     };
   }
   if (mxHost.includes('seznam.cz')) {
     return {
-      imap: { host: 'imap.seznam.cz', port: 993, secure: true,  starttls: false },
-      smtp: { host: 'smtp.seznam.cz', port: 465, secure: true,  starttls: false }
+      imap: { host: 'imap.seznam.cz', port: 993, secure: true, starttls: false },
+      smtp: { host: 'smtp.seznam.cz', port: 465, secure: true, starttls: false }
     };
   }
   return null;
@@ -328,9 +333,9 @@ function matchProviderByMx(mxHost = '') {
 
 async function guessByResolution(domain) {
   const pairs = [
-    { imap: `imap.${domain}`, smtp: `smtp.${domain}`, imapPort: 993, smtpPort: 465, imapSSL: true,  smtpSSL: true  },
-    { imap: `mail.${domain}`, smtp: `mail.${domain}`, imapPort: 993, smtpPort: 465, imapSSL: true,  smtpSSL: true  },
-    { imap: domain,           smtp: domain,           imapPort: 993, smtpPort: 465, imapSSL: true,  smtpSSL: true  },
+    { imap: `imap.${domain}`, smtp: `smtp.${domain}`, imapPort: 993, smtpPort: 465, imapSSL: true, smtpSSL: true },
+    { imap: `mail.${domain}`, smtp: `mail.${domain}`, imapPort: 993, smtpPort: 465, imapSSL: true, smtpSSL: true },
+    { imap: domain, smtp: domain, imapPort: 993, smtpPort: 465, imapSSL: true, smtpSSL: true },
     { imap: `imap.${domain}`, smtp: `smtp.${domain}`, imapPort: 143, smtpPort: 587, imapSSL: false, smtpSSL: false, imapSTARTTLS: true, smtpSTARTTLS: true },
     { imap: `mail.${domain}`, smtp: `mail.${domain}`, imapPort: 143, smtpPort: 587, imapSSL: false, smtpSSL: false, imapSTARTTLS: true, smtpSTARTTLS: true },
   ];
@@ -373,8 +378,8 @@ async function discoverMailConfig(emailAddress) {
   let mxHost = '';
   try {
     const mx = await dns.promises.resolveMx(domain);
-    mxHost = (mx.sort((a,b)=>a.priority-b.priority)[0]?.exchange || '').toLowerCase();
-  } catch {}
+    mxHost = (mx.sort((a, b) => a.priority - b.priority)[0]?.exchange || '').toLowerCase();
+  } catch { }
 
   const byMx = matchProviderByMx(mxHost);
   if (byMx) return byMx;
@@ -396,15 +401,15 @@ app.use(cors({
     if (!origin) return cb(null, true);
     cb(null, ORIGINS.includes(origin));
   },
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: false,
   optionsSuccessStatus: 204,
 }));
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL || !CRON_SECRET || !process.env.OPENAI_API_KEY) {
-    console.error("Chyba: Chybí potřebné proměnné prostředí!");
-    process.exit(1);
+  console.error("Chyba: Chybí potřebné proměnné prostředí!");
+  process.exit(1);
 }
 // OpenAI (ChatGPT API)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -417,8 +422,8 @@ const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-5-nano'; // pro vše ost
 
 // Nastavení databázového spojení
 const pool = new Pool({
-    connectionString: DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // Nutné pro Render
+  connectionString: DATABASE_URL,
+  ssl: { rejectUnauthorized: false } // Nutné pro Render
 });
 
 
@@ -437,8 +442,8 @@ async function chatJson({ model, system, user, client, dashboardUserEmail }) {
 
 
   if (client && dashboardUserEmail) {
-  await addTokens(client, dashboardUserEmail, totalTokens);
-}
+    await addTokens(client, dashboardUserEmail, totalTokens);
+  }
 
   return txt;
 }
@@ -460,9 +465,9 @@ async function chatText({ model, system, user, client, dashboardUserEmail }) {
     ? Number(resp.usage.total_tokens)
     : 0;
 
- if (client && dashboardUserEmail) {
-   await addTokens(client, dashboardUserEmail, totalTokens);
- }
+  if (client && dashboardUserEmail) {
+    await addTokens(client, dashboardUserEmail, totalTokens);
+  }
 
   return txt;
 }
@@ -473,24 +478,24 @@ async function chatText({ model, system, user, client, dashboardUserEmail }) {
 
 
 async function setupDatabase() {
-    let client;
-    try {
-        client = await pool.connect();
+  let client;
+  try {
+    client = await pool.connect();
 
-        const setupStatements = [
-            `CREATE TABLE IF NOT EXISTS dashboard_users (
+    const setupStatements = [
+      `CREATE TABLE IF NOT EXISTS dashboard_users (
                 email VARCHAR(255) PRIMARY KEY,
                 name VARCHAR(255),
                 plan VARCHAR(50) DEFAULT 'Starter',
                 role TEXT DEFAULT 'user', -- PŘIDÁNO: role s výchozí hodnotou 'user'
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );`,
-            `ALTER TABLE dashboard_users
+      `ALTER TABLE dashboard_users
                 ADD COLUMN IF NOT EXISTS password_hash TEXT,
                 ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false,
                 ADD COLUMN IF NOT EXISTS verification_token TEXT,
                 ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';`,
-            `CREATE TABLE IF NOT EXISTS connected_accounts (
+      `CREATE TABLE IF NOT EXISTS connected_accounts (
                 email VARCHAR(255) PRIMARY KEY,
                 refresh_token TEXT NOT NULL,
                 dashboard_user_email VARCHAR(255) NOT NULL,
@@ -498,14 +503,14 @@ async function setupDatabase() {
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
             );`,
-            `DO $$ BEGIN
+      `DO $$ BEGIN
                 BEGIN
                     ALTER TABLE connected_accounts ADD COLUMN active BOOLEAN DEFAULT true;
                 EXCEPTION WHEN duplicate_column THEN
                     NULL;
                 END;
             END $$;`,
-            `CREATE TABLE IF NOT EXISTS settings (
+      `CREATE TABLE IF NOT EXISTS settings (
                 dashboard_user_email VARCHAR(255) NOT NULL,
                 connected_email VARCHAR(255) NOT NULL,
                 tone VARCHAR(50) DEFAULT 'Formální',
@@ -518,7 +523,7 @@ async function setupDatabase() {
                 FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
                 -- POZOR: žádný FK na connected_accounts, ať to funguje i pro custom účty
             );`,
-            `DO $$ BEGIN
+      `DO $$ BEGIN
                 IF EXISTS (
                     SELECT 1
                     FROM information_schema.table_constraints tc
@@ -529,7 +534,7 @@ async function setupDatabase() {
                     ALTER TABLE settings DROP CONSTRAINT settings_connected_email_fkey;
                 END IF;
             END $$;`,
-            `CREATE TABLE IF NOT EXISTS custom_accounts (
+      `CREATE TABLE IF NOT EXISTS custom_accounts (
                 id SERIAL PRIMARY KEY,
                 dashboard_user_email VARCHAR(255) NOT NULL REFERENCES dashboard_users(email) ON DELETE CASCADE,
                 email_address VARCHAR(255) NOT NULL,
@@ -545,20 +550,20 @@ async function setupDatabase() {
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 UNIQUE (dashboard_user_email, email_address)
             );`,
-            `CREATE TABLE IF NOT EXISTS plans (
+      `CREATE TABLE IF NOT EXISTS plans (
                 code VARCHAR(50) PRIMARY KEY,
                 label VARCHAR(100) NOT NULL,
                 max_accounts INT NOT NULL,
                 monthly_ai_actions INT NOT NULL
             );`,
-            `CREATE TABLE IF NOT EXISTS style_profiles (
+      `CREATE TABLE IF NOT EXISTS style_profiles (
                 dashboard_user_email TEXT NOT NULL,
                 connected_email TEXT,
                 profile_json JSONB NOT NULL,
                 updated_at TIMESTAMPTZ DEFAULT NOW(),
                 PRIMARY KEY (dashboard_user_email, connected_email)
             );`,
-            `CREATE TABLE IF NOT EXISTS faqs (
+      `CREATE TABLE IF NOT EXISTS faqs (
                 id BIGSERIAL PRIMARY KEY,
                 dashboard_user_email TEXT NOT NULL,
                 connected_email TEXT NOT NULL,
@@ -569,7 +574,7 @@ async function setupDatabase() {
             );
             CREATE INDEX IF NOT EXISTS faqs_user_account_idx
                 ON faqs(dashboard_user_email, connected_email);`,
-            `CREATE TABLE IF NOT EXISTS pending_replies (
+      `CREATE TABLE IF NOT EXISTS pending_replies (
                 id SERIAL PRIMARY KEY,
                 dashboard_user_email TEXT NOT NULL,
                 connected_email TEXT NOT NULL,
@@ -594,7 +599,7 @@ async function setupDatabase() {
             );
             CREATE INDEX IF NOT EXISTS pending_replies_lookup_idx
                 ON pending_replies (dashboard_user_email, connected_email, status);`,
-            `ALTER TABLE pending_replies
+      `ALTER TABLE pending_replies
                 ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'gmail',
                 ADD COLUMN IF NOT EXISTS thread_id TEXT,
                 ADD COLUMN IF NOT EXISTS external_message_id TEXT,
@@ -607,35 +612,35 @@ async function setupDatabase() {
                 ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
                 ADD COLUMN IF NOT EXISTS last_generated_at TIMESTAMPTZ DEFAULT NOW(),
                 ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;`,
-            `UPDATE pending_replies
+      `UPDATE pending_replies
                 SET provider = 'gmail'
               WHERE provider IS NULL;`,
-            `ALTER TABLE pending_replies
+      `ALTER TABLE pending_replies
                 ALTER COLUMN provider SET DEFAULT 'gmail';`,
-            `ALTER TABLE pending_replies
+      `ALTER TABLE pending_replies
                 ALTER COLUMN provider SET NOT NULL;`,
-            `UPDATE pending_replies
+      `UPDATE pending_replies
                 SET metadata = '{}'::jsonb
               WHERE metadata IS NULL;`,
-            `ALTER TABLE pending_replies
+      `ALTER TABLE pending_replies
                 ALTER COLUMN metadata SET DEFAULT '{}'::jsonb;`,
-            `ALTER TABLE pending_replies
+      `ALTER TABLE pending_replies
                 ALTER COLUMN metadata SET NOT NULL;`,
-            `INSERT INTO plans (code, label, max_accounts, monthly_ai_actions) VALUES
+      `INSERT INTO plans (code, label, max_accounts, monthly_ai_actions) VALUES
                 ('Starter','Starter', 1, 50),
                 ('Professional','Professional', 5, 1000),
                 ('Enterprise','Enterprise', 999, 100000)
             ON CONFLICT (code) DO NOTHING;`,
-            `CREATE TABLE IF NOT EXISTS usage_counters (
+      `CREATE TABLE IF NOT EXISTS usage_counters (
                 dashboard_user_email VARCHAR(255) NOT NULL,
                 period_start DATE NOT NULL,
                 ai_actions_used INT NOT NULL DEFAULT 0,
                 PRIMARY KEY (dashboard_user_email, period_start),
                 FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
             );`,
-            `ALTER TABLE usage_counters
+      `ALTER TABLE usage_counters
                 ADD COLUMN IF NOT EXISTS tokens_used BIGINT DEFAULT 0;`,
-            `CREATE TABLE IF NOT EXISTS templates (
+      `CREATE TABLE IF NOT EXISTS templates (
                 id SERIAL PRIMARY KEY,
                 dashboard_user_email VARCHAR(255) NOT NULL,
                 name VARCHAR(255) NOT NULL,
@@ -647,7 +652,7 @@ async function setupDatabase() {
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (dashboard_user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
             );`,
-            `CREATE TABLE IF NOT EXISTS audit_log (
+      `CREATE TABLE IF NOT EXISTS audit_log (
                 id BIGSERIAL PRIMARY KEY,
                 timestamp TIMESTAMPTZ DEFAULT NOW(),
                 user_email VARCHAR(255),
@@ -655,20 +660,20 @@ async function setupDatabase() {
                 status VARCHAR(50) NOT NULL,
                 details JSONB
             );`
-        ];
+    ];
 
-        for (const statement of setupStatements) {
-            await client.query(statement);
-        }
-
-        console.log("✅ Databázové tabulky pro víceuživatelský provoz jsou připraveny.");
-    } catch (err) {
-        console.error('Chyba při nastavování databází:', err);
-    } finally {
-        if (client) {
-            client.release();
-        }
+    for (const statement of setupStatements) {
+      await client.query(statement);
     }
+
+    console.log("✅ Databázové tabulky pro víceuživatelský provoz jsou připraveny.");
+  } catch (err) {
+    console.error('Chyba při nastavování databází:', err);
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
 }
 
 await setupDatabase();
@@ -764,10 +769,10 @@ function extractEmailFromIdToken(idToken) {
 
 
 app.get('/api/gmail/sent-replies', async (req, res) => {
- try {
+  try {
     const { dashboardUserEmail, email, limit = 200 } = req.query;
     if (!dashboardUserEmail || !email) {
-      return res.status(400).json({ success:false, message:'Chybí parametry.' });
+      return res.status(400).json({ success: false, message: 'Chybí parametry.' });
     }
 
     let gmail;
@@ -785,7 +790,7 @@ app.get('/api/gmail/sent-replies', async (req, res) => {
     });
 
     const ids = (list.data?.messages || []).map(m => m.id);
-    if (!ids.length) return res.json({ success:true, items: [] });
+    if (!ids.length) return res.json({ success: true, items: [] });
 
     const items = [];
     for (const id of ids) {
@@ -795,14 +800,14 @@ app.get('/api/gmail/sent-replies', async (req, res) => {
         const headers = payload?.headers || [];
         const subject = headers.find(h => h.name === 'Subject')?.value || '';
         const body = extractPlainText(payload);
-        if (body) items.push({ role:'outgoing', subject, body });
+        if (body) items.push({ role: 'outgoing', subject, body });
       } catch (e) {
         console.warn('[SENT] skip message', id, e?.message || e);
         continue;
       }
     }
 
-    return res.json({ success:true, items });
+    return res.json({ success: true, items });
   } catch (e) {
     return sendGmailApiError(res, e, 'SENT');
   }
@@ -871,36 +876,36 @@ app.get('/api/unread', async (req, res) => {
       const messages = [];
       try {
         const uids = await client.search({ seen: false });
-for await (let msg of client.fetch(uids, { envelope: true, internalDate: true, headers: true })) {
-  // 1) Filtrování nepřečtených už máš výš přes search({ seen: false })
+        for await (let msg of client.fetch(uids, { envelope: true, internalDate: true, headers: true })) {
+          // 1) Filtrování nepřečtených už máš výš přes search({ seen: false })
 
-  // 2) Serverové spam značky
-  const spamFlag = (msg.headers.get('x-spam-flag') || '').toString().toLowerCase();
-  const spamStatus = (msg.headers.get('x-spam-status') || '').toString().toLowerCase();
-  if (spamFlag.includes('yes') || spamStatus.startsWith('yes')) continue;
+          // 2) Serverové spam značky
+          const spamFlag = (msg.headers.get('x-spam-flag') || '').toString().toLowerCase();
+          const spamStatus = (msg.headers.get('x-spam-status') || '').toString().toLowerCase();
+          if (spamFlag.includes('yes') || spamStatus.startsWith('yes')) continue;
 
-  // 3) Dekódovaný předmět (z =?UTF-8?...?= atd.)
-  const rawSubject = msg.envelope?.subject || '';
-  const subjectDecoded = decodeWords(String(rawSubject));
+          // 3) Dekódovaný předmět (z =?UTF-8?...?= atd.)
+          const rawSubject = msg.envelope?.subject || '';
+          const subjectDecoded = decodeWords(String(rawSubject));
 
-  // 4) Lokální pravidlo: prefix "*****SPAM*****" (případně i [SPAM])
-  //    → přeskoč zprávu, ať se v UI neukáže
-  const customSpamPrefixes = (process.env.CUSTOM_SPAM_SUBJECT_PREFIXES || '*****SPAM*****,[SPAM]').split(',')
-    .map(s => s.trim()).filter(Boolean);
+          // 4) Lokální pravidlo: prefix "*****SPAM*****" (případně i [SPAM])
+          //    → přeskoč zprávu, ať se v UI neukáže
+          const customSpamPrefixes = (process.env.CUSTOM_SPAM_SUBJECT_PREFIXES || '*****SPAM*****,[SPAM]').split(',')
+            .map(s => s.trim()).filter(Boolean);
 
-  const matchesCustomSpam = customSpamPrefixes.some(prefix =>
-    new RegExp(`^\\s*${prefix.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`, 'i').test(subjectDecoded)
-  );
-  if (matchesCustomSpam) continue;
+          const matchesCustomSpam = customSpamPrefixes.some(prefix =>
+            new RegExp(`^\\s*${prefix.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`, 'i').test(subjectDecoded)
+          );
+          if (matchesCustomSpam) continue;
 
-  messages.push({
-    id: String(msg.uid),
-    subject: subjectDecoded || '(bez předmětu)',
-    from: msg.envelope?.from?.map(a => a.address).join(', ') || '',
-    date: msg.internalDate?.toISOString?.() || '',
-    snippet: '',
-    provider: 'imap'
-  });
+          messages.push({
+            id: String(msg.uid),
+            subject: subjectDecoded || '(bez předmětu)',
+            from: msg.envelope?.from?.map(a => a.address).join(', ') || '',
+            date: msg.internalDate?.toISOString?.() || '',
+            snippet: '',
+            provider: 'imap'
+          });
           if (messages.length >= 50) break;
         }
       } finally {
@@ -1046,7 +1051,7 @@ app.post('/api/custom-email/connect', async (req, res) => {
   } = req.body || {};
 
   if (!dashboardUserEmail || !emailAddress || !password) {
-    return res.status(400).json({ success:false, message:'Zadej e-mail a heslo.' });
+    return res.status(400).json({ success: false, message: 'Zadej e-mail a heslo.' });
   }
 
   // username defaultně = celý e-mail
@@ -1066,79 +1071,79 @@ app.post('/api/custom-email/connect', async (req, res) => {
     try {
       const discovered = await discoverMailConfig(emailAddress);
 
-      imapHost   = imapHost   || discovered.imap.host;
-      imapPort   = Number(imapPort ?? discovered.imap.port);
+      imapHost = imapHost || discovered.imap.host;
+      imapPort = Number(imapPort ?? discovered.imap.port);
       imapSecure = (imapSecure ?? discovered.imap.secure) ? true : false;
       starttlsImap = !!discovered.imap.starttls;
 
-      smtpHost   = smtpHost   || discovered.smtp.host;
-      smtpPort   = Number(smtpPort ?? discovered.smtp.port);
+      smtpHost = smtpHost || discovered.smtp.host;
+      smtpPort = Number(smtpPort ?? discovered.smtp.port);
       smtpSecure = (smtpSecure ?? discovered.smtp.secure) ? true : false;
       starttlsSmtp = !!discovered.smtp.starttls;
     } catch (e) {
-      return res.status(400).json({ success:false, message:'Automatické zjištění nastavení selhalo: ' + (e?.message || e) });
+      return res.status(400).json({ success: false, message: 'Automatické zjištění nastavení selhalo: ' + (e?.message || e) });
     }
   }
-// 1) Ověřit IMAP přihlášení – preferuj IPv4 + 993/SSL, pak 143/STARTTLS
-const { connectHost, servername } = await resolveAWithSNI(imapHost);
+  // 1) Ověřit IMAP přihlášení – preferuj IPv4 + 993/SSL, pak 143/STARTTLS
+  const { connectHost, servername } = await resolveAWithSNI(imapHost);
 
-const imapAttempts = [
-  // 993/SSL (přes IPv4)
-  { host: connectHost, port: 993, secure: true,  servername },
-  // 993/SSL (přes hostname, kdyby A-lookup selhal)
-  { host: imapHost,    port: 993, secure: true,  servername },
+  const imapAttempts = [
+    // 993/SSL (přes IPv4)
+    { host: connectHost, port: 993, secure: true, servername },
+    // 993/SSL (přes hostname, kdyby A-lookup selhal)
+    { host: imapHost, port: 993, secure: true, servername },
 
-  // 143/STARTTLS (přes IPv4)
-  { host: connectHost, port: 143, secure: false, servername },
-  // 143/STARTTLS (přes hostname)
-  { host: imapHost,    port: 143, secure: false, servername },
-];
+    // 143/STARTTLS (přes IPv4)
+    { host: connectHost, port: 143, secure: false, servername },
+    // 143/STARTTLS (přes hostname)
+    { host: imapHost, port: 143, secure: false, servername },
+  ];
 
-let imapOk = false;
-let imapLastErr = null;
-const tried = new Set();
+  let imapOk = false;
+  let imapLastErr = null;
+  const tried = new Set();
 
-for (const a of imapAttempts) {
-  const key = `${a.host}|${a.port}|${a.secure}`;
-  if (tried.has(key)) continue;
-  tried.add(key);
+  for (const a of imapAttempts) {
+    const key = `${a.host}|${a.port}|${a.secure}`;
+    if (tried.has(key)) continue;
+    tried.add(key);
 
-  const imapClient = createImapClient({
-    host: a.host,
-    port: a.port,
-    secure: a.secure,
-    servername: a.servername,
-    auth: { user: baseUsername, pass: password }
-  });
+    const imapClient = createImapClient({
+      host: a.host,
+      port: a.port,
+      secure: a.secure,
+      servername: a.servername,
+      auth: { user: baseUsername, pass: password }
+    });
 
-  // zkraťme handshake timeout, ať to nečeká věčnost
-  imapClient.socketTimeout = 20000; // 20 s
+    // zkraťme handshake timeout, ať to nečeká věčnost
+    imapClient.socketTimeout = 20000; // 20 s
 
-  try {
-    await imapClient.connect();
-    await imapClient.logout().catch(()=>{});
-    imapOk = true;
+    try {
+      await imapClient.connect();
+      await imapClient.logout().catch(() => { });
+      imapOk = true;
 
-    // ulož do DB hostname (ne IP), jen port/zabezpečení aktualizuj
-    imapPort = a.port;
-    imapSecure = a.secure;
-    break;
-  } catch (e) {
-    imapLastErr = e;
-    console.warn('[IMAP verify failed]', a, unwrapImapError ? unwrapImapError(e) : (e?.message || e));
-    try { if (imapClient?.connected) await imapClient.logout(); } catch {}
+      // ulož do DB hostname (ne IP), jen port/zabezpečení aktualizuj
+      imapPort = a.port;
+      imapSecure = a.secure;
+      break;
+    } catch (e) {
+      imapLastErr = e;
+      console.warn('[IMAP verify failed]', a, unwrapImapError ? unwrapImapError(e) : (e?.message || e));
+      try { if (imapClient?.connected) await imapClient.logout(); } catch { }
+    }
   }
-}
 
-if (!imapOk) {
-  return res.status(400).json({
-    success: false,
-    message: 'IMAP přihlášení selhalo: ' + (unwrapImapError ? unwrapImapError(imapLastErr) : (imapLastErr?.message || imapLastErr))
-  });
-}
+  if (!imapOk) {
+    return res.status(400).json({
+      success: false,
+      message: 'IMAP přihlášení selhalo: ' + (unwrapImapError ? unwrapImapError(imapLastErr) : (imapLastErr?.message || imapLastErr))
+    });
+  }
 
 
- 
+
 
   // 2) Ověřit SMTP přihlášení
   try {
@@ -1152,7 +1157,7 @@ if (!imapOk) {
     });
     await transporter.verify();
   } catch (e) {
-    return res.status(400).json({ success:false, message:'SMTP ověření selhalo: ' + (e?.message || e) });
+    return res.status(400).json({ success: false, message: 'SMTP ověření selhalo: ' + (e?.message || e) });
   }
 
   // 3) Uložit šifrovaně do DB
@@ -1173,10 +1178,10 @@ if (!imapOk) {
       encSecret(baseUsername), encSecret(password)
     ]);
     await logActivity(dashboardUserEmail, 'Připojení Custom účtu', 'success', { connectedEmail: emailAddress });
-    return res.json({ success:true, message:'Účet připojen.' });
+    return res.json({ success: true, message: 'Účet připojen.' });
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ success:false, message:'Uložení účtu selhalo.' });
+    return res.status(500).json({ success: false, message: 'Uložení účtu selhalo.' });
   } finally {
     db.release();
   }
@@ -1189,7 +1194,7 @@ app.post('/api/custom-email/disconnect', async (req, res) => {
   const { dashboardUserEmail, emailAddress } = req.body || {};
 
   if (!dashboardUserEmail || !emailAddress) {
-    return res.status(400).json({ success:false, message:'Chybí e-mail uživatele nebo účet.' });
+    return res.status(400).json({ success: false, message: 'Chybí e-mail uživatele nebo účet.' });
   }
 
   const db = await pool.connect();
@@ -1200,13 +1205,13 @@ app.post('/api/custom-email/disconnect', async (req, res) => {
     );
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ success:false, message:'Účet nenalezen.' });
+      return res.status(404).json({ success: false, message: 'Účet nenalezen.' });
     }
 
-    return res.json({ success:true, message:'Účet byl odstraněn.' });
+    return res.json({ success: true, message: 'Účet byl odstraněn.' });
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ success:false, message:'Mazání účtu selhalo.' });
+    return res.status(500).json({ success: false, message: 'Mazání účtu selhalo.' });
   } finally {
     db.release();
   }
@@ -1220,7 +1225,7 @@ app.post('/api/custom-email/disconnect', async (req, res) => {
 
 
 app.get('/api/custom-email/emails', async (req, res) => {
- const {
+  const {
     dashboardUserEmail,
     emailAddress,
     limit = 10,
@@ -1229,9 +1234,9 @@ app.get('/api/custom-email/emails', async (req, res) => {
     period = 'all',
     searchQuery = ''
   } = req.query || {};
- 
+
   if (!dashboardUserEmail || !emailAddress) {
-    return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail nebo emailAddress.' });
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo emailAddress.' });
   }
 
   const db = await pool.connect();
@@ -1244,7 +1249,7 @@ app.get('/api/custom-email/emails', async (req, res) => {
       LIMIT 1
     `, [dashboardUserEmail, emailAddress]);
 
-    if (!r.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
+    if (!r.rowCount) return res.status(404).json({ success: false, message: 'Custom účet nenalezen.' });
 
     const user = decSecret(r.rows[0].enc_username);
     const pass = decSecret(r.rows[0].enc_password);
@@ -1264,7 +1269,7 @@ app.get('/api/custom-email/emails', async (req, res) => {
       const fallbacks = ['Inbox', 'Doručená pošta', 'Doručená', 'Posteingang'];
       let opened = false;
       for (const f of fallbacks) { if (await tryOpen(f)) { opened = true; break; } }
-      if (!opened) return res.status(404).json({ success:false, message:'Nepodařilo se otevřít schránku INBOX.' });
+      if (!opened) return res.status(404).json({ success: false, message: 'Nepodařilo se otevřít schránku INBOX.' });
     }
 
     const out = [];
@@ -1381,7 +1386,7 @@ app.get('/api/custom-email/emails', async (req, res) => {
       // Spam zprávy přeskoč, zároveň je označ jako přečtené, aby se v "nepřečtené" neukazovaly
       const isSpam = isSpamByHeadersMap(msg.headers, decodedSubject);
       if (isSpam) {
-        try { await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }); } catch {}
+        try { await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }); } catch { }
         continue;
       }
 
@@ -1447,7 +1452,7 @@ app.get('/api/custom-email/emails', async (req, res) => {
       if (out.length >= pageSize) break;
     }
 
-   // seřadit od nejnovějších (pro jistotu)
+    // seřadit od nejnovějších (pro jistotu)
     out.sort((a, b) => (new Date(b.date || 0)) - (new Date(a.date || 0)));
 
     const effectiveTotal = unreadOnly ? totalMatches : matchedCount;
@@ -1455,7 +1460,7 @@ app.get('/api/custom-email/emails', async (req, res) => {
     const reportedTotal = effectiveTotal;
 
     return res.json({
-      success:true,
+      success: true,
       emails: out,
       total: reportedTotal,
       filter: normalizedStatus,
@@ -1465,27 +1470,27 @@ app.get('/api/custom-email/emails', async (req, res) => {
     });
   } catch (e) {
     console.error("Chyba IMAP:", e);
-    return res.status(500).json({ success:false, message:'Nepodařilo se načíst emaily (custom).' });
+    return res.status(500).json({ success: false, message: 'Nepodařilo se načíst emaily (custom).' });
   } finally {
     try {
       if (imap?.connected) {
         await imap.logout();
       }
-    } catch {}
+    } catch { }
 
     try {
       await imap?.close?.();
-    } catch {}
+    } catch { }
 
     db.release();
   }
 });
 
 app.get('/api/gmail/inbox-examples', async (req, res) => {
- try {
+  try {
     const { dashboardUserEmail, email, limit = 200 } = req.query;
     if (!dashboardUserEmail || !email) {
-      return res.status(400).json({ success:false, message:'Chybí parametry.' });
+      return res.status(400).json({ success: false, message: 'Chybí parametry.' });
     }
 
     let gmail;
@@ -1504,7 +1509,7 @@ app.get('/api/gmail/inbox-examples', async (req, res) => {
     });
 
     const ids = (list.data?.messages || []).map(m => m.id);
-    if (!ids.length) return res.json({ success:true, items: [] });
+    if (!ids.length) return res.json({ success: true, items: [] });
 
     const items = [];
     for (const id of ids) {
@@ -1516,7 +1521,7 @@ app.get('/api/gmail/inbox-examples', async (req, res) => {
         const fromHdr = headers.find(h => h.name === 'From')?.value || '';
         const from = decodeHeader(fromHdr);
         const body = extractPlainText(payload);
-        if (body) items.push({ role:'incoming', subject, from, body });
+        if (body) items.push({ role: 'incoming', subject, from, body });
       } catch (e) {
         // u jedné zprávy spadlo? pokračuj dál
         console.warn('[INBOX] skip message', id, e?.message || e);
@@ -1524,7 +1529,7 @@ app.get('/api/gmail/inbox-examples', async (req, res) => {
       }
     }
 
-    return res.json({ success:true, items });
+    return res.json({ success: true, items });
   } catch (e) {
     return sendGmailApiError(res, e, 'INBOX');
   }
@@ -1554,7 +1559,7 @@ app.get('/api/analytics/activity', async (req, res) => {
   const { dashboardUserEmail, email, days = '7' } = req.query || {};
   const nDays = Math.min(parseInt(days, 10) || 7, 180);
   if (!dashboardUserEmail || !email) {
-    return res.status(400).json({ success:false, message:'Chybí parametry.' });
+    return res.status(400).json({ success: false, message: 'Chybí parametry.' });
   }
   const db = await pool.connect();
   try {
@@ -1569,10 +1574,10 @@ app.get('/api/analytics/activity', async (req, res) => {
        GROUP BY 1
        ORDER BY 1
     `, [dashboardUserEmail, email, nDays]);
-    res.json({ success:true, days:nDays, series:q.rows });
+    res.json({ success: true, days: nDays, series: q.rows });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Analytics: activity selhala.' });
+    res.status(500).json({ success: false, message: 'Analytics: activity selhala.' });
   } finally { db.release(); }
 });
 
@@ -1580,7 +1585,7 @@ app.get('/api/analytics/activity', async (req, res) => {
 app.get('/api/analytics/templates', async (req, res) => {
   const { dashboardUserEmail } = req.query || {};
   if (!dashboardUserEmail) {
-    return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail.' });
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail.' });
   }
   const db = await pool.connect();
   try {
@@ -1603,10 +1608,10 @@ app.get('/api/analytics/templates', async (req, res) => {
        LIMIT 10
     `, [dashboardUserEmail]);
 
-    res.json({ success:true, ...totals.rows[0], top: top.rows });
+    res.json({ success: true, ...totals.rows[0], top: top.rows });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Analytics: templates selhala.' });
+    res.status(500).json({ success: false, message: 'Analytics: templates selhala.' });
   } finally { db.release(); }
 });
 
@@ -1614,7 +1619,7 @@ app.get('/api/analytics/templates', async (req, res) => {
 app.get('/api/analytics/categories', async (req, res) => {
   const { dashboardUserEmail } = req.query || {};
   if (!dashboardUserEmail) {
-    return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail.' });
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail.' });
   }
   const db = await pool.connect();
   try {
@@ -1626,10 +1631,10 @@ app.get('/api/analytics/categories', async (req, res) => {
        GROUP BY 1
        ORDER BY 2 DESC
     `, [dashboardUserEmail]);
-    res.json({ success:true, items:r.rows });
+    res.json({ success: true, items: r.rows });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Analytics: categories selhala.' });
+    res.status(500).json({ success: false, message: 'Analytics: categories selhala.' });
   } finally { db.release(); }
 });
 
@@ -1639,7 +1644,7 @@ app.post('/api/style-examples/ingest', async (req, res) => {
   try {
     const { dashboardUserEmail, email, items } = req.body || {};
     if (!dashboardUserEmail || !email || !Array.isArray(items)) {
-      return res.status(400).json({ success:false, message:'Chybí data.' });
+      return res.status(400).json({ success: false, message: 'Chybí data.' });
     }
 
     const trimmed = items
@@ -1647,7 +1652,7 @@ app.post('/api/style-examples/ingest', async (req, res) => {
       .slice(0, 1000); // pojistka
 
     if (!trimmed.length) {
-      return res.json({ success:true, saved: 0 });
+      return res.json({ success: true, saved: 0 });
     }
 
     const db = await pool.connect();
@@ -1668,10 +1673,10 @@ app.post('/api/style-examples/ingest', async (req, res) => {
       }
     } finally { db.release(); }
 
-    return res.json({ success:true, saved: trimmed.length });
+    return res.json({ success: true, saved: trimmed.length });
   } catch (e) {
     console.error('ingest error', e);
-    return res.status(500).json({ success:false, message:'Chyba při ukládání příkladů' });
+    return res.status(500).json({ success: false, message: 'Chyba při ukládání příkladů' });
   }
 });
 
@@ -1691,14 +1696,14 @@ function parseEncKey() {
 
   // fallback: oříznout/napadovat na 32B
   const buf = Buffer.from(raw);
-  if (buf.length >= 32) return buf.subarray(0,32);
+  if (buf.length >= 32) return buf.subarray(0, 32);
   const out = Buffer.alloc(32);
   buf.copy(out);
   return out;
 }
 const ENC_KEY = parseEncKey(); // Buffer o délce 32
 
-function encSecret(plain='') {
+function encSecret(plain = '') {
   if (!plain) return '';
   const iv = crypto.randomBytes(12); // GCM
   const cipher = crypto.createCipheriv('aes-256-gcm', ENC_KEY, iv);
@@ -1706,11 +1711,11 @@ function encSecret(plain='') {
   const tag = cipher.getAuthTag();
   return Buffer.concat([iv, tag, enc]).toString('base64');
 }
-function decSecret(b64='') {
+function decSecret(b64 = '') {
   if (!b64) return '';
   const raw = Buffer.from(b64, 'base64');
-  const iv = raw.subarray(0,12);
-  const tag = raw.subarray(12,28);
+  const iv = raw.subarray(0, 12);
+  const tag = raw.subarray(12, 28);
   const data = raw.subarray(28);
   const decipher = crypto.createDecipheriv('aes-256-gcm', ENC_KEY, iv);
   decipher.setAuthTag(tag);
@@ -1776,10 +1781,10 @@ app.post('/api/auth/google', async (req, res) => {
 
 
 
-app.get('/api/style/get', async (req,res) => {
+app.get('/api/style/get', async (req, res) => {
   const { dashboardUserEmail, email } = req.query;
   const style_profile = await loadStyleProfile({ dashboardUserEmail, email });
-  res.json({ success:true, style_profile: style_profile || null });
+  res.json({ success: true, style_profile: style_profile || null });
 });
 
 
@@ -1788,7 +1793,7 @@ app.post('/api/style/learn', async (req, res) => {
   try {
     const { dashboardUserEmail, email, limit = 200 } = req.body || req.query || {};
     if (!dashboardUserEmail || !email) {
-      return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail nebo email.' });
+      return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo email.' });
     }
 
     const gmail = await getGmailClientFor(dashboardUserEmail, email);
@@ -1796,7 +1801,7 @@ app.post('/api/style/learn', async (req, res) => {
 
     // načti seznamy zpráv
     const [sentList, inboxList] = await Promise.all([
-      gmail.users.messages.list({ userId: 'me', labelIds: ['SENT'],  maxResults: max }),
+      gmail.users.messages.list({ userId: 'me', labelIds: ['SENT'], maxResults: max }),
       gmail.users.messages.list({ userId: 'me', labelIds: ['INBOX'], q: '-from:me -in:spam -in:trash', maxResults: max }),
     ]);
 
@@ -1814,12 +1819,12 @@ app.post('/api/style/learn', async (req, res) => {
       return out;
     };
 
-    const sentItems  = await loadItems(sentList.data.messages,  'outgoing');
+    const sentItems = await loadItems(sentList.data.messages, 'outgoing');
     const inboxItems = await loadItems(inboxList.data.messages, 'incoming');
     const items = [...sentItems, ...inboxItems];
 
     // ulož do DB
-    if (!items.length) return res.json({ success:true, saved: 0 });
+    if (!items.length) return res.json({ success: true, saved: 0 });
 
     const db = await pool.connect();
     try {
@@ -1834,10 +1839,10 @@ app.post('/api/style/learn', async (req, res) => {
       db.release();
     }
 
-    return res.json({ success:true, saved: items.length });
+    return res.json({ success: true, saved: items.length });
   } catch (e) {
     console.error('[/api/style/learn] error', e);
-    return res.status(500).json({ success:false, message:'Učení z historie selhalo.' });
+    return res.status(500).json({ success: false, message: 'Učení z historie selhalo.' });
   }
 });
 
@@ -1846,14 +1851,14 @@ app.post('/api/style/learn', async (req, res) => {
 app.post('/api/faq/save', async (req, res) => {
   const { dashboardUserEmail, email, items } = req.body || {};
   if (!dashboardUserEmail || !email || !Array.isArray(items)) {
-    return res.status(400).json({ success:false, message:'Chybí data.' });
+    return res.status(400).json({ success: false, message: 'Chybí data.' });
   }
   const db = await pool.connect();
   try {
     await db.query(`DELETE FROM faqs WHERE dashboard_user_email=$1 AND connected_email=$2`, [dashboardUserEmail, email]);
     for (const it of items) {
       const q = (it.q || it.question || '').trim();
-      const a = (it.a || it.answer   || '').trim();
+      const a = (it.a || it.answer || '').trim();
       if (!q && !a) continue;
       await db.query(
         `INSERT INTO faqs (dashboard_user_email, connected_email, question, answer)
@@ -1861,10 +1866,10 @@ app.post('/api/faq/save', async (req, res) => {
         [dashboardUserEmail, email, q, a]
       );
     }
-    res.json({ success:true });
+    res.json({ success: true });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Uložení FAQ selhalo.' });
+    res.status(500).json({ success: false, message: 'Uložení FAQ selhalo.' });
   } finally { db.release(); }
 });
 
@@ -1908,7 +1913,7 @@ async function loadStyleProfile({ dashboardUserEmail, email }) {
 app.get('/api/style-profile', async (req, res) => {
   const { dashboardUserEmail, email, debug } = req.query || {};
   if (!dashboardUserEmail || !email) {
-    return res.status(400).json({ success:false, message:'Chybí parametry (dashboardUserEmail, email).' });
+    return res.status(400).json({ success: false, message: 'Chybí parametry (dashboardUserEmail, email).' });
   }
 
   let client;
@@ -1967,7 +1972,7 @@ app.get('/api/style-profile', async (req, res) => {
       default_tone: 'Profesionální',
       default_length: 'Adaptivní',
       common_greetings: Array.from(new Set(greetings)).slice(0, 5),
-      common_endings:  Array.from(new Set(endings)).slice(0, 5),
+      common_endings: Array.from(new Set(endings)).slice(0, 5),
       // sem si můžeš později přidat další statistiky
     };
 
@@ -1976,7 +1981,7 @@ app.get('/api/style-profile', async (req, res) => {
       profile,
       examples: examples.length,
       hint: 'Použij tento profil v promptu (SYSTÉMOVÁ INSTRUKCE).',
-      debug: debug ? { sample: examples.slice(0,3) } : undefined
+      debug: debug ? { sample: examples.slice(0, 3) } : undefined
     });
   } catch (err) {
     console.error('[STYLE-PROFILE] Error:', err);
@@ -1990,7 +1995,7 @@ app.get('/api/style-profile', async (req, res) => {
   }
 });
 
-function sendGmailApiError(res, e, label='Gmail') {
+function sendGmailApiError(res, e, label = 'Gmail') {
   const msg = String(e?.message || e);
   const status = e?.code || e?.response?.status;
 
@@ -1998,18 +2003,18 @@ function sendGmailApiError(res, e, label='Gmail') {
   console.error(`[${label}]`, status || '', e?.response?.data || msg);
 
   if (/Refresh token nenalezen/i.test(msg)) {
-    return res.status(404).json({ success:false, message:'Gmail účet není propojen – připoj ho v Nastavení.' });
+    return res.status(404).json({ success: false, message: 'Gmail účet není propojen – připoj ho v Nastavení.' });
   }
   if (status === 401 || /invalid_grant/i.test(msg)) {
-    return res.status(401).json({ success:false, message:'Přístup k Gmailu vypršel/ byl odvolán – odpoj a znovu připoj.' });
+    return res.status(401).json({ success: false, message: 'Přístup k Gmailu vypršel/ byl odvolán – odpoj a znovu připoj.' });
   }
   if (status === 403 && /insufficient.+permissions/i.test(msg)) {
-    return res.status(403).json({ success:false, message:'Chybí oprávnění – připoj Gmail se scopem gmail.readonly.' });
+    return res.status(403).json({ success: false, message: 'Chybí oprávnění – připoj Gmail se scopem gmail.readonly.' });
   }
   if (status === 403 && /accessNotConfigured/i.test(msg)) {
-    return res.status(503).json({ success:false, message:'Gmail API není povoleno v Google Cloudu projektu.' });
+    return res.status(503).json({ success: false, message: 'Gmail API není povoleno v Google Cloudu projektu.' });
   }
-  return res.status(500).json({ success:false, message:`Chyba při čtení ${label === 'INBOX' ? 'INBOXu' : 'odeslané pošty'}` });
+  return res.status(500).json({ success: false, message: `Chyba při čtení ${label === 'INBOX' ? 'INBOXu' : 'odeslané pošty'}` });
 }
 
 
@@ -2049,9 +2054,9 @@ app.post('/api/templates/render', async (req, res) => {
     // === Kontext (co přišlo z FE) ===
     const ctx = context || {};
     const emailBody = String(ctx.emailBody || '');
-    const analysis  = ctx.analysis || {};
-    const meta      = ctx.meta || {};        // např. { subject, from, date, account }
-    const settings  = ctx.settings || {};    // např. { tone, length, signature, ... }
+    const analysis = ctx.analysis || {};
+    const meta = ctx.meta || {};        // např. { subject, from, date, account }
+    const settings = ctx.settings || {};    // např. { tone, length, signature, ... }
 
     // === STYLE_PROFILE (systémová instrukce) ===
     let styleProfile = {
@@ -2075,7 +2080,7 @@ app.post('/api/templates/render', async (req, res) => {
     }
 
     const systemInstruction =
-`SYSTÉMOVÁ INSTRUKCE:
+      `SYSTÉMOVÁ INSTRUKCE:
 Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu,
 použij rozumný default, ale profil má přednost.
 
@@ -2090,7 +2095,7 @@ ${JSON.stringify(styleProfile, null, 2)}
 
     if (missingKeys.length) {
       const promptVars =
-`${systemInstruction}
+        `${systemInstruction}
 Jsi asistent pro doplňování proměnných v šabloně emailu.
 Máš seznam proměnných, metadata a text původního emailu. Pokud informaci NELZE spolehlivě vyčíst,
 dej null nebo prázdný řetězec. NEVYMÝŠLEJ nesmysly.
@@ -2133,11 +2138,11 @@ Speciální pravidla (CZ):
       let inferred = {};
       try {
         const raw = await chatJson({
-    model: DEFAULT_MODEL,
-    system: systemInstruction,
-    user: promptVars
-  });
-  inferred = JSON.parse(raw || '{}');
+          model: DEFAULT_MODEL,
+          system: systemInstruction,
+          user: promptVars
+        });
+        inferred = JSON.parse(raw || '{}');
       } catch (err) {
         console.warn('AI variable fill failed, skipping.', err?.message);
       }
@@ -2187,14 +2192,14 @@ Speciální pravidla (CZ):
 
     // 2) AI sloty [[AI: ...]]
     const aiSlotRegex = /\[\[\s*AI\s*:(.*?)\]\]/gs;
-const slots = [...filled.matchAll(aiSlotRegex)];
-if (slots.length) {
-  for (const m of slots) {
-    const whole = m[0];
-    const instr = (m[1] || '').trim();
+    const slots = [...filled.matchAll(aiSlotRegex)];
+    if (slots.length) {
+      for (const m of slots) {
+        const whole = m[0];
+        const instr = (m[1] || '').trim();
 
-    const prompt =
-`${systemInstruction}
+        const prompt =
+          `${systemInstruction}
 Úkol: ${instr}
 ---
 Kontext emailu (text):
@@ -2209,22 +2214,22 @@ Podpis (pokud je vhodné, přidej až úplně na konec odpovědi): ${styleProfil
 
 Odpověz pouze textem, bez vysvětlivek a bez markdownu.`;
 
-    let aiText = '';
-    try {
-      aiText = await chatText({
-        model: EMAIL_MODEL,
-        system: systemInstruction,
-        user: prompt,
-        client,
-        dashboardUserEmail
-      });
-    } catch (err) {
-      console.warn('AI slot generation failed, leaving empty.', err?.message);
-    }
+        let aiText = '';
+        try {
+          aiText = await chatText({
+            model: EMAIL_MODEL,
+            system: systemInstruction,
+            user: prompt,
+            client,
+            dashboardUserEmail
+          });
+        } catch (err) {
+          console.warn('AI slot generation failed, leaving empty.', err?.message);
+        }
 
-    filled = filled.replace(whole, aiText || '');
-  }
-}
+        filled = filled.replace(whole, aiText || '');
+      }
+    }
 
     return res.json({ success: true, rendered: filled });
   } catch (e) {
@@ -2469,8 +2474,8 @@ app.post('/api/auth/login', async (req, res) => {
       await logActivity(email, 'Přihlášení (heslo)', 'error', { reason: 'Neplatné heslo' });
       return res.status(401).json({ success: false, message: 'Nesprávný email nebo heslo.' });
     }
-      await logActivity(email, 'Přihlášení (heslo)', 'success');
-     return res.json({ success: true, user: { email: r.rows[0].email, name: r.rows[0].name, role: r.rows[0].role, plan: r.rows[0].plan }});
+    await logActivity(email, 'Přihlášení (heslo)', 'success');
+    return res.json({ success: true, user: { email: r.rows[0].email, name: r.rows[0].name, role: r.rows[0].role, plan: r.rows[0].plan } });
   } catch (e) {
     console.error('LOGIN ERROR', e);
     await logActivity(email, 'Přihlášení (heslo)', 'error', { reason: e.message || String(e) });
@@ -2486,105 +2491,105 @@ app.post('/api/auth/login', async (req, res) => {
 
 // ENDPOINT PRO ZPRACOVÁNÍ SOUHLASU OD GOOGLE (PROPOJENÍ)
 app.get('/api/oauth/google/callback', async (req, res) => {
-   let client;
-    try {
-        const code = req.query.code;
-        if (!code) throw new Error('Autorizační kód chybí.');
+  let client;
+  try {
+    const code = req.query.code;
+    if (!code) throw new Error('Autorizační kód chybí.');
 
-        // přihlášený uživatel (majitel dashboardu) – poslali jsme ho ve state
-        const dashboardUserEmail = decodeURIComponent(req.query.state || '');
+    // přihlášený uživatel (majitel dashboardu) – poslali jsme ho ve state
+    const dashboardUserEmail = decodeURIComponent(req.query.state || '');
 
-        const { tokens } = await oauth2Client.getToken(code);
-        // email propojené schránky vyčteme z id_token
-        const ticket = await loginClient.verifyIdToken({
-            idToken: tokens.id_token,
-            audience: GOOGLE_CLIENT_ID,
-        });
-        const payload = ticket.getPayload();
-        const connectedEmail = payload.email;
-        const refreshToken = tokens.refresh_token;
+    const { tokens } = await oauth2Client.getToken(code);
+    // email propojené schránky vyčteme z id_token
+    const ticket = await loginClient.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const connectedEmail = payload.email;
+    const refreshToken = tokens.refresh_token;
 
-        if (!connectedEmail || !refreshToken) {
-            throw new Error('Chybí email nebo refresh token z Google OAuth.');
-        }
+    if (!connectedEmail || !refreshToken) {
+      throw new Error('Chybí email nebo refresh token z Google OAuth.');
+    }
 
-      client = await pool.connect();
-
-
-const canAdd = await canAddConnectedAccount(client, dashboardUserEmail || connectedEmail);
-if (!canAdd.ok) {
-  console.warn(`Limit účtů dosažen: ${canAdd.have}/${canAdd.max} pro ${dashboardUserEmail}`);
-  // pošli zpět na FE s chybou
-  client.release();
-  return res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=limit&reason=accounts`);
-}
+    client = await pool.connect();
 
 
-        // Ujistíme se, že dashboard user existuje (pro jistotu)
-        await client.query(
-            `INSERT INTO dashboard_users (email, name)
+    const canAdd = await canAddConnectedAccount(client, dashboardUserEmail || connectedEmail);
+    if (!canAdd.ok) {
+      console.warn(`Limit účtů dosažen: ${canAdd.have}/${canAdd.max} pro ${dashboardUserEmail}`);
+      // pošli zpět na FE s chybou
+      client.release();
+      return res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=limit&reason=accounts`);
+    }
+
+
+    // Ujistíme se, že dashboard user existuje (pro jistotu)
+    await client.query(
+      `INSERT INTO dashboard_users (email, name)
              VALUES ($1, $2)
              ON CONFLICT (email) DO NOTHING`,
-            [dashboardUserEmail || connectedEmail, payload.name || null]
-        );
+      [dashboardUserEmail || connectedEmail, payload.name || null]
+    );
 
-        // Uložení/aktualizace propojené schránky k danému uživateli
-        await client.query(
-            `INSERT INTO connected_accounts (email, refresh_token, dashboard_user_email)
+    // Uložení/aktualizace propojené schránky k danému uživateli
+    await client.query(
+      `INSERT INTO connected_accounts (email, refresh_token, dashboard_user_email)
              VALUES ($1, $2, $3)
              ON CONFLICT (email)
              DO UPDATE SET refresh_token = EXCLUDED.refresh_token,
                            dashboard_user_email = EXCLUDED.dashboard_user_email`,
-            [connectedEmail, refreshToken, dashboardUserEmail || connectedEmail]
-        );
+      [connectedEmail, refreshToken, dashboardUserEmail || connectedEmail]
+    );
 
-        // volitelně: vytvoř výchozí settings pro kombinaci (user + email), pokud neexistují
-        await client.query(
-            `INSERT INTO settings (dashboard_user_email, connected_email)
+    // volitelně: vytvoř výchozí settings pro kombinaci (user + email), pokud neexistují
+    await client.query(
+      `INSERT INTO settings (dashboard_user_email, connected_email)
              VALUES ($1, $2)
              ON CONFLICT (dashboard_user_email, connected_email) DO NOTHING`,
-            [dashboardUserEmail || connectedEmail, connectedEmail]
-        );
+      [dashboardUserEmail || connectedEmail, connectedEmail]
+    );
 
-        await logActivity(dashboardUserEmail || connectedEmail, 'Připojení Gmail účtu', 'success', { connectedEmail });
-        // zpět do FE
-        res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success&new-email=${encodeURIComponent(connectedEmail)}`);
-    } catch (error) {
-        console.error("Chyba při zpracování OAuth callbacku:", error.message);
-        const dashboardUserEmail = decodeURIComponent(req.query.state || '') || null;
-        const fallbackEmail = extractEmailFromIdToken(req.query.id_token || req.body?.id_token) || dashboardUserEmail;
-        await logActivity(fallbackEmail || dashboardUserEmail, 'Připojení Gmail účtu', 'error', { reason: error.message });
-        res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=error`);
-    } finally {
-        if (client) client.release();
-    }
+    await logActivity(dashboardUserEmail || connectedEmail, 'Připojení Gmail účtu', 'success', { connectedEmail });
+    // zpět do FE
+    res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success&new-email=${encodeURIComponent(connectedEmail)}`);
+  } catch (error) {
+    console.error("Chyba při zpracování OAuth callbacku:", error.message);
+    const dashboardUserEmail = decodeURIComponent(req.query.state || '') || null;
+    const fallbackEmail = extractEmailFromIdToken(req.query.id_token || req.body?.id_token) || dashboardUserEmail;
+    await logActivity(fallbackEmail || dashboardUserEmail, 'Připojení Gmail účtu', 'error', { reason: error.message });
+    res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=error`);
+  } finally {
+    if (client) client.release();
+  }
 });
 
 
 app.get('/api/user/plan', async (req, res) => {
-    const { email } = req.query;
-    if (!email) return res.status(400).json({ success: false, message: "Chybí email." });
-    const client = await pool.connect();
-    try {
-        const result = await client.query(
-            'SELECT plan FROM dashboard_users WHERE email = $1',
-            [email]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: "Uživatel nenalezen." });
-        }
-        res.json({ success: true, plan: result.rows[0].plan });
-    } catch (err) {
-        console.error("Chyba při načítání tarifu:", err);
-        res.status(500).json({ success: false, message: "Nepodařilo se načíst tarif." });
-    } finally {
-        client.release();
+  const { email } = req.query;
+  if (!email) return res.status(400).json({ success: false, message: "Chybí email." });
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      'SELECT plan FROM dashboard_users WHERE email = $1',
+      [email]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Uživatel nenalezen." });
     }
+    res.json({ success: true, plan: result.rows[0].plan });
+  } catch (err) {
+    console.error("Chyba při načítání tarifu:", err);
+    res.status(500).json({ success: false, message: "Nepodařilo se načíst tarif." });
+  } finally {
+    client.release();
+  }
 });
 
 
 app.post('/api/user/plan', async (req, res) => {
-    const { email, plan } = req.body;
+  const { email, plan } = req.body;
   if (!email || !plan) return res.status(400).json({ success: false, message: "Chybí email nebo plán." });
   const client = await pool.connect();
   try {
@@ -2605,7 +2610,7 @@ app.post('/api/user/plan', async (req, res) => {
     }
 
     await client.query(`UPDATE dashboard_users SET plan = $1 WHERE email = $2`, [plan, email]);
-     await logActivity(email, `Upgrade na ${plan}`, 'success');
+    await logActivity(email, `Upgrade na ${plan}`, 'success');
     res.json({ success: true, message: "Plán byl změněn." });
   } catch (err) {
     console.error("Chyba při ukládání tarifu:", err);
@@ -2652,7 +2657,7 @@ function currentPeriodStartDateUTC() {
   const now = new Date();
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth(); // 0–11
-  return new Date(Date.UTC(y, m, 1)).toISOString().slice(0,10);
+  return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
 }
 
 async function getPlanLimits(client, dashboardUserEmail) {
@@ -2740,7 +2745,7 @@ async function addTokens(client, dashboardUserEmail, tokens = 0) {
 
 
 async function listConnectedAccountsHandler(req, res) {
-let client;
+  let client;
   try {
     const { dashboardUserEmail } = req.query;
     if (!dashboardUserEmail) {
@@ -2879,16 +2884,16 @@ app.post('/api/oauth/google/revoke', async (req, res) => {
 
 // === NOVÝ ENDPOINT PRO ODESLÁNÍ ODPOVĚDI ===
 app.post('/api/gmail/send-reply', async (req, res) => {
-   try {
-        const { dashboardUserEmail, email, messageId, replyBody } = req.body;
-        if (!dashboardUserEmail || !email || !messageId || !replyBody) {
-            return res.status(400).json({ success: false, message: "Chybí povinná data." });
-        }
+  try {
+    const { dashboardUserEmail, email, messageId, replyBody } = req.body;
+    if (!dashboardUserEmail || !email || !messageId || !replyBody) {
+      return res.status(400).json({ success: false, message: "Chybí povinná data." });
+    }
 
-        const db = await pool.connect();
+    const db = await pool.connect();
 
 
-const consume = await tryConsumeAiAction(db, dashboardUserEmail);
+    const consume = await tryConsumeAiAction(db, dashboardUserEmail);
     if (!consume.ok) {
       db.release();
       return res.status(429).json({
@@ -2899,82 +2904,82 @@ const consume = await tryConsumeAiAction(db, dashboardUserEmail);
 
 
 
-        const r = await db.query(
-            'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
-            [email, dashboardUserEmail]
-        );
-        db.release();
+    const r = await db.query(
+      'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
+      [email, dashboardUserEmail]
+    );
+    db.release();
 
-        const refreshToken = r.rows[0]?.refresh_token;
-        if (!refreshToken) return res.status(404).json({ success: false, message: "Token nenalezen." });
+    const refreshToken = r.rows[0]?.refresh_token;
+    if (!refreshToken) return res.status(404).json({ success: false, message: "Token nenalezen." });
 
-        oauth2Client.setCredentials({ refresh_token: refreshToken });
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-        const msgResponse = await gmail.users.messages.get({ userId: 'me', id: messageId });
-        const originalHeaders = msgResponse.data.payload.headers;
-        const find = (n) => originalHeaders.find(h => h.name.toLowerCase() === n)?.value;
-        const originalSubject = find('subject') || '';
-        const originalFrom = find('from') || '';
-        const originalReplyTo = find('reply-to') || '';
-        const originalMessageId = find('message-id') || '';
-        const originalReferences = find('references') || '';
+    const msgResponse = await gmail.users.messages.get({ userId: 'me', id: messageId });
+    const originalHeaders = msgResponse.data.payload.headers;
+    const find = (n) => originalHeaders.find(h => h.name.toLowerCase() === n)?.value;
+    const originalSubject = find('subject') || '';
+    const originalFrom = find('from') || '';
+    const originalReplyTo = find('reply-to') || '';
+    const originalMessageId = find('message-id') || '';
+    const originalReferences = find('references') || '';
 
-        const encodeMimeWord = (str) =>
-  /[^\x00-\x7F]/.test(str) ? `=?UTF-8?B?${Buffer.from(str, 'utf8').toString('base64')}?=` : str;
+    const encodeMimeWord = (str) =>
+      /[^\x00-\x7F]/.test(str) ? `=?UTF-8?B?${Buffer.from(str, 'utf8').toString('base64')}?=` : str;
 
 
 
-const replySubject = originalSubject.startsWith('Re: ') ? originalSubject : `Re: ${originalSubject}`;
-// ZMĚNA: žádné jméno, jen adresa
-const encodedFrom = `<${email}>`;
-const encodedSubject = encodeMimeWord(replySubject);
+    const replySubject = originalSubject.startsWith('Re: ') ? originalSubject : `Re: ${originalSubject}`;
+    // ZMĚNA: žádné jméno, jen adresa
+    const encodedFrom = `<${email}>`;
+    const encodedSubject = encodeMimeWord(replySubject);
 
-const targetRecipient = (originalReplyTo || originalFrom || '').trim();
-if (!targetRecipient) {
-  throw new Error('Nelze určit adresáta odpovědi (chybí Reply-To i From).');
-}
+    const targetRecipient = (originalReplyTo || originalFrom || '').trim();
+    if (!targetRecipient) {
+      throw new Error('Nelze určit adresáta odpovědi (chybí Reply-To i From).');
+    }
 
-const lines = [
-  `From: ${encodedFrom}`,
-  `To: ${targetRecipient}`,
-  `Subject: ${encodedSubject}`,
-  'MIME-Version: 1.0',
-  'Content-Type: text/plain; charset=utf-8',
-  'Content-Transfer-Encoding: 8bit',
-  '',
-  replyBody
-];
+    const lines = [
+      `From: ${encodedFrom}`,
+      `To: ${targetRecipient}`,
+      `Subject: ${encodedSubject}`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=utf-8',
+      'Content-Transfer-Encoding: 8bit',
+      '',
+      replyBody
+    ];
 
-// vlož vláknovací hlavičky jen pokud máme Message-ID původní zprávy
-if (originalMessageId) {
-  const refs = `${(originalReferences || '').trim()} ${originalMessageId}`.trim();
-  // za Subject je vhodné tyto dva řádky vsunout před MIME-Version – ale pořadí v poli nevadí
-  lines.splice(3, 0, `In-Reply-To: ${originalMessageId}`, `References: ${refs}`);
-}
-     
-await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Gmail)', 'success', { to: targetRecipient, account: email });
-const raw = Buffer.from(lines.join('\n')).toString('base64url');
+    // vlož vláknovací hlavičky jen pokud máme Message-ID původní zprávy
+    if (originalMessageId) {
+      const refs = `${(originalReferences || '').trim()} ${originalMessageId}`.trim();
+      // za Subject je vhodné tyto dva řádky vsunout před MIME-Version – ale pořadí v poli nevadí
+      lines.splice(3, 0, `In-Reply-To: ${originalMessageId}`, `References: ${refs}`);
+    }
 
-await gmail.users.messages.send({
-  userId: 'me',
-  requestBody: { raw, threadId: msgResponse.data.threadId }
-});
+    await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Gmail)', 'success', { to: targetRecipient, account: email });
+    const raw = Buffer.from(lines.join('\n')).toString('base64url');
 
-res.json({ success: true, message: "Email byl úspěšně odeslán." });
-    } catch (error) {
-  const apiMessage = error?.response?.data?.error?.message;
-  const plainMessage = error?.message || '';
-  const statusCode = /adresáta/i.test(plainMessage) ? 400 : 500;
-  console.error(
-    "Chyba při odesílání emailu:",
-    error?.response?.data || plainMessage || error
-  );
-  res.status(statusCode).json({
-    success: false,
-    message: apiMessage || plainMessage || "Nepodařilo se odeslat email."
-  });
-}
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw, threadId: msgResponse.data.threadId }
+    });
+
+    res.json({ success: true, message: "Email byl úspěšně odeslán." });
+  } catch (error) {
+    const apiMessage = error?.response?.data?.error?.message;
+    const plainMessage = error?.message || '';
+    const statusCode = /adresáta/i.test(plainMessage) ? 400 : 500;
+    console.error(
+      "Chyba při odesílání emailu:",
+      error?.response?.data || plainMessage || error
+    );
+    res.status(statusCode).json({
+      success: false,
+      message: apiMessage || plainMessage || "Nepodařilo se odeslat email."
+    });
+  }
 });
 
 
@@ -3072,7 +3077,7 @@ app.get('/api/gmail/emails', async (req, res) => {
         if (normalizedStatus === 'unread') queryParts.push('is:unread');
         if (normalizedStatus === 'processed') queryParts.push('is:read');
         if (normalizedPeriod === 'today') queryParts.push('newer_than:1d');
-        if (normalizedPeriod === 'week')  queryParts.push('newer_than:7d');
+        if (normalizedPeriod === 'week') queryParts.push('newer_than:7d');
         if (normalizedPeriod === 'month') queryParts.push('newer_than:30d');
       }
       if (safeSearch) queryParts.push(safeSearch);
@@ -3130,14 +3135,14 @@ app.get('/api/gmail/emails', async (req, res) => {
       const pass = decSecret(customRow.enc_password);
 
       imap = createImapClient({
-  host: customRow.imap_host,
-  port: customRow.imap_port,
-  secure: customRow.imap_secure,
-  auth: { user, pass }
-});
+        host: customRow.imap_host,
+        port: customRow.imap_port,
+        secure: customRow.imap_secure,
+        auth: { user, pass }
+      });
 
-await imap.connect();
-await imap.mailboxOpen('INBOX');
+      await imap.connect();
+      await imap.mailboxOpen('INBOX');
 
       const out = [];
       let fetched = 0;
@@ -3149,9 +3154,9 @@ await imap.mailboxOpen('INBOX');
 
       const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 500);
       for await (let msg of imap.fetch(
-  { seq: `${startSeq}:*` },
-  { uid: true, envelope: true, internalDate: true, flags: true, headers: true }
-)) {
+        { seq: `${startSeq}:*` },
+        { uid: true, envelope: true, internalDate: true, flags: true, headers: true }
+      )) {
         // unread
         if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
 
@@ -3162,10 +3167,10 @@ await imap.mailboxOpen('INBOX');
           // označ spam jako přečtený, aby se nezobrazoval mezi nepřečtenými
           try {
             await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true });
-          } catch (_) {}
+          } catch (_) { }
           continue;
         }
-        
+
         // period
         const d = msg.internalDate;
         if (period === 'today' && (!d || d < startOfToday)) continue;
@@ -3196,13 +3201,13 @@ await imap.mailboxOpen('INBOX');
       console.error("Chyba IMAP:", e);
       return res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily (custom)." });
     } finally {
-      try { if (imap?.connected) await imap.logout(); } catch {}
+      try { if (imap?.connected) await imap.logout(); } catch { }
       if (db) { db.release(); db = null; }
     }
 
   } catch (error) {
-    if (imap?.connected) { try { await imap.logout(); } catch {} }
-    if (db) { try { db.release(); } catch {} }
+    if (imap?.connected) { try { await imap.logout(); } catch { } }
+    if (db) { try { db.release(); } catch { } }
     console.error("Chyba při načítání emailů:", error?.message || error);
     return res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily." });
   }
@@ -3213,7 +3218,7 @@ app.get('/api/gmail/message-body', async (req, res) => {
   try {
     const { dashboardUserEmail, email, messageId } = req.query || {};
     if (!dashboardUserEmail || !email || !messageId) {
-      return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, email, messageId).' });
+      return res.status(400).json({ success: false, message: 'Chybí data (dashboardUserEmail, email, messageId).' });
     }
 
     const db = await pool.connect();
@@ -3224,12 +3229,12 @@ app.get('/api/gmail/message-body', async (req, res) => {
     db.release();
 
     const refreshToken = rTok.rows[0]?.refresh_token;
-    if (!refreshToken) return res.status(404).json({ success:false, message:'Token nenalezen.' });
+    if (!refreshToken) return res.status(404).json({ success: false, message: 'Token nenalezen.' });
 
     oauth2Client.setCredentials({ refresh_token: refreshToken });
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const msg = await gmail.users.messages.get({ userId:'me', id: messageId });
+    const msg = await gmail.users.messages.get({ userId: 'me', id: messageId });
     // vytáhnout text/plain nebo převést html na text
     const getText = (payload) => {
       const b64 = (d) => Buffer.from(d, 'base64').toString('utf8');
@@ -3255,10 +3260,10 @@ app.get('/api/gmail/message-body', async (req, res) => {
     };
 
     const body = getText(msg.data.payload) || '';
-    return res.json({ success:true, body });
+    return res.json({ success: true, body });
   } catch (e) {
     console.error('[gmail/message-body] error:', e);
-    return res.status(500).json({ success:false, message:'Načtení těla zprávy selhalo.' });
+    return res.status(500).json({ success: false, message: 'Načtení těla zprávy selhalo.' });
   }
 });
 
@@ -3270,7 +3275,7 @@ async function handleCustomAnalyzeEmail(req, res) {
   let db;
   try {
     // podpora POST (body) i GET (query)
-   const src = req.method === 'GET' ? (req.query || {}) : (req.body || {});
+    const src = req.method === 'GET' ? (req.query || {}) : (req.body || {});
     const { dashboardUserEmail, emailAddress, uid } = src;
     const rawInstructions = typeof src.instructions === 'string' ? src.instructions : '';
     const instructions = rawInstructions.trim();
@@ -3283,17 +3288,17 @@ async function handleCustomAnalyzeEmail(req, res) {
     }
 
     if (!dashboardUserEmail || !emailAddress || !uid) {
-      return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, emailAddress, uid).' });
+      return res.status(400).json({ success: false, message: 'Chybí data (dashboardUserEmail, emailAddress, uid).' });
     }
     if (hasInstructionsField && !instructions) {
-      return res.status(400).json({ success:false, message:'Zadejte text odpovědi, který mám upravit.' });
+      return res.status(400).json({ success: false, message: 'Zadejte text odpovědi, který mám upravit.' });
     }
 
     // načíst limity
     db = await pool.connect();
     const consume = await tryConsumeAiAction(db, dashboardUserEmail);
     if (!consume.ok) {
-      return res.status(429).json({ success:false, message:`Vyčerpán měsíční limit AI akcí (${consume.limit}).` });
+      return res.status(429).json({ success: false, message: `Vyčerpán měsíční limit AI akcí (${consume.limit}).` });
     }
 
     // načíst účet + settings
@@ -3308,19 +3313,19 @@ async function handleCustomAnalyzeEmail(req, res) {
       WHERE dashboard_user_email=$1 AND connected_email=$2
       LIMIT 1
     `, [dashboardUserEmail, emailAddress]);
-    
+
     // PŘIDÁNO: Načtení FAQ pro daný účet
     const rFaq = await db.query(`
       SELECT question, answer FROM faqs
       WHERE dashboard_user_email=$1 AND connected_email=$2
     `, [dashboardUserEmail, emailAddress]);
 
-    
+
 
     if (!rAcc.rowCount) {
-      return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
+      return res.status(404).json({ success: false, message: 'Custom účet nenalezen.' });
     }
-    const st = rSet.rows[0] || { tone:'Profesionální', length:'Adaptivní', signature:'' };
+    const st = rSet.rows[0] || { tone: 'Profesionální', length: 'Adaptivní', signature: '' };
 
     const user = decSecret(rAcc.rows[0].enc_username);
     const pass = decSecret(rAcc.rows[0].enc_password);
@@ -3342,16 +3347,16 @@ async function handleCustomAnalyzeEmail(req, res) {
     for await (const c of content) chunks.push(c);
 
     // vždy se odhlásit
-    try { if (imap?.connected) await imap.logout(); } catch {}
+    try { if (imap?.connected) await imap.logout(); } catch { }
 
     const parsed = await simpleParser(Buffer.concat(chunks));
-    const emailBody = parsed.text || (parsed.html ? parsed.html.replace(/<[^>]+>/g,'').trim() : '');
+    const emailBody = parsed.text || (parsed.html ? parsed.html.replace(/<[^>]+>/g, '').trim() : '');
 
-    
+
     const messageId = parsed.messageId || null;
     let references = parsed.references || null;
     if (Array.isArray(references)) {
-        references = references.join(' ');
+      references = references.join(' ');
     }
     const replyToHeader = parsed.replyTo?.text || headerMapValue(parsed.headers, 'Reply-To') || '';
     const fromHeader = parsed.from?.text || headerMapValue(parsed.headers, 'From') || '';
@@ -3390,7 +3395,7 @@ Pravidla pro tvorbu "suggested_reply":
       faqContext += rFaq.rows.map(row => `Otázka: ${row.question}\nOdpověď: ${row.answer}`).join('\n\n');
       faqContext += '\n---\n\n';
     }
-    
+
     const trimmedDraft = instructions.slice(0, 1600);
     const instructionBlock = hasInstructionsField && instructions
       ? `Uživatel již připravil návrh odpovědi, který chce pouze stylisticky upravit. Původní text odpovědi:
@@ -3413,26 +3418,26 @@ ${String(emailBody).slice(0, 3000)}
 `;
 
     const raw = await chatJson({
-   model: EMAIL_MODEL,
-  system: systemInstruction,
-  user: task,
-  client: db,
-  dashboardUserEmail
- });
-    
+      model: EMAIL_MODEL,
+      system: systemInstruction,
+      user: task,
+      client: db,
+      dashboardUserEmail
+    });
 
-   let analysis = {};
+
+    let analysis = {};
     try {
       analysis = JSON.parse(stripJsonFence(String(raw)));
     } catch {
       // fallback: požádáme model, aby opravil výstup na validní JSON
-     const fixed = await chatJson({
-  model: DEFAULT_MODEL,
-  system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
-  user: `Oprav na validní JSON:\n${raw}`,
-  client: db,
-  dashboardUserEmail
-});
+      const fixed = await chatJson({
+        model: DEFAULT_MODEL,
+        system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
+        user: `Oprav na validní JSON:\n${raw}`,
+        client: db,
+        dashboardUserEmail
+      });
       analysis = JSON.parse(stripJsonFence(String(fixed)));
     }
 
@@ -3442,7 +3447,7 @@ ${String(emailBody).slice(0, 3000)}
     }
 
     return res.json({
-  success: true,
+      success: true,
       analysis,
       emailBody,
       headers: {
@@ -3452,12 +3457,12 @@ ${String(emailBody).slice(0, 3000)}
         from: fromHeader
       },
       debugOut
-});
+    });
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ success:false, message:'Analýza selhala.' });
-} finally {
-  try { db?.release?.(); } catch {}
+    return res.status(500).json({ success: false, message: 'Analýza selhala.' });
+  } finally {
+    try { db?.release?.(); } catch { }
   }
 }
 
@@ -3480,7 +3485,7 @@ app.get('/api/custom-email/message-body', async (req, res) => {
   try {
     const { dashboardUserEmail, emailAddress, uid } = req.query || {};
     if (!dashboardUserEmail || !emailAddress || !uid) {
-      return res.status(400).json({ success:false, message:'Chybí data (dashboardUserEmail, emailAddress, uid).' });
+      return res.status(400).json({ success: false, message: 'Chybí data (dashboardUserEmail, emailAddress, uid).' });
     }
 
     const db = await pool.connect();
@@ -3492,8 +3497,8 @@ app.get('/api/custom-email/message-body', async (req, res) => {
     `, [dashboardUserEmail, emailAddress]);
     db.release();
 
-    if (!rAcc.rowCount) return res.status(404).json({ success:false, message:'Custom účet nenalezen.' });
-    if (rAcc.rows[0].active === false) return res.status(403).json({ success:false, message:'Tento účet je neaktivní.' });
+    if (!rAcc.rowCount) return res.status(404).json({ success: false, message: 'Custom účet nenalezen.' });
+    if (rAcc.rows[0].active === false) return res.status(403).json({ success: false, message: 'Tento účet je neaktivní.' });
 
     const user = decSecret(rAcc.rows[0].enc_username);
     const pass = decSecret(rAcc.rows[0].enc_password);
@@ -3510,15 +3515,15 @@ app.get('/api/custom-email/message-body', async (req, res) => {
     const { content } = await imap.download(Number(uid), null, { uid: true });
     const chunks = [];
     for await (const c of content) chunks.push(c);
-    await imap.logout().catch(()=>{});
+    await imap.logout().catch(() => { });
 
     const parsed = await simpleParser(Buffer.concat(chunks));
     // preferuj text; když chybí, stripni html
-    const bodyText = parsed.text || (parsed.html ? parsed.html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g,'').trim() : '') || '';
-    return res.json({ success:true, body: bodyText });
+    const bodyText = parsed.text || (parsed.html ? parsed.html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : '') || '';
+    return res.json({ success: true, body: bodyText });
   } catch (e) {
     console.error('[custom-email/message-body] error:', e);
-    return res.status(500).json({ success:false, message:'Načtení těla zprávy selhalo.' });
+    return res.status(500).json({ success: false, message: 'Načtení těla zprávy selhalo.' });
   }
 });
 
@@ -3527,30 +3532,30 @@ app.get('/api/custom-email/message-body', async (req, res) => {
 app.post('/api/gmail/approval/approve', async (req, res) => {
   try {
     const { dashboardUserEmail, email, messageId } = req.body || {};
-    if (!dashboardUserEmail || !email || !messageId) return res.status(400).json({ success:false, message:'Chybí data.' });
+    if (!dashboardUserEmail || !email || !messageId) return res.status(400).json({ success: false, message: 'Chybí data.' });
 
     // Gmail klient
     const db = await pool.connect();
     const rt = await db.query('SELECT refresh_token FROM connected_accounts WHERE email=$1 AND dashboard_user_email=$2', [email, dashboardUserEmail]);
     db.release();
     oauth2Client.setCredentials({ refresh_token: rt.rows[0]?.refresh_token });
-    const gmail = google.gmail({ version:'v1', auth:oauth2Client });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const labelsList = await gmail.users.labels.list({ userId:'me' });
+    const labelsList = await gmail.users.labels.list({ userId: 'me' });
     const approvalLabel = labelsList.data.labels.find(l => l.name === 'ceka-na-schvaleni');
 
     await gmail.users.messages.modify({
-      userId:'me', id: messageId,
+      userId: 'me', id: messageId,
       requestBody: {
         removeLabelIds: approvalLabel ? [approvalLabel.id] : [],
-        addLabelIds: ['INBOX','UNREAD'] // ať na tebe v INBOXu „čeká“
+        addLabelIds: ['INBOX', 'UNREAD'] // ať na tebe v INBOXu „čeká“
       }
     });
 
-    return res.json({ success:true });
+    return res.json({ success: true });
   } catch (e) {
     console.error('/api/gmail/approval/approve', e);
-    return res.status(500).json({ success:false, message:'Schválení selhalo.' });
+    return res.status(500).json({ success: false, message: 'Schválení selhalo.' });
   }
 });
 
@@ -3558,29 +3563,29 @@ app.post('/api/gmail/approval/approve', async (req, res) => {
 app.post('/api/gmail/approval/reject', async (req, res) => {
   try {
     const { dashboardUserEmail, email, messageId } = req.body || {};
-    if (!dashboardUserEmail || !email || !messageId) return res.status(400).json({ success:false, message:'Chybí data.' });
+    if (!dashboardUserEmail || !email || !messageId) return res.status(400).json({ success: false, message: 'Chybí data.' });
 
     const db = await pool.connect();
     const rt = await db.query('SELECT refresh_token FROM connected_accounts WHERE email=$1 AND dashboard_user_email=$2', [email, dashboardUserEmail]);
     db.release();
     oauth2Client.setCredentials({ refresh_token: rt.rows[0]?.refresh_token });
-    const gmail = google.gmail({ version:'v1', auth:oauth2Client });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    const labelsList = await gmail.users.labels.list({ userId:'me' });
+    const labelsList = await gmail.users.labels.list({ userId: 'me' });
     const approvalLabel = labelsList.data.labels.find(l => l.name === 'ceka-na-schvaleni');
 
     await gmail.users.messages.modify({
-      userId:'me', id: messageId,
+      userId: 'me', id: messageId,
       requestBody: {
         removeLabelIds: approvalLabel ? [approvalLabel.id, 'INBOX'] : ['INBOX'],
         addLabelIds: [] // archiv (bez INBOXu); volitelně: nic dalšího
       }
     });
 
-    return res.json({ success:true });
+    return res.json({ success: true });
   } catch (e) {
     console.error('/api/gmail/approval/reject', e);
-    return res.status(500).json({ success:false, message:'Zamítnutí selhalo.' });
+    return res.status(500).json({ success: false, message: 'Zamítnutí selhalo.' });
   }
 
 });
@@ -3796,7 +3801,8 @@ app.post('/api/gmail/pending-replies/:id/reject', async (req, res) => {
     await logActivity(dashboardUserEmail, 'Zamítnutí AI odpovědi', 'success', { account: email, message: pending.subject });
 
     return res.json({ success: true });
-  } catch (e) {console.error('[pending-replies] reject error:', e);
+  } catch (e) {
+    console.error('[pending-replies] reject error:', e);
     return res.status(500).json({ success: false, message: 'Zamítnutí odpovědi selhalo.' });
   } finally {
     client.release();
@@ -3919,8 +3925,8 @@ async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pe
     await imapClient.mailboxOpen('INBOX');
     const replyUid = metadata.replyToUid || metadata.uid || metadata.messageUid;
     if (replyUid) {
-      await imapClient.messageFlagsAdd(String(replyUid), ['\\Seen', '\\Answered'], { uid: true }).catch(() => {});
-      await imapClient.messageFlagsRemove(String(replyUid), ['\\Flagged'], { uid: true }).catch(() => {});
+      await imapClient.messageFlagsAdd(String(replyUid), ['\\Seen', '\\Answered'], { uid: true }).catch(() => { });
+      await imapClient.messageFlagsRemove(String(replyUid), ['\\Flagged'], { uid: true }).catch(() => { });
     }
 
     const mailboxes = await imapClient.list();
@@ -3929,12 +3935,12 @@ async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pe
       sentMailbox = mailboxes.find((m) => (m && m.path) && m.path.toLowerCase().includes('sent'));
     }
     if (sentMailbox) {
-      await imapClient.append(sentMailbox.path, rawMessage, ['\\Seen']).catch(() => {});
+      await imapClient.append(sentMailbox.path, rawMessage, ['\\Seen']).catch(() => { });
     }
   } catch (imapErr) {
     console.warn('[custom pending] IMAP update selhala:', imapErr?.message || imapErr);
   } finally {
-    try { if (imapClient.connected) await imapClient.logout(); } catch {}
+    try { if (imapClient.connected) await imapClient.logout(); } catch { }
   }
 
   await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Custom schváleno)', 'success', { account: emailAddress, to: toAddress });
@@ -4034,12 +4040,12 @@ app.post('/api/custom-email/pending-replies/:id/reject', async (req, res) => {
           await imapClient.mailboxOpen('INBOX');
           const replyUid = metadata.replyToUid || metadata.uid || metadata.messageUid;
           if (replyUid) {
-            await imapClient.messageFlagsRemove(String(replyUid), ['\\Flagged'], { uid: true }).catch(() => {});
+            await imapClient.messageFlagsRemove(String(replyUid), ['\\Flagged'], { uid: true }).catch(() => { });
           }
         } catch (imapErr) {
           console.warn('[custom pending] Nepodařilo se odebrat příznak:', imapErr?.message || imapErr);
         } finally {
-          try { if (imapClient.connected) await imapClient.logout(); } catch {}
+          try { if (imapClient.connected) await imapClient.logout(); } catch { }
         }
       }
     } catch (metaErr) {
@@ -4138,8 +4144,8 @@ async function sendCustomReply({
 
 app.post('/api/custom-email/send-reply', async (req, res) => {
 
-  
-const { dashboardUserEmail, emailAddress, to, replyTo, subject, text, fromName, origMessageId, origReferences, replyToUid } = req.body || {};
+
+  const { dashboardUserEmail, emailAddress, to, replyTo, subject, text, fromName, origMessageId, origReferences, replyToUid } = req.body || {};
 
   const targetRecipient = (replyTo || to || '').trim();
 
@@ -4215,7 +4221,7 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
   }
 
   try {
-    
+
     if (!dashboardUserEmail || !email || !messageId) {
       return res.status(400).json({ success: false, message: "Chybí data." });
     }
@@ -4235,7 +4241,7 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
       'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
       [email, dashboardUserEmail]
     );
-    
+
     const rSet = await db.query(
       'SELECT * FROM settings WHERE dashboard_user_email = $1 AND connected_email = $2',
       [dashboardUserEmail, email]
@@ -4257,7 +4263,7 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
 
     oauth2Client.setCredentials({ refresh_token: refreshToken });
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-   const msgResponse = await gmail.users.messages.get({ userId: 'me', id: messageId });
+    const msgResponse = await gmail.users.messages.get({ userId: 'me', id: messageId });
     const headerValue = (name) => {
       const headers = msgResponse.data?.payload?.headers || [];
       return headers.find(h => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
@@ -4275,7 +4281,7 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
       emailBody = Buffer.from(msgResponse.data.payload.body.data, 'base64').toString('utf-8');
     }
 
-const styleProfile = {
+    const styleProfile = {
       tone: toneOverride || settings?.tone || 'Formální',
       length: lengthOverride || settings?.length || 'Střední (1 odstavec)',
       signature: includeSignature ? (settings?.signature || '') : '',
@@ -4283,8 +4289,8 @@ const styleProfile = {
     };
 
 
-    
-const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
+
+    const systemInstruction = `SYSTÉMOVÁ INSTRUKCE:
 Piš odpovědi podle následujícího stylového profilu (JSON). Pokud není relevantní část v profilu,
 použij rozumný default, ale profil má přednost.
 
@@ -4313,7 +4319,7 @@ Pravidla pro tvorbu "suggested_reply":
       faqContext += '\n---\n\n';
     }
 
-   const trimmedDraft = instructions.slice(0, 1600);
+    const trimmedDraft = instructions.slice(0, 1600);
     const instructionBlock = hasInstructionsField && instructions
       ? `Uživatel již připravil návrh odpovědi, který chce pouze stylisticky upravit. Původní text odpovědi:
 """${trimmedDraft}"""
@@ -4333,15 +4339,15 @@ Text e-mailu:
 ${String(emailBody).slice(0, 3000)}
 ---`;
 
-   // volitelná proměnná 'prompt' klidně ani nepotřebuješ
-const raw = await chatJson({
-   model: EMAIL_MODEL,
-   system: systemInstruction,
-   user: task
- });
-const analysis = JSON.parse(stripJsonFence(String(raw)));
-      
-    
+    // volitelná proměnná 'prompt' klidně ani nepotřebuješ
+    const raw = await chatJson({
+      model: EMAIL_MODEL,
+      system: systemInstruction,
+      user: task
+    });
+    const analysis = JSON.parse(stripJsonFence(String(raw)));
+
+
 
     const debugOut = {};
     if (req.query?.debug === '1') {
@@ -4375,34 +4381,34 @@ const analysis = JSON.parse(stripJsonFence(String(raw)));
 
 // Endpoint pro načtení nastavení
 app.get('/api/settings', async (req, res) => {
-    let client;
-    try {
-        const { dashboardUserEmail, email } = req.query; // email = connected_email
-        if (!dashboardUserEmail || !email) {
-            return res.status(400).json({ success: false, message: "Chybí dashboardUserEmail nebo email." });
-        }
-        client = await pool.connect();
-        let result = await client.query(
-            'SELECT * FROM settings WHERE dashboard_user_email = $1 AND connected_email = $2',
-            [dashboardUserEmail, email]
-        );
-        if (result.rows.length === 0) {
-            await client.query(
-                'INSERT INTO settings (dashboard_user_email, connected_email) VALUES ($1, $2)',
-                [dashboardUserEmail, email]
-            );
-            result = await client.query(
-                'SELECT * FROM settings WHERE dashboard_user_email = $1 AND connected_email = $2',
-                [dashboardUserEmail, email]
-            );
-        }
-        res.json({ success: true, settings: result.rows[0] });
-    } catch (error) {
-        console.error("Chyba při načítání nastavení:", error);
-        res.status(500).json({ success: false, message: "Nepodařilo se načíst nastavení." });
-    } finally {
-        if (client) client.release();
+  let client;
+  try {
+    const { dashboardUserEmail, email } = req.query; // email = connected_email
+    if (!dashboardUserEmail || !email) {
+      return res.status(400).json({ success: false, message: "Chybí dashboardUserEmail nebo email." });
     }
+    client = await pool.connect();
+    let result = await client.query(
+      'SELECT * FROM settings WHERE dashboard_user_email = $1 AND connected_email = $2',
+      [dashboardUserEmail, email]
+    );
+    if (result.rows.length === 0) {
+      await client.query(
+        'INSERT INTO settings (dashboard_user_email, connected_email) VALUES ($1, $2)',
+        [dashboardUserEmail, email]
+      );
+      result = await client.query(
+        'SELECT * FROM settings WHERE dashboard_user_email = $1 AND connected_email = $2',
+        [dashboardUserEmail, email]
+      );
+    }
+    res.json({ success: true, settings: result.rows[0] });
+  } catch (error) {
+    console.error("Chyba při načítání nastavení:", error);
+    res.status(500).json({ success: false, message: "Nepodařilo se načíst nastavení." });
+  } finally {
+    if (client) client.release();
+  }
 });
 
 
@@ -4410,7 +4416,7 @@ app.get('/api/settings', async (req, res) => {
 app.get('/api/templates', async (req, res) => {
   const email = req.query.dashboardUserEmail;
   const category = req.query.category;
-  if (!email) return res.status(400).json({ success:false, message:'Chybí dashboardUserEmail' });
+  if (!email) return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail' });
   const client = await pool.connect();
   try {
     const args = [email];
@@ -4426,10 +4432,10 @@ app.get('/api/templates', async (req, res) => {
     sql += ' ORDER BY updated_at DESC';
 
     const r = await client.query(sql, args);
-    res.json({ success:true, templates:r.rows });
+    res.json({ success: true, templates: r.rows });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Nepodařilo se načíst šablony' });
+    res.status(500).json({ success: false, message: 'Nepodařilo se načíst šablony' });
   } finally { client.release(); }
 });
 
@@ -4437,7 +4443,7 @@ app.get('/api/templates', async (req, res) => {
 app.post('/api/templates', async (req, res) => {
   const { dashboardUserEmail, name, category, content } = req.body || {};
   if (!dashboardUserEmail || !name || !content) {
-    return res.status(400).json({ success:false, message:'Chybí data' });
+    return res.status(400).json({ success: false, message: 'Chybí data' });
   }
   const client = await pool.connect();
   try {
@@ -4447,17 +4453,17 @@ app.post('/api/templates', async (req, res) => {
        RETURNING id, name, category, content, uses, success_rate, created_at, updated_at`,
       [dashboardUserEmail, name, category || 'Obecné', content]
     );
-    res.json({ success:true, template:r.rows[0] });
+    res.json({ success: true, template: r.rows[0] });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Nepodařilo se vytvořit šablonu' });
+    res.status(500).json({ success: false, message: 'Nepodařilo se vytvořit šablonu' });
   } finally { client.release(); }
 });
 
 
 app.get('/api/faq', async (req, res) => {
   const { dashboardUserEmail, email } = req.query || {};
-  if (!dashboardUserEmail || !email) return res.status(400).json({ success:false, message:'Chybí parametry.' });
+  if (!dashboardUserEmail || !email) return res.status(400).json({ success: false, message: 'Chybí parametry.' });
 
   const db = await pool.connect();
   try {
@@ -4468,10 +4474,10 @@ app.get('/api/faq', async (req, res) => {
         ORDER BY updated_at DESC, id DESC`,
       [dashboardUserEmail, email]
     );
-    res.json({ success:true, faqs:r.rows });
+    res.json({ success: true, faqs: r.rows });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Načtení FAQ selhalo.' });
+    res.status(500).json({ success: false, message: 'Načtení FAQ selhalo.' });
   } finally { db.release(); }
 });
 
@@ -4480,7 +4486,7 @@ app.get('/api/faq', async (req, res) => {
 app.post('/api/faq', async (req, res) => {
   const { dashboardUserEmail, email, question, answer } = req.body || {};
   if (!dashboardUserEmail || !email || !question || !answer) {
-    return res.status(400).json({ success:false, message:'Chybí data.' });
+    return res.status(400).json({ success: false, message: 'Chybí data.' });
   }
   const db = await pool.connect();
   try {
@@ -4490,10 +4496,10 @@ app.post('/api/faq', async (req, res) => {
        RETURNING id, question, answer, source, updated_at`,
       [dashboardUserEmail, email, question, answer]
     );
-    res.json({ success:true, faq:r.rows[0] });
+    res.json({ success: true, faq: r.rows[0] });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Uložení FAQ selhalo.' });
+    res.status(500).json({ success: false, message: 'Uložení FAQ selhalo.' });
   } finally { db.release(); }
 });
 
@@ -4503,7 +4509,7 @@ app.put('/api/faq/:id', async (req, res) => {
   const id = Number(req.params.id);
   const { dashboardUserEmail, email, question, answer } = req.body || {};
   if (!id || !dashboardUserEmail || !email || !question || !answer) {
-    return res.status(400).json({ success:false, message:'Chybí data.' });
+    return res.status(400).json({ success: false, message: 'Chybí data.' });
   }
   const db = await pool.connect();
   try {
@@ -4514,11 +4520,11 @@ app.put('/api/faq/:id', async (req, res) => {
         RETURNING id, question, answer, source, updated_at`,
       [question, answer, id, dashboardUserEmail, email]
     );
-    if (!r.rowCount) return res.status(404).json({ success:false, message:'FAQ položka nenalezena.' });
-    res.json({ success:true, faq:r.rows[0] });
+    if (!r.rowCount) return res.status(404).json({ success: false, message: 'FAQ položka nenalezena.' });
+    res.json({ success: true, faq: r.rows[0] });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Úprava FAQ selhala.' });
+    res.status(500).json({ success: false, message: 'Úprava FAQ selhala.' });
   } finally { db.release(); }
 });
 
@@ -4528,7 +4534,7 @@ app.delete('/api/faq/:id', async (req, res) => {
   const id = Number(req.params.id);
   const { dashboardUserEmail, email } = req.query || {};
   if (!id || !dashboardUserEmail || !email) {
-    return res.status(400).json({ success:false, message:'Chybí data.' });
+    return res.status(400).json({ success: false, message: 'Chybí data.' });
   }
   const db = await pool.connect();
   try {
@@ -4537,11 +4543,11 @@ app.delete('/api/faq/:id', async (req, res) => {
         WHERE id=$1 AND dashboard_user_email=$2 AND connected_email=$3`,
       [id, dashboardUserEmail, email]
     );
-    if (!r.rowCount) return res.status(404).json({ success:false, message:'FAQ položka nenalezena.' });
-    res.json({ success:true });
+    if (!r.rowCount) return res.status(404).json({ success: false, message: 'FAQ položka nenalezena.' });
+    res.json({ success: true });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Smazání FAQ selhalo.' });
+    res.status(500).json({ success: false, message: 'Smazání FAQ selhalo.' });
   } finally { db.release(); }
 });
 
@@ -4551,14 +4557,14 @@ app.post('/api/faq/regenerate', async (req, res) => {
   try {
     const { dashboardUserEmail, email, limit = 120 } = req.body || {};
     if (!dashboardUserEmail || !email) {
-      return res.status(400).json({ success:false, message:'Chybí parametry.' });
+      return res.status(400).json({ success: false, message: 'Chybí parametry.' });
     }
 
     const db = await pool.connect();
     const consume = await tryConsumeAiAction(db, dashboardUserEmail);
     if (!consume.ok) {
       db.release();
-      return res.status(429).json({ success:false, message:`Vyčerpán měsíční limit AI akcí (${consume.limit}).` });
+      return res.status(429).json({ success: false, message: `Vyčerpán měsíční limit AI akcí (${consume.limit}).` });
     }
 
     // Vytáhni poslední N příkladů pro tento účet
@@ -4568,17 +4574,17 @@ app.post('/api/faq/regenerate', async (req, res) => {
         WHERE dashboard_user_email=$1 AND connected_email=$2
         ORDER BY created_at DESC
         LIMIT $3`,
-      [dashboardUserEmail, email, Math.min(Number(limit)||120, 300)]
+      [dashboardUserEmail, email, Math.min(Number(limit) || 120, 300)]
     );
     const examples = ex.rows || [];
     db.release();
 
     if (!examples.length) {
-      return res.json({ success:true, created:0, faqs:[] });
+      return res.json({ success: true, created: 0, faqs: [] });
     }
 
     // Prompt: ze vzorků udělej 8–15 FAQ (Q/A) jako JSON
-   const prompt = `
+    const prompt = `
 Jsi e-mailový asistent. Z následujících vzorků e-mailové komunikace vytvoř seznam FAQ pro daný účet.
 FAQ má zachytit NEJČASTĚJŠÍ dotazy a typické odpovědi firmy. Vrať POUZE validní JSON objekt:
 {
@@ -4636,10 +4642,10 @@ ${examples.map(e => JSON.stringify(e)).join('\n').slice(0, 15000)}
       }
     } finally { db2.release(); }
 
-    res.json({ success:true, created: cleanedFaqs.length, faqs: cleanedFaqs });
+    res.json({ success: true, created: cleanedFaqs.length, faqs: cleanedFaqs });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Regenerace FAQ selhala.' });
+    res.status(500).json({ success: false, message: 'Regenerace FAQ selhala.' });
   }
 });
 
@@ -4651,7 +4657,7 @@ app.put('/api/templates/:id', async (req, res) => {
   const id = Number(req.params.id);
   const { dashboardUserEmail, name, category, content } = req.body || {};
   if (!dashboardUserEmail || !id || !name || !content) {
-    return res.status(400).json({ success:false, message:'Chybí data' });
+    return res.status(400).json({ success: false, message: 'Chybí data' });
   }
   const client = await pool.connect();
   try {
@@ -4662,11 +4668,11 @@ app.put('/api/templates/:id', async (req, res) => {
        RETURNING id, name, category, content, uses, success_rate, created_at, updated_at`,
       [name, category || 'Obecné', content, id, dashboardUserEmail]
     );
-    if (r.rowCount === 0) return res.status(404).json({ success:false, message:'Šablona nenalezena' });
-    res.json({ success:true, template:r.rows[0] });
+    if (r.rowCount === 0) return res.status(404).json({ success: false, message: 'Šablona nenalezena' });
+    res.json({ success: true, template: r.rows[0] });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Nepodařilo se upravit šablonu' });
+    res.status(500).json({ success: false, message: 'Nepodařilo se upravit šablonu' });
   } finally { client.release(); }
 });
 
@@ -4674,26 +4680,26 @@ app.put('/api/templates/:id', async (req, res) => {
 app.delete('/api/templates/:id', async (req, res) => {
   const id = Number(req.params.id);
   const email = req.query.dashboardUserEmail;
-  if (!email || !id) return res.status(400).json({ success:false, message:'Chybí data' });
+  if (!email || !id) return res.status(400).json({ success: false, message: 'Chybí data' });
   const client = await pool.connect();
   try {
     const r = await client.query(
       `DELETE FROM templates WHERE id=$1 AND dashboard_user_email=$2`,
       [id, email]
     );
-    if (r.rowCount === 0) return res.status(404).json({ success:false, message:'Šablona nenalezena' });
-    res.json({ success:true, message:'Šablona smazána' });
+    if (r.rowCount === 0) return res.status(404).json({ success: false, message: 'Šablona nenalezena' });
+    res.json({ success: true, message: 'Šablona smazána' });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false, message:'Nepodařilo se smazat šablonu' });
+    res.status(500).json({ success: false, message: 'Nepodařilo se smazat šablonu' });
   } finally { client.release(); }
 });
 
 // (Volitelné) inkrementace použití po odeslání mailu s template_id
-app.post('/api/templates/:id/increment-use', async (req,res) => {
+app.post('/api/templates/:id/increment-use', async (req, res) => {
   const id = Number(req.params.id);
   const email = req.body?.dashboardUserEmail;
-  if (!email || !id) return res.status(400).json({ success:false, message:'Chybí data' });
+  if (!email || !id) return res.status(400).json({ success: false, message: 'Chybí data' });
   const client = await pool.connect();
   try {
     await client.query(
@@ -4701,10 +4707,10 @@ app.post('/api/templates/:id/increment-use', async (req,res) => {
        WHERE id=$1 AND dashboard_user_email=$2`,
       [id, email]
     );
-    res.json({ success:true });
-  } catch(e){
+    res.json({ success: true });
+  } catch (e) {
     console.error(e);
-    res.status(500).json({ success:false });
+    res.status(500).json({ success: false });
   } finally { client.release(); }
 });
 
@@ -4714,15 +4720,15 @@ app.post('/api/templates/:id/increment-use', async (req,res) => {
 
 // Endpoint pro uložení nastavení
 app.post('/api/settings', async (req, res) => {
-    let client;
-    try {
-        const { dashboardUserEmail, email, tone, length, signature, auto_reply, approval_required, spam_filter } = req.body;
-        if (!dashboardUserEmail || !email) {
-            return res.status(400).json({ success: false, message: "Chybí dashboardUserEmail nebo email." });
-        }
-        client = await pool.connect();
-        await client.query(
-            `INSERT INTO settings (dashboard_user_email, connected_email, tone, length, signature, auto_reply, approval_required, spam_filter)
+  let client;
+  try {
+    const { dashboardUserEmail, email, tone, length, signature, auto_reply, approval_required, spam_filter } = req.body;
+    if (!dashboardUserEmail || !email) {
+      return res.status(400).json({ success: false, message: "Chybí dashboardUserEmail nebo email." });
+    }
+    client = await pool.connect();
+    await client.query(
+      `INSERT INTO settings (dashboard_user_email, connected_email, tone, length, signature, auto_reply, approval_required, spam_filter)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
              ON CONFLICT (dashboard_user_email, connected_email)
              DO UPDATE SET tone = EXCLUDED.tone,
@@ -4731,15 +4737,15 @@ app.post('/api/settings', async (req, res) => {
                            auto_reply = EXCLUDED.auto_reply,
                            approval_required = EXCLUDED.approval_required,
                            spam_filter = EXCLUDED.spam_filter`,
-            [dashboardUserEmail, email, tone, length, signature, auto_reply, approval_required, spam_filter]
-        );
-        res.json({ success: true, message: "Nastavení bylo úspěšně uloženo." });
-    } catch (error) {
-        console.error("Chyba při ukládání nastavení:", error);
-        res.status(500).json({ success: false, message: "Nepodařilo se uložit nastavení." });
-    } finally {
-        if (client) client.release();
-    }
+      [dashboardUserEmail, email, tone, length, signature, auto_reply, approval_required, spam_filter]
+    );
+    res.json({ success: true, message: "Nastavení bylo úspěšně uloženo." });
+  } catch (error) {
+    console.error("Chyba při ukládání nastavení:", error);
+    res.status(500).json({ success: false, message: "Nepodařilo se uložit nastavení." });
+  } finally {
+    if (client) client.release();
+  }
 });
 
 
@@ -4874,7 +4880,7 @@ ${String(bodyText).slice(0, 3000)}
           const isHeaderSpam = isSpamByHeadersMap(msg.headers, subject);
           if (isHeaderSpam) {
             if (acc.spam_filter || acc.auto_reply) {
-              await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => {});
+              await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
             }
             continue;
           }
@@ -4890,9 +4896,9 @@ ${String(bodyText).slice(0, 3000)}
           if (!bodyText || !bodyText.trim()) {
             continue;
           }
-const shouldAutoReply = !!acc.auto_reply;
+          const shouldAutoReply = !!acc.auto_reply;
           if (!shouldAutoReply && !acc.approval_required) {
-            await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => {});
+            await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
             continue;
           }
 
@@ -4949,7 +4955,7 @@ const shouldAutoReply = !!acc.auto_reply;
           }
 
           const replyBody = String(analysis?.suggested_reply || '').trim();
-         if (!replyBody) {
+          if (!replyBody) {
             console.warn('[IMAP worker] AI nevrátila návrh odpovědi, přeskočeno.');
             continue;
           }
@@ -5057,15 +5063,15 @@ const shouldAutoReply = !!acc.auto_reply;
             JSON.stringify(metadata)
           ]);
 
-          await imap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true }).catch(() => {});
+          await imap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true }).catch(() => { });
           console.log(`         "${subject || '(bez předmětu)'}" → návrh odpovědi uložen a čeká na schválení (Custom).`);
         }
       } catch (e) {
         console.error('[IMAP worker] chyba:', e?.message || e);
       } finally {
         if (dbClient) dbClient.release();
-        try { if (imap.connected) await imap.logout(); } catch {}
-        try { await imap.close?.(); } catch {}
+        try { if (imap.connected) await imap.logout(); } catch { }
+        try { await imap.close?.(); } catch { }
       }
     }
   } finally {
@@ -5176,7 +5182,7 @@ ${String(bodyText).slice(0, 3000)}
   };
   const looksLikeSpam = (subject, snippet, headers) => {
     const s = `${subject} ${snippet}`.toLowerCase();
-    const promoTokens = ['unsubscribe','newsletter','promo','reklama','sleva','akce','kup nyní','% sleva','sale'];
+    const promoTokens = ['unsubscribe', 'newsletter', 'promo', 'reklama', 'sleva', 'akce', 'kup nyní', '% sleva', 'sale'];
     if (promoTokens.some(t => s.includes(t))) return true;
     if (hasListUnsub(headers)) return true;
     if (hasPrecedenceBulk(headers)) return true;
@@ -5217,7 +5223,9 @@ ${String(bodyText).slice(0, 3000)}
       continue;
     }
 
-    if (looksLikeSpam(subject, snippet, headers)) {
+    // Modifikace: Pokud je auto_reply zapnuto, ignorujeme heuristiku "looksLikeSpam" (promo, slevy atd.),
+    // abychom odpověděli na vše (technický spam je filtrován výše funkcí isHeaderSpam).
+    if (!acc.auto_reply && looksLikeSpam(subject, snippet, headers)) {
       if (acc.spam_filter) {
         await gmail.users.messages.modify({
           userId: 'me',
@@ -5227,15 +5235,8 @@ ${String(bodyText).slice(0, 3000)}
         console.log(`         "${subject}" → ignorováno (spam/reklama).`);
         continue;
       }
-      if (acc.auto_reply) {
-        await gmail.users.messages.modify({
-          userId: 'me',
-          id: msg.id,
-          requestBody: { removeLabelIds: ['UNREAD'] }
-        });
-        console.log(`         "${subject}" → ignorováno (promo bez spam filtru).`);
-        continue;
-      }
+      // Původní blok 'if (acc.auto_reply)' zde byl odstraněn, protože nyní
+      // se tento blok vůbec nespustí, pokud je auto_reply = true.
     }
 
     const shouldAutoReply = !!acc.auto_reply;
@@ -5474,27 +5475,27 @@ cron.schedule('*/15 * * * *', () => {
 // --- ADMIN SEKCE ---
 // Middleware pro ověření, zda je uživatel admin
 const isAdmin = async (req, res, next) => {
-    // V reálné aplikaci byste ověřovali JWT token z hlavičky Authorization
-    // Pro jednoduchost teď budeme kontrolovat roli podle emailu v query
-    const { dashboardUserEmail } = req.query;
-    if (!dashboardUserEmail) {
-        return res.status(401).json({ success: false, message: 'Chybí autentizace.' });
-    }
+  // V reálné aplikaci byste ověřovali JWT token z hlavičky Authorization
+  // Pro jednoduchost teď budeme kontrolovat roli podle emailu v query
+  const { dashboardUserEmail } = req.query;
+  if (!dashboardUserEmail) {
+    return res.status(401).json({ success: false, message: 'Chybí autentizace.' });
+  }
 
-    let client;
-    try {
-        client = await pool.connect();
-        const r = await client.query('SELECT role FROM dashboard_users WHERE email = $1', [dashboardUserEmail]);
-        if (r.rowCount > 0 && r.rows[0].role === 'admin') {
-            next(); // Uživatel je admin, pokračuj
-        } else {
-            res.status(403).json({ success: false, message: 'Přístup odepřen.' });
-        }
-    } catch (e) {
-        res.status(500).json({ success: false, message: 'Chyba serveru.' });
-    } finally {
-        if (client) client.release();
+  let client;
+  try {
+    client = await pool.connect();
+    const r = await client.query('SELECT role FROM dashboard_users WHERE email = $1', [dashboardUserEmail]);
+    if (r.rowCount > 0 && r.rows[0].role === 'admin') {
+      next(); // Uživatel je admin, pokračuj
+    } else {
+      res.status(403).json({ success: false, message: 'Přístup odepřen.' });
     }
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Chyba serveru.' });
+  } finally {
+    if (client) client.release();
+  }
 };
 
 // Endpoint pro načtení všech uživatelů, chráněný isAdmin middlewarem
@@ -5574,52 +5575,52 @@ app.get('/api/admin/users', isAdmin, async (req, res) => {
 
 // Endpoint pro úpravu uživatele
 app.put('/api/admin/users/:email', isAdmin, async (req, res) => {
-    const targetEmail = req.params.email;
-    const { name, role } = req.body;
-    
-    if (!name || !role) {
-        return res.status(400).json({ success: false, message: 'Chybí jméno nebo role.' });
-    }
-    
-    let client;
-    try {
-        client = await pool.connect();
-        await client.query(
-            'UPDATE dashboard_users SET name = $1, role = $2 WHERE email = $3',
-            [name, role, targetEmail]
-        );
-        res.json({ success: true, message: 'Uživatel byl aktualizován.' });
-    } catch (e) {
-        res.status(500).json({ success: false, message: 'Aktualizace selhala.' });
-    } finally {
-        if (client) client.release();
-    }
+  const targetEmail = req.params.email;
+  const { name, role } = req.body;
+
+  if (!name || !role) {
+    return res.status(400).json({ success: false, message: 'Chybí jméno nebo role.' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query(
+      'UPDATE dashboard_users SET name = $1, role = $2 WHERE email = $3',
+      [name, role, targetEmail]
+    );
+    res.json({ success: true, message: 'Uživatel byl aktualizován.' });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Aktualizace selhala.' });
+  } finally {
+    if (client) client.release();
+  }
 });
 
 
 
 // Endpoint pro smazání uživatele
 app.delete('/api/admin/users/:email', isAdmin, async (req, res) => {
-    const targetEmail = req.params.email;
-    const { dashboardUserEmail } = req.query; // Admin, který provádí akci
+  const targetEmail = req.params.email;
+  const { dashboardUserEmail } = req.query; // Admin, který provádí akci
 
-    if (targetEmail.toLowerCase() === dashboardUserEmail.toLowerCase()) {
-        return res.status(400).json({ success: false, message: 'Nemůžete smazat sami sebe.' });
-    }
-    
-      let client;
-    try {
-        client = await pool.connect();
-        // Díky 'ON DELETE CASCADE' v databázi se smažou i všechna propojená data (účty, FAQ, atd.)
-        await client.query('DELETE FROM dashboard_users WHERE email = $1', [targetEmail]);
+  if (targetEmail.toLowerCase() === dashboardUserEmail.toLowerCase()) {
+    return res.status(400).json({ success: false, message: 'Nemůžete smazat sami sebe.' });
+  }
 
-        return res.json({ success: true, message: 'Uživatel byl smazán.' });
-    } catch (e) {
-        console.error('Chyba při mazání uživatele:', e);
-        return res.status(500).json({ success: false, message: 'Nepodařilo se smazat uživatele.' });
-    } finally {
-        if (client) client.release();
-    }
+  let client;
+  try {
+    client = await pool.connect();
+    // Díky 'ON DELETE CASCADE' v databázi se smažou i všechna propojená data (účty, FAQ, atd.)
+    await client.query('DELETE FROM dashboard_users WHERE email = $1', [targetEmail]);
+
+    return res.json({ success: true, message: 'Uživatel byl smazán.' });
+  } catch (e) {
+    console.error('Chyba při mazání uživatele:', e);
+    return res.status(500).json({ success: false, message: 'Nepodařilo se smazat uživatele.' });
+  } finally {
+    if (client) client.release();
+  }
 });
 
 
@@ -5653,7 +5654,6 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
 
 
 
