@@ -1,5 +1,3 @@
-// server.js-test
-// This file is the main server file.
 import express from 'express';
 import cron from 'node-cron';
 import cors from 'cors';
@@ -5654,6 +5652,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
