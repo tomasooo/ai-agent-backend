@@ -3615,18 +3615,26 @@ app.get('/api/gmail/pending-replies', async (req, res) => {
   }
 });
 
-async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending }) {
-  const gmail = await getGmailClientFor(dashboardUserEmail, email);
-  const msgResponse = await gmail.users.messages.get({ userId: 'me', id: pending.message_id, format: 'full' });
-  const headers = msgResponse.data.payload?.headers || [];
+async function sendGmailReplyMessage({
+  gmail,
+  email,
+  replyBody,
+  threadId,
+  headers,
+  fallbackSubject,
+  fallbackFrom,
+  fallbackReplyTo,
+  fallbackMessageId,
+  fallbackReferences,
+  fallbackSender
+}) {
   const findHeader = (name) => headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value;
-  const metadata = toMetadataObject(pending.metadata);
 
-  const originalSubject = findHeader('subject') || pending.subject || '';
-  const originalFrom = findHeader('from') || metadata.fromHeader || pending.sender || '';
-  const originalReplyTo = findHeader('reply-to') || metadata.replyToHeader || metadata.replyTo || '';
-  const originalMessageId = findHeader('message-id') || pending.external_message_id || '';
-  const originalReferences = findHeader('references') || pending.references_header || '';
+  const originalSubject = findHeader('subject') || fallbackSubject || '';
+  const originalFrom = findHeader('from') || fallbackFrom || '';
+  const originalReplyTo = findHeader('reply-to') || fallbackReplyTo || '';
+  const originalMessageId = findHeader('message-id') || fallbackMessageId || '';
+  const originalReferences = findHeader('references') || fallbackReferences || '';
 
   const encodeMimeWord = (str) =>
     /[^\x00-\x7F]/.test(str) ? `=?UTF-8?B?${Buffer.from(str, 'utf8').toString('base64')}?=` : str;
@@ -3635,9 +3643,9 @@ async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending })
   const encodedFrom = `<${email}>`;
   const encodedSubject = encodeMimeWord(replySubject);
 
-  const targetRecipient = (originalReplyTo || originalFrom || metadata.sender || '').trim();
+  const targetRecipient = (originalReplyTo || originalFrom || fallbackSender || '').trim();
   if (!targetRecipient) {
-    throw new Error('Nelze určit adresáta pro odeslání schválené odpovědi.');
+    throw new Error('Nelze určit adresáta pro odeslání odpovědi.');
   }
 
   const lines = [
@@ -3648,7 +3656,7 @@ async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending })
     'Content-Type: text/plain; charset=utf-8',
     'Content-Transfer-Encoding: 8bit',
     '',
-    pending.reply_body
+    replyBody
   ];
 
   if (originalMessageId) {
@@ -3662,8 +3670,31 @@ async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending })
     userId: 'me',
     requestBody: {
       raw,
-      threadId: msgResponse.data.threadId || pending.thread_id || undefined
+      threadId: threadId || undefined
     }
+  });
+
+  return { targetRecipient };
+}
+
+async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending }) {
+  const gmail = await getGmailClientFor(dashboardUserEmail, email);
+  const msgResponse = await gmail.users.messages.get({ userId: 'me', id: pending.message_id, format: 'full' });
+  const headers = msgResponse.data.payload?.headers || [];
+  const metadata = toMetadataObject(pending.metadata);
+
+  const { targetRecipient } = await sendGmailReplyMessage({
+    gmail,
+    email,
+    replyBody: pending.reply_body,
+    threadId: msgResponse.data.threadId || pending.thread_id || undefined,
+    headers,
+    fallbackSubject: pending.subject,
+    fallbackFrom: metadata.fromHeader || pending.sender,
+    fallbackReplyTo: metadata.replyToHeader || metadata.replyTo,
+    fallbackMessageId: pending.external_message_id,
+    fallbackReferences: pending.references_header,
+    fallbackSender: metadata.sender || pending.sender
   });
 
   const labelsRes = await gmail.users.labels.list({ userId: 'me' });
@@ -3677,7 +3708,7 @@ async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending })
     requestBody: { removeLabelIds, addLabelIds: [] }
   });
 
-  await logActivity(dashboardUserEmail, 'Odeslání odpovědi (schváleno)', 'success', { account: email, to: targetRecipient });
+  await logActivity(dashboardUserEmail, 'Odeslání odpovědi (schváleno)', 'success', { account: email, to: targetRecipient });␊
 }
 
 app.post('/api/gmail/pending-replies/:id/approve', async (req, res) => {
@@ -4033,10 +4064,82 @@ app.post('/api/custom-email/pending-replies/:id/reject', async (req, res) => {
 });
 
 
+async function sendCustomReply({
+  accountDetails,
+  emailAddress,
+  targetRecipient,
+  subject,
+  text,
+  fromName,
+  origMessageId,
+  origReferences,
+  replyToUid
+}) {
+  if (!accountDetails || !emailAddress || !targetRecipient || !subject || !text || !origMessageId || !replyToUid) {
+    throw new Error('Chybí povinná data pro odeslání.');
+  }
+
+  const user = decSecret(accountDetails.enc_username);
+  const pass = decSecret(accountDetails.enc_password);
+
+  const toAddr = extractEmail(targetRecipient);
+  const toName = parseNameFromFromHeader(String(targetRecipient)) || '';
+  const replySubject = subject?.trim() ? (subject.startsWith('Re: ') ? subject : `Re: ${subject}`) : 'Re: (bez předmětu)';
+  const fromHeader = fromName ? `${libmime.encodeWord(fromName, 'B', 'utf-8')} <${emailAddress}>` : emailAddress;
+  const toHeader = toName ? `${libmime.encodeWord(toName, 'B', 'utf-8')} <${toAddr}>` : toAddr;
+  const rawLines = [
+    `From: ${fromHeader}`, `To: ${toHeader}`, `Subject: ${libmime.encodeWord(replySubject, 'B', 'utf-8')}`,
+    `In-Reply-To: ${origMessageId}`, `References: ${(origReferences ? `${origReferences} ${origMessageId}` : origMessageId).trim()}`,
+    'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '', text
+  ];
+  const rawMessage = rawLines.join('\r\n');
+  const transporter = nodemailer.createTransport({
+    host: accountDetails.smtp_host, port: Number(accountDetails.smtp_port), secure: !!accountDetails.smtp_secure,
+    auth: { user, pass }, tls: { rejectUnauthorized: false }
+  });
+  await transporter.sendMail({ from: fromHeader, to: toHeader, raw: rawMessage });
+  console.log(`[OK] Odpověď pro ${toAddr} byla odeslána.`);
+
+  const imapClient = createImapClient({
+    host: accountDetails.imap_host, port: accountDetails.imap_port,
+    secure: accountDetails.imap_secure, auth: { user, pass }
+  });
+
+  try {
+    await imapClient.connect();
+
+    try {
+      await imapClient.mailboxOpen('INBOX');
+      await imapClient.messageFlagsAdd({ uid: String(replyToUid) }, ['\\Seen', '\\Answered']);
+      console.log(`[OK] Původní zpráva (UID: ${replyToUid}) byla označena jako přečtená a zodpovězená.`);
+    } catch (flagError) {
+      console.warn(`[VAROVÁNÍ] Nepodařilo se označit původní zprávu:`, flagError.message);
+    }
+
+    const mailboxes = await imapClient.list();
+    let sentFolder = mailboxes.find(m => m && m.specialUse && m.specialUse === '\\Sent');
+    if (!sentFolder) {
+      sentFolder = mailboxes.find(m => (m && m.path) && m.path.toLowerCase() === 'inbox.sent items');
+    }
+    if (sentFolder) {
+      await imapClient.append(sentFolder.path, rawMessage, ['\\Seen']);
+      console.log(`[OK] Kopie odpovědi uložena do složky "${sentFolder.path}".`);
+    } else {
+      console.warn(`[VAROVÁNÍ] Nepodařilo se najít složku pro odeslanou poštu. Kopie nebyla uložena.`);
+    }
+  } catch (imapError) {
+    console.error('[CHYBA] Během IMAP operací došlo k chybě:', imapError);
+  } finally {
+    if (imapClient.connected) await imapClient.logout();
+  }
+
+  return { toAddr };
+}
+
 app.post('/api/custom-email/send-reply', async (req, res) => {
 
   
-  const { dashboardUserEmail, emailAddress, to, replyTo, subject, text, fromName, origMessageId, origReferences, replyToUid } = req.body || {};
+const { dashboardUserEmail, emailAddress, to, replyTo, subject, text, fromName, origMessageId, origReferences, replyToUid } = req.body || {};
 
   const targetRecipient = (replyTo || to || '').trim();
 
@@ -4060,71 +4163,22 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     db.release();
   }
 
-  const user = decSecret(accountDetails.enc_username);
-  const pass = decSecret(accountDetails.enc_password);
-
   try {
-    // Krok 1 a 2: Sestavení a odeslání odpovědi (beze změny)
-    const toAddr = extractEmail(targetRecipient);
-    const toName = parseNameFromFromHeader(String(targetRecipient)) || '';
-    const replySubject = subject?.trim() ? (subject.startsWith('Re: ') ? subject : `Re: ${subject}`) : 'Re: (bez předmětu)';
-    const fromHeader = fromName ? `${libmime.encodeWord(fromName, 'B', 'utf-8')} <${emailAddress}>` : emailAddress;
-    const toHeader = toName ? `${libmime.encodeWord(toName, 'B', 'utf-8')} <${toAddr}>` : toAddr;
-    const rawLines = [
-      `From: ${fromHeader}`, `To: ${toHeader}`, `Subject: ${libmime.encodeWord(replySubject, 'B', 'utf-8')}`,
-      `In-Reply-To: ${origMessageId}`, `References: ${(origReferences ? `${origReferences} ${origMessageId}` : origMessageId).trim()}`,
-      'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '', text
-    ];
-    const rawMessage = rawLines.join('\r\n');
-    const transporter = nodemailer.createTransport({
-      host: accountDetails.smtp_host, port: Number(accountDetails.smtp_port), secure: !!accountDetails.smtp_secure,
-      auth: { user, pass }, tls: { rejectUnauthorized: false }
+    await sendCustomReply({
+      accountDetails,
+      emailAddress,
+      targetRecipient,
+      subject,
+      text,
+      fromName,
+      origMessageId,
+      origReferences,
+      replyToUid
     });
-    await transporter.sendMail({ from: fromHeader, to: toHeader, raw: rawMessage });
-    console.log(`[OK] Odpověď pro ${toAddr} byla odeslána.`);
-
-    // Připojení k IMAP pro další operace
-    const imapClient = createImapClient({
-        host: accountDetails.imap_host, port: accountDetails.imap_port,
-        secure: accountDetails.imap_secure, auth: { user, pass }
-    });
-
-    try {
-        await imapClient.connect();
-
-        // === NOVÝ KROK: Označení původní zprávy jako přečtené a zodpovězené ===
-        try {
-            await imapClient.mailboxOpen('INBOX'); // Otevřeme Doručenou poštu
-            await imapClient.messageFlagsAdd({ uid: String(replyToUid) }, ['\\Seen', '\\Answered']);
-            console.log(`[OK] Původní zpráva (UID: ${replyToUid}) byla označena jako přečtená a zodpovězená.`);
-        } catch (flagError) {
-            console.warn(`[VAROVÁNÍ] Nepodařilo se označit původní zprávu:`, flagError.message);
-        }
-        // ======================================================================
-
-        // Krok 3: Uložení kopie do odeslané pošty (beze změny)
-        const mailboxes = await imapClient.list();
-        let sentFolder = mailboxes.find(m => m && m.specialUse && m.specialUse === '\\Sent');
-        if (!sentFolder) {
-            sentFolder = mailboxes.find(m => (m && m.path) && m.path.toLowerCase() === 'inbox.sent items');
-        }
-        if (sentFolder) {
-            // mailboxOpen se automaticky přepne na správnou složku
-            await imapClient.append(sentFolder.path, rawMessage, ['\\Seen']);
-            console.log(`[OK] Kopie odpovědi uložena do složky "${sentFolder.path}".`);
-        } else {
-            console.warn(`[VAROVÁNÍ] Nepodařilo se najít složku pro odeslanou poštu. Kopie nebyla uložena.`);
-        }
-
-    } catch (imapError) {
-        console.error('[CHYBA] Během IMAP operací došlo k chybě:', imapError);
-    } finally {
-        if (imapClient.connected) await imapClient.logout();
-    }
 
     return res.json({ success: true, message: 'Odpověď byla úspěšně odeslána a uložena.' });
 
- } catch (e) {
+  } catch (e) {
     console.error('[custom-email/send-reply] Kritická chyba při odesílání:', e);
     const plainMessage = e?.message || '';
     const statusCode = /adresáta/i.test(plainMessage) ? 400 : 500;
@@ -4716,6 +4770,7 @@ async function runImapWorker() {
       try {
         const r = await db.query(`
           SELECT dashboard_user_email, email_address, imap_host, imap_port, imap_secure,
+                 smtp_host, smtp_port, smtp_secure,
                  enc_username, enc_password,
                  s.auto_reply, s.approval_required, s.spam_filter,
                  s.tone, s.length, s.signature
@@ -4816,8 +4871,11 @@ ${String(bodyText).slice(0, 3000)}
           const rawSubject = msg.envelope?.subject || '';
           const subject = decodeWords(String(rawSubject));
 
-          if (acc.spam_filter && isSpamByHeadersMap(msg.headers, subject)) {
-            await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => {});
+          const isHeaderSpam = isSpamByHeadersMap(msg.headers, subject);
+          if (isHeaderSpam) {
+            if (acc.spam_filter || acc.auto_reply) {
+              await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => {});
+            }
             continue;
           }
 
@@ -4832,8 +4890,8 @@ ${String(bodyText).slice(0, 3000)}
           if (!bodyText || !bodyText.trim()) {
             continue;
           }
-
-          if (!acc.approval_required) {
+const shouldAutoReply = !!acc.auto_reply;
+          if (!shouldAutoReply && !acc.approval_required) {
             await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => {});
             continue;
           }
@@ -4891,18 +4949,54 @@ ${String(bodyText).slice(0, 3000)}
           }
 
           const replyBody = String(analysis?.suggested_reply || '').trim();
-          if (!replyBody) {
+         if (!replyBody) {
             console.warn('[IMAP worker] AI nevrátila návrh odpovědi, přeskočeno.');
             continue;
           }
 
-           const referencesHeader = headerMapValue(msg.headers, 'References')
+          const referencesHeader = headerMapValue(msg.headers, 'References')
             || (Array.isArray(parsed.references) ? parsed.references.join(' ') : String(parsed.references || ''));
           const messageIdHeader = parsed.messageId || headerMapValue(msg.headers, 'Message-ID');
           const replyToHeader = parsed.replyTo?.text || headerMapValue(msg.headers, 'Reply-To') || '';
           const replyToAddress = parsed.replyTo?.value?.[0]?.address || extractEmail(replyToHeader);
           const fromHeaderText = parsed.from?.text || fromAddr || '';
           const senderHeader = replyToHeader || fromHeaderText;
+
+          if (shouldAutoReply) {
+            const targetRecipient = (replyToHeader || fromHeaderText || '').trim();
+            if (!targetRecipient) {
+              console.warn('[IMAP worker] Nelze určit adresáta pro auto-odpověď.');
+              continue;
+            }
+            if (!messageIdHeader) {
+              console.warn('[IMAP worker] Chybí Message-ID, auto-odpověď přeskočena.');
+              continue;
+            }
+
+            try {
+              await sendCustomReply({
+                accountDetails: acc,
+                emailAddress: acc.email_address,
+                targetRecipient,
+                subject,
+                text: replyBody,
+                fromName: '',
+                origMessageId: messageIdHeader || '',
+                origReferences: referencesHeader || '',
+                replyToUid: msg.uid
+              });
+
+              await logActivity(
+                acc.dashboard_user_email,
+                'Odeslání automatické odpovědi (Custom)',
+                'success',
+                { account: acc.email_address, to: targetRecipient }
+              );
+            } catch (sendErr) {
+              console.error('[IMAP worker] Odeslání auto-odpovědi selhalo:', sendErr?.message || sendErr);
+            }
+            continue;
+          }
 
           const metadata = {
             replyToUid: msg.uid,
@@ -5104,6 +5198,25 @@ ${String(bodyText).slice(0, 3000)}
     const replyToAddress = extractEmail(replyToHdr) || replyToHdr;
     const snippet = (msgResponse.data.snippet || '').slice(0, 1200);
 
+    const isHeaderSpam = isSpamByHeadersMap(headers, subject);
+    if (isHeaderSpam) {
+      if (acc.spam_filter) {
+        await gmail.users.messages.modify({
+          userId: 'me',
+          id: msg.id,
+          requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX', 'UNREAD'] }
+        });
+      } else {
+        await gmail.users.messages.modify({
+          userId: 'me',
+          id: msg.id,
+          requestBody: { removeLabelIds: ['UNREAD'] }
+        });
+      }
+      console.log(`         "${subject}" → ignorováno (auto/bulk hlavičky).`);
+      continue;
+    }
+
     if (looksLikeSpam(subject, snippet, headers)) {
       if (acc.spam_filter) {
         await gmail.users.messages.modify({
@@ -5111,14 +5224,25 @@ ${String(bodyText).slice(0, 3000)}
           id: msg.id,
           requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX', 'UNREAD'] }
         });
+        console.log(`         "${subject}" → ignorováno (spam/reklama).`);
+        continue;
       }
-      console.log(`         "${subject}" → ignorováno (spam/reklama).`);
+      if (acc.auto_reply) {
+        await gmail.users.messages.modify({
+          userId: 'me',
+          id: msg.id,
+          requestBody: { removeLabelIds: ['UNREAD'] }
+        });
+        console.log(`         "${subject}" → ignorováno (promo bez spam filtru).`);
+        continue;
+      }
+    }
+
+    const shouldAutoReply = !!acc.auto_reply;
+    if (!shouldAutoReply && !acc.approval_required) {
       continue;
     }
 
-    if (!acc.approval_required) {
-      continue;
-    }
 
     const alreadyPending = await dbClient.query(`
       SELECT 1
@@ -5189,6 +5313,40 @@ ${String(bodyText).slice(0, 3000)}
       replyTo: replyToAddress,
       sender: replyToHdr || fromHdr || from
     };
+
+    if (shouldAutoReply) {
+      try {
+        const { targetRecipient } = await sendGmailReplyMessage({
+          gmail,
+          email: acc.connected_email,
+          replyBody,
+          threadId: msgResponse.data.threadId || undefined,
+          headers,
+          fallbackSubject: subject,
+          fallbackFrom: fromHdr || from,
+          fallbackReplyTo: replyToHdr,
+          fallbackMessageId: headerVal(headers, 'Message-Id') || null,
+          fallbackReferences: headerVal(headers, 'References') || null,
+          fallbackSender: replyToHdr || fromHdr || from
+        });
+
+        await gmail.users.messages.modify({
+          userId: 'me',
+          id: msg.id,
+          requestBody: { removeLabelIds: ['UNREAD'] }
+        });
+
+        await logActivity(
+          acc.dashboard_user_email,
+          'Odeslání automatické odpovědi (Gmail)',
+          'success',
+          { account: acc.connected_email, to: targetRecipient }
+        );
+      } catch (sendErr) {
+        console.error('         Auto-odpověď se nepodařila odeslat:', sendErr?.message || sendErr);
+      }
+      continue;
+    }
 
     await dbClient.query(`
       INSERT INTO pending_replies (
@@ -5495,6 +5653,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
