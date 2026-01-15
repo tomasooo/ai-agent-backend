@@ -5464,8 +5464,8 @@ app.get('/api/trigger-worker', (req, res) => {
   return res.status(200).send('Worker je aktivní a spouští se automaticky na serveru.');
 });
 
-// Automatické spouštění každou minutu
-cron.schedule('* * * * *', () => {
+// Automatické spouštění každých 5 minut
+cron.schedule('*/5 * * * *', () => {
   runEmailWorker();
   runImapWorker();
 });
