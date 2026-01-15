@@ -77,12 +77,12 @@ function createImapClient({ host, port = 993, secure = true, auth, servername })
       rejectUnauthorized: false
     },
     keepalive: {
-      interval: 3 * 60 * 1000,
+      interval: 45 * 1000,
       idle: true,
       forceNoop: true,
-      timeout: 20 * 1000
+      timeout: 10 * 1000
     },
-    socketTimeout: 60 * 1000         // 60 s na handshake (můžeš snížit na 20 s)
+    socketTimeout: 30 * 1000         // 30 s na handshake (můžeš snížit na 20 s)
   });
 
   client.on('error', (err) => {
