@@ -82,7 +82,7 @@ function createImapClient({ host, port = 993, secure = true, auth, servername })
       forceNoop: true,
       timeout: 10 * 1000
     },
-    socketTimeout: 30 * 1000         // 30 s na handshake (můžeš snížit na 20 s)
+    socketTimeout: options.socketTimeout || 90 * 1000 // 90 s na handshake (zvýšeno z 30s)
   });
 
   client.on('error', (err) => {
@@ -4872,38 +4872,39 @@ ${String(bodyText).slice(0, 3000)}
 
         const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 200);
         for await (const msg of imap.fetch({ seq: `${startSeq}:*` }, { uid: true, envelope: true, internalDate: true, headers: true, flags: true })) {
-          if (msg.flags?.has?.('\\Seen')) continue;
+          try {
+            if (msg.flags?.has?.('\\Seen')) continue;
 
-          const rawSubject = msg.envelope?.subject || '';
-          const subject = decodeWords(String(rawSubject));
+            const rawSubject = msg.envelope?.subject || '';
+            const subject = decodeWords(String(rawSubject));
 
-          const isHeaderSpam = isSpamByHeadersMap(msg.headers, subject);
-          if (isHeaderSpam) {
-            if (acc.spam_filter || acc.auto_reply) {
-              await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
+            const isHeaderSpam = isSpamByHeadersMap(msg.headers, subject);
+            if (isHeaderSpam) {
+              if (acc.spam_filter || acc.auto_reply) {
+                await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
+              }
+              continue;
             }
-            continue;
-          }
 
-          const fromAddr = (msg.envelope?.from?.[0]?.address || '').trim();
+            const fromAddr = (msg.envelope?.from?.[0]?.address || '').trim();
 
-          const { content } = await imap.download(msg.uid, null, { uid: true });
-          const chunks = [];
-          for await (const c of content) chunks.push(c);
-          const parsed = await simpleParser(Buffer.concat(chunks));
-          const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
+            const { content } = await imap.download(msg.uid, null, { uid: true });
+            const chunks = [];
+            for await (const c of content) chunks.push(c);
+            const parsed = await simpleParser(Buffer.concat(chunks));
+            const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
 
-          if (!bodyText || !bodyText.trim()) {
-            continue;
-          }
-          const shouldAutoReply = !!acc.auto_reply;
-          if (!shouldAutoReply && !acc.approval_required) {
-            await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
-            continue;
-          }
+            if (!bodyText || !bodyText.trim()) {
+              continue;
+            }
+            const shouldAutoReply = !!acc.auto_reply;
+            if (!shouldAutoReply && !acc.approval_required) {
+              await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
+              continue;
+            }
 
-          const pendingKey = String(msg.uid);
-          const alreadyPending = await dbClient.query(`
+            const pendingKey = String(msg.uid);
+            const alreadyPending = await dbClient.query(`
             SELECT 1
               FROM pending_replies
              WHERE dashboard_user_email=$1
@@ -4911,113 +4912,113 @@ ${String(bodyText).slice(0, 3000)}
                AND provider='custom'
                AND message_id=$3
           `, [acc.dashboard_user_email, acc.email_address, pendingKey]);
-          if (alreadyPending.rowCount > 0) {
-            continue;
-          }
+            if (alreadyPending.rowCount > 0) {
+              continue;
+            }
 
-          const consume = await tryConsumeAiAction(dbClient, acc.dashboard_user_email);
-          if (!consume.ok) {
-            console.warn(`[IMAP worker] ${acc.email_address}: vyčerpán limit AI akcí.`);
-            continue;
-          }
+            const consume = await tryConsumeAiAction(dbClient, acc.dashboard_user_email);
+            if (!consume.ok) {
+              console.warn(`[IMAP worker] ${acc.email_address}: vyčerpán limit AI akcí.`);
+              continue;
+            }
 
-          let rawAnalysis;
-          try {
-            rawAnalysis = await chatJson({
-              model: EMAIL_MODEL,
-              system: systemInstruction,
-              user: buildTask(bodyText),
-              client: dbClient,
-              dashboardUserEmail: acc.dashboard_user_email
-            });
-          } catch (aiErr) {
-            console.error('[IMAP worker] AI požadavek selhal:', aiErr);
-            continue;
-          }
-
-          let analysis = {};
-          try {
-            analysis = JSON.parse(stripJsonFence(String(rawAnalysis)));
-          } catch (parseErr) {
+            let rawAnalysis;
             try {
-              const fixed = await chatJson({
-                model: DEFAULT_MODEL,
-                system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
-                user: `Oprav na validní JSON:\n${rawAnalysis}`,
+              rawAnalysis = await chatJson({
+                model: EMAIL_MODEL,
+                system: systemInstruction,
+                user: buildTask(bodyText),
                 client: dbClient,
                 dashboardUserEmail: acc.dashboard_user_email
               });
-              analysis = JSON.parse(stripJsonFence(String(fixed)));
-            } catch (fixErr) {
-              console.error('[IMAP worker] AI JSON parse selhal:', fixErr);
-              continue;
-            }
-          }
-
-          const replyBody = String(analysis?.suggested_reply || '').trim();
-          if (!replyBody) {
-            console.warn('[IMAP worker] AI nevrátila návrh odpovědi, přeskočeno.');
-            continue;
-          }
-
-          const referencesHeader = headerMapValue(msg.headers, 'References')
-            || (Array.isArray(parsed.references) ? parsed.references.join(' ') : String(parsed.references || ''));
-          const messageIdHeader = parsed.messageId || headerMapValue(msg.headers, 'Message-ID');
-          const replyToHeader = parsed.replyTo?.text || headerMapValue(msg.headers, 'Reply-To') || '';
-          const replyToAddress = parsed.replyTo?.value?.[0]?.address || extractEmail(replyToHeader);
-          const fromHeaderText = parsed.from?.text || fromAddr || '';
-          const senderHeader = replyToHeader || fromHeaderText;
-
-          if (shouldAutoReply) {
-            const targetRecipient = (replyToHeader || fromHeaderText || '').trim();
-            if (!targetRecipient) {
-              console.warn('[IMAP worker] Nelze určit adresáta pro auto-odpověď.');
-              continue;
-            }
-            if (!messageIdHeader) {
-              console.warn('[IMAP worker] Chybí Message-ID, auto-odpověď přeskočena.');
+            } catch (aiErr) {
+              console.error('[IMAP worker] AI požadavek selhal:', aiErr);
               continue;
             }
 
+            let analysis = {};
             try {
-              await sendCustomReply({
-                accountDetails: acc,
-                emailAddress: acc.email_address,
-                targetRecipient,
-                subject,
-                text: replyBody,
-                fromName: '',
-                origMessageId: messageIdHeader || '',
-                origReferences: referencesHeader || '',
-                replyToUid: msg.uid
-              });
-
-              await logActivity(
-                acc.dashboard_user_email,
-                'Odeslání automatické odpovědi (Custom)',
-                'success',
-                { account: acc.email_address, to: targetRecipient }
-              );
-            } catch (sendErr) {
-              console.error('[IMAP worker] Odeslání auto-odpovědi selhalo:', sendErr?.message || sendErr);
+              analysis = JSON.parse(stripJsonFence(String(rawAnalysis)));
+            } catch (parseErr) {
+              try {
+                const fixed = await chatJson({
+                  model: DEFAULT_MODEL,
+                  system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
+                  user: `Oprav na validní JSON:\n${rawAnalysis}`,
+                  client: dbClient,
+                  dashboardUserEmail: acc.dashboard_user_email
+                });
+                analysis = JSON.parse(stripJsonFence(String(fixed)));
+              } catch (fixErr) {
+                console.error('[IMAP worker] AI JSON parse selhal:', fixErr);
+                continue;
+              }
             }
-            continue;
-          }
 
-          const metadata = {
-            replyToUid: msg.uid,
-            mailbox: imap.mailbox?.path || 'INBOX',
-            origMessageId: messageIdHeader || '',
-            origReferences: referencesHeader || '',
-            senderName: parseNameFromFromHeader(fromHeaderText),
-            internalDate: msg.internalDate?.toISOString?.() || new Date().toISOString(),
-            fromHeader: fromHeaderText,
-            replyToHeader,
-            replyTo: replyToAddress,
-            sender: senderHeader
-          };
+            const replyBody = String(analysis?.suggested_reply || '').trim();
+            if (!replyBody) {
+              console.warn('[IMAP worker] AI nevrátila návrh odpovědi, přeskočeno.');
+              continue;
+            }
 
-          await dbClient.query(`
+            const referencesHeader = headerMapValue(msg.headers, 'References')
+              || (Array.isArray(parsed.references) ? parsed.references.join(' ') : String(parsed.references || ''));
+            const messageIdHeader = parsed.messageId || headerMapValue(msg.headers, 'Message-ID');
+            const replyToHeader = parsed.replyTo?.text || headerMapValue(msg.headers, 'Reply-To') || '';
+            const replyToAddress = parsed.replyTo?.value?.[0]?.address || extractEmail(replyToHeader);
+            const fromHeaderText = parsed.from?.text || fromAddr || '';
+            const senderHeader = replyToHeader || fromHeaderText;
+
+            if (shouldAutoReply) {
+              const targetRecipient = (replyToHeader || fromHeaderText || '').trim();
+              if (!targetRecipient) {
+                console.warn('[IMAP worker] Nelze určit adresáta pro auto-odpověď.');
+                continue;
+              }
+              if (!messageIdHeader) {
+                console.warn('[IMAP worker] Chybí Message-ID, auto-odpověď přeskočena.');
+                continue;
+              }
+
+              try {
+                await sendCustomReply({
+                  accountDetails: acc,
+                  emailAddress: acc.email_address,
+                  targetRecipient,
+                  subject,
+                  text: replyBody,
+                  fromName: '',
+                  origMessageId: messageIdHeader || '',
+                  origReferences: referencesHeader || '',
+                  replyToUid: msg.uid
+                });
+
+                await logActivity(
+                  acc.dashboard_user_email,
+                  'Odeslání automatické odpovědi (Custom)',
+                  'success',
+                  { account: acc.email_address, to: targetRecipient }
+                );
+              } catch (sendErr) {
+                console.error('[IMAP worker] Odeslání auto-odpovědi selhalo:', sendErr?.message || sendErr);
+              }
+              continue;
+            }
+
+            const metadata = {
+              replyToUid: msg.uid,
+              mailbox: imap.mailbox?.path || 'INBOX',
+              origMessageId: messageIdHeader || '',
+              origReferences: referencesHeader || '',
+              senderName: parseNameFromFromHeader(fromHeaderText),
+              internalDate: msg.internalDate?.toISOString?.() || new Date().toISOString(),
+              fromHeader: fromHeaderText,
+              replyToHeader,
+              replyTo: replyToAddress,
+              sender: senderHeader
+            };
+
+            await dbClient.query(`
             INSERT INTO pending_replies (
               dashboard_user_email,
               connected_email,
@@ -5048,23 +5049,29 @@ ${String(bodyText).slice(0, 3000)}
               metadata = EXCLUDED.metadata,
               last_generated_at = NOW();
           `, [
-            acc.dashboard_user_email,
-            acc.email_address,
-            pendingKey,
-            messageIdHeader || null,
-            referencesHeader || null,
-            subject || null,
-            senderHeader || null,
-            firstLineSnippet(bodyText, 280),
-            bodyText,
-            replyBody,
-            analysis?.summary ? String(analysis.summary).trim() : null,
-            analysis?.sentiment ? String(analysis.sentiment).trim() : null,
-            JSON.stringify(metadata)
-          ]);
+              acc.dashboard_user_email,
+              acc.email_address,
+              pendingKey,
+              messageIdHeader || null,
+              referencesHeader || null,
+              subject || null,
+              senderHeader || null,
+              firstLineSnippet(bodyText, 280),
+              bodyText,
+              replyBody,
+              analysis?.summary ? String(analysis.summary).trim() : null,
+              analysis?.sentiment ? String(analysis.sentiment).trim() : null,
+              JSON.stringify(metadata)
+            ]);
 
-          await imap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true }).catch(() => { });
-          console.log(`         "${subject || '(bez předmětu)'}" → návrh odpovědi uložen a čeká na schválení (Custom).`);
+            await imap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true }).catch(() => { });
+            console.log(`         "${subject || '(bez předmětu)'}" → návrh odpovědi uložen a čeká na schválení (Custom).`);
+
+          } catch (msgErr) {
+            console.error(`[IMAP worker] Chyba při zpracování zprávy (UID: ${msg.uid}):`, msgErr);
+            // Pokračujeme na další zprávu
+            continue;
+          }
         }
       } catch (e) {
         console.error('[IMAP worker] chyba:', e?.message || e);
@@ -5654,7 +5661,6 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
 
 
 
