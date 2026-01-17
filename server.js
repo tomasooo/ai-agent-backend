@@ -4913,20 +4913,26 @@ ${String(bodyText).slice(0, 3000)}
               continue;
             }
 
-            console.log(`[IMAP Worker] UID: ${msg.uid} - Downloading content...`);
-            const fromAddr = (msg.envelope?.from?.[0]?.address || '').trim();
+            console.log(`[IMAP Worker] UID: ${msg.uid} - Fetching body structure...`);
+            // Místo stahování celého obsahu (imap.download) zkusíme fetch jen textových částí,
+            // což bývá spolehlivější u některých serverů.
+            // Pro zjednodušení ale stále použijeme knihovnu mailparser, ale nakrmíme ji daty z fetch.
 
-            let content;
+            let source;
             try {
-              const downloadResult = await imap.download(msg.uid, null, { uid: true, maxBytes: 10 * 1024 * 1024 });
-              content = downloadResult.content;
-            } catch (downloadErr) {
-              console.error(`[IMAP Worker] Failed to download content for UID ${msg.uid}:`, downloadErr);
-              continue; // Skip this message if download fails
+              // Zkusíme stáhnout celou zprávu přes fetch (BODY[]), což je standardnější než download() helper
+              const fetchResult = await imap.fetchOne(msg.uid, { source: true, uid: true });
+              if (!fetchResult || !fetchResult.source) {
+                console.error(`[IMAP Worker] Failed to fetch source for UID ${msg.uid}`);
+                continue;
+              }
+              source = fetchResult.source;
+            } catch (fetchErr) {
+              console.error(`[IMAP Worker] Fetch error for UID ${msg.uid}:`, fetchErr);
+              continue;
             }
-            const chunks = [];
-            for await (const c of content) chunks.push(c);
-            const parsed = await simpleParser(Buffer.concat(chunks));
+
+            const parsed = await simpleParser(source);
             const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
 
             if (!bodyText || !bodyText.trim()) {
