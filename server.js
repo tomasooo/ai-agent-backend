@@ -4916,7 +4916,14 @@ ${String(bodyText).slice(0, 3000)}
             console.log(`[IMAP Worker] UID: ${msg.uid} - Downloading content...`);
             const fromAddr = (msg.envelope?.from?.[0]?.address || '').trim();
 
-            const { content } = await imap.download(msg.uid, null, { uid: true });
+            let content;
+            try {
+              const downloadResult = await imap.download(msg.uid, null, { uid: true, maxBytes: 10 * 1024 * 1024 });
+              content = downloadResult.content;
+            } catch (downloadErr) {
+              console.error(`[IMAP Worker] Failed to download content for UID ${msg.uid}:`, downloadErr);
+              continue; // Skip this message if download fails
+            }
             const chunks = [];
             for await (const c of content) chunks.push(c);
             const parsed = await simpleParser(Buffer.concat(chunks));
