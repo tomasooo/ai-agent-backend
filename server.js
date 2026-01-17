@@ -4913,22 +4913,34 @@ ${String(bodyText).slice(0, 3000)}
               continue;
             }
 
-            console.log(`[IMAP Worker] UID: ${msg.uid} - Fetching body structure...`);
-            // Místo stahování celého obsahu (imap.download) zkusíme fetch jen textových částí,
-            // což bývá spolehlivější u některých serverů.
-            // Pro zjednodušení ale stále použijeme knihovnu mailparser, ale nakrmíme ji daty z fetch.
+            console.log(`[IMAP Worker] UID: ${msg.uid} - Downloading content (Fresh Connection)...`);
 
             let source;
+            // Vytvoříme dočasného klienta jen pro stažení této jedné zprávy.
+            // Tím se vyhneme problémům s timeouty/zámky na hlavním spojení.
+            const tempClient = createImapClient({
+              host: acc.imap_host,
+              port: Number(acc.imap_port || 993),
+              secure: !!acc.imap_secure,
+              auth: { user, pass },
+              socketTimeout: 120 * 1000
+            });
+
             try {
-              // Zkusíme stáhnout celou zprávu přes fetch (BODY[]), což je standardnější než download() helper
-              const fetchResult = await imap.fetchOne(msg.uid, { source: true, uid: true });
-              if (!fetchResult || !fetchResult.source) {
-                console.error(`[IMAP Worker] Failed to fetch source for UID ${msg.uid}`);
-                continue;
-              }
-              source = fetchResult.source;
-            } catch (fetchErr) {
-              console.error(`[IMAP Worker] Fetch error for UID ${msg.uid}:`, fetchErr);
+              await tempClient.connect();
+              await tempClient.mailboxOpen('INBOX');
+
+              const { content } = await tempClient.download(msg.uid, null, { uid: true, maxBytes: 20 * 1024 * 1024 });
+
+              const chunks = [];
+              for await (const c of content) chunks.push(c);
+              source = Buffer.concat(chunks);
+
+              await tempClient.logout().catch(() => { });
+            } catch (freshErr) {
+              console.error(`[IMAP Worker] Fresh connection download failed for UID ${msg.uid}:`, freshErr);
+              // Ujistíme se, že je odpojeno
+              tempClient.close().catch(() => { });
               continue;
             }
 
