@@ -4871,14 +4871,22 @@ ${String(bodyText).slice(0, 3000)}
 ---`;
 
         const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 200);
+        console.log(`[IMAP Worker] Fetching from seq ${startSeq}`);
+
         for await (const msg of imap.fetch({ seq: `${startSeq}:*` }, { uid: true, envelope: true, internalDate: true, headers: true, flags: true })) {
           try {
-            if (msg.flags?.has?.('\\Seen')) continue;
+            console.log(`[IMAP Worker] Checking msg UID: ${msg.uid}, Flags: ${Array.from(msg.flags || [])}`);
+            if (msg.flags?.has?.('\\Seen')) {
+              // console.log(`[IMAP Worker] UID ${msg.uid} is Seen, skipping.`);
+              continue;
+            }
 
             const rawSubject = msg.envelope?.subject || '';
             const subject = decodeWords(String(rawSubject));
 
             let isHeaderSpam = isSpamByHeadersMap(msg.headers, subject);
+
+            console.log(`[IMAP Worker] UID: ${msg.uid} | Subject: "${subject}" | HeaderSpam: ${isHeaderSpam} | AutoReply: ${acc.auto_reply}`);
 
             // Pokud je zapnuto auto_reply, chceme odpovídat i na newslettery a hromadné emaily (které isSpamByHeadersMap chytá).
             // Ale nechceme odpovídat na opravdový SPAM (označený serverem).
@@ -4892,16 +4900,20 @@ ${String(bodyText).slice(0, 3000)}
               if (!spamFlag.includes('yes') && !spamStatus.startsWith('yes') && !isTaggedSpam) {
                 isHeaderSpam = false;
                 console.log(`         "${subject}" → Povoleno pro auto-odpověď (ignoruji bulk/list detekci).`);
+              } else {
+                console.log(`[IMAP Worker] UID: ${msg.uid} blocked as explicit spam.`);
               }
             }
 
             if (isHeaderSpam) {
+              console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/bulk.`);
               if (acc.spam_filter || acc.auto_reply) {
                 await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
               }
               continue;
             }
 
+            console.log(`[IMAP Worker] UID: ${msg.uid} - Downloading content...`);
             const fromAddr = (msg.envelope?.from?.[0]?.address || '').trim();
 
             const { content } = await imap.download(msg.uid, null, { uid: true });
