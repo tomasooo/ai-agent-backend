@@ -1,3 +1,5 @@
+// server.js-test
+// This file is the main server file.
 import express from 'express';
 import cron from 'node-cron';
 import cors from 'cors';
@@ -80,7 +82,7 @@ function createImapClient({ host, port = 993, secure = true, auth, servername })
       forceNoop: true,
       timeout: 10 * 1000
     },
-    socketTimeout: options.socketTimeout || 90 * 1000 // 90 s na handshake (zvýšeno z 30s)
+    socketTimeout: 90 * 1000 // 90 s na handshake (zvýšeno z 30s)
   });
 
   client.on('error', (err) => {
@@ -5682,7 +5684,6 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
 
 
 
