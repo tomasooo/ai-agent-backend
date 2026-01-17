@@ -82,7 +82,7 @@ function createImapClient({ host, port = 993, secure = true, auth, servername })
       forceNoop: true,
       timeout: 10 * 1000
     },
-    socketTimeout: 90 * 1000 // 90 s na handshake (zvýšeno z 30s)
+    socketTimeout: 180 * 1000 // 180 s na handshake (zvýšeno z 90s)
   });
 
   client.on('error', (err) => {
