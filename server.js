@@ -4878,7 +4878,23 @@ ${String(bodyText).slice(0, 3000)}
             const rawSubject = msg.envelope?.subject || '';
             const subject = decodeWords(String(rawSubject));
 
-            const isHeaderSpam = isSpamByHeadersMap(msg.headers, subject);
+            let isHeaderSpam = isSpamByHeadersMap(msg.headers, subject);
+
+            // Pokud je zapnuto auto_reply, chceme odpovídat i na newslettery a hromadné emaily (které isSpamByHeadersMap chytá).
+            // Ale nechceme odpovídat na opravdový SPAM (označený serverem).
+            if (isHeaderSpam && acc.auto_reply) {
+              const spamFlag = headerMapValue(msg.headers, 'X-Spam-Flag').toLowerCase();
+              const spamStatus = headerMapValue(msg.headers, 'X-Spam-Status').toLowerCase();
+              const subjectLower = subject.toLowerCase();
+              const isTaggedSpam = /^(?:\s*\*+\s*)?spam(?:\s*\*+)?\b/.test(subjectLower) || /^\s*\[spam\]/.test(subjectLower);
+
+              // Pokud to NENÍ explicitně označený spam, považujeme to za OK (byl to asi jen newsletter).
+              if (!spamFlag.includes('yes') && !spamStatus.startsWith('yes') && !isTaggedSpam) {
+                isHeaderSpam = false;
+                console.log(`         "${subject}" → Povoleno pro auto-odpověď (ignoruji bulk/list detekci).`);
+              }
+            }
+
             if (isHeaderSpam) {
               if (acc.spam_filter || acc.auto_reply) {
                 await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
@@ -5104,15 +5120,22 @@ async function processGmailAccount(acc, dbClient) {
   }
 
   const afterTimestamp = Math.floor(new Date(acc.created_at).getTime() / 1000);
-  const searchQuery = [
+  const queryParts = [
     'is:unread',
     'in:inbox',
     '-in:spam',
     '-in:trash',
-    '-category:promotions',
-    '-category:social',
     `after:${afterTimestamp}`
-  ].join(' ');
+  ];
+
+  // Pokud NENÍ zapnuto automatické odpovídání, ignorujeme promo a sociální sítě.
+  // Pokud JE zapnuto, chceme odpovídat na vše (tedy i na promo/social).
+  if (!acc.auto_reply) {
+    queryParts.push('-category:promotions');
+    queryParts.push('-category:social');
+  }
+
+  const searchQuery = queryParts.join(' ');
 
   const listResponse = await gmail.users.messages.list({
     userId: 'me',
@@ -5661,7 +5684,6 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
 
 
 
