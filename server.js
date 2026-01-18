@@ -3653,10 +3653,16 @@ async function sendGmailReplyMessage({
     throw new Error('Nelze určit adresáta pro odeslání odpovědi.');
   }
 
+  const now = new Date();
+  const dateHeader = now.toUTCString();
+  const messageIdHeader = `<${Date.now()}.${crypto.randomBytes(4).toString('hex')}@${email.split('@')[1]}>`;
+
   const lines = [
     `From: ${encodedFrom}`,
     `To: ${targetRecipient}`,
     `Subject: ${encodedSubject}`,
+    `Date: ${dateHeader}`,
+    `Message-ID: ${messageIdHeader}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=utf-8',
     'Content-Transfer-Encoding: 8bit',
@@ -3666,7 +3672,7 @@ async function sendGmailReplyMessage({
 
   if (originalMessageId) {
     const refs = `${(originalReferences || '').trim()} ${originalMessageId}`.trim();
-    lines.splice(3, 0, `In-Reply-To: ${originalMessageId}`, `References: ${refs}`);
+    lines.splice(5, 0, `In-Reply-To: ${originalMessageId}`, `References: ${refs}`);
   }
 
   const raw = Buffer.from(lines.join('\n')).toString('base64url');
@@ -3880,10 +3886,16 @@ async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pe
     ? `${(origReferences || '').trim()} ${origMessageId}`.trim()
     : (origReferences || '').trim();
 
+  const now = new Date();
+  const dateHeader = now.toUTCString();
+  const messageIdHeader = `<${Date.now()}.${crypto.randomBytes(4).toString('hex')}@${emailAddress.split('@')[1]}>`;
+
   const lines = [
     `From: ${fromHeader}`,
     `To: ${toHeader}`,
-    `Subject: ${libmime.encodeWord(replySubject, 'B', 'utf-8')}`
+    `Subject: ${libmime.encodeWord(replySubject, 'B', 'utf-8')}`,
+    `Date: ${dateHeader}`,
+    `Message-ID: ${messageIdHeader}`
   ];
 
   if (origMessageId) {
