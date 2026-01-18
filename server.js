@@ -4081,7 +4081,7 @@ async function sendCustomReply({
   origReferences,
   replyToUid
 }) {
-  if (!accountDetails || !emailAddress || !targetRecipient || !subject || !text || !origMessageId || !replyToUid) {
+  if (!accountDetails || !emailAddress || !targetRecipient || !text || !origMessageId || !replyToUid) {
     throw new Error('Chybí povinná data pro odeslání.');
   }
 
@@ -4149,7 +4149,7 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
 
   const targetRecipient = (replyTo || to || '').trim();
 
-  if (!dashboardUserEmail || !emailAddress || !targetRecipient || !subject || !text || !origMessageId || !replyToUid) {
+  if (!dashboardUserEmail || !emailAddress || !targetRecipient || !text || !origMessageId || !replyToUid) {
     return res.status(400).json({ success: false, message: 'Chybí povinná data pro odeslání.' });
   }
 
