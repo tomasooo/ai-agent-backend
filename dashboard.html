@@ -2304,7 +2304,7 @@
       top: 20px;
       right: 20px;
       background: white;
-      color: #1e293b;
+      color: #1e293b !important;
       border-left: 4px solid #16a34a;
       padding: 1rem 1.5rem;
       border-radius: 8px;
@@ -2312,6 +2312,10 @@
       z-index: 2000;
       transform: translateX(100%);
       transition: transform 0.3s ease;
+    }
+
+    .toast * {
+      color: #1e293b !important;
     }
 
     .toast.show {
@@ -3784,11 +3788,9 @@
             </div>
             <div class="filter-row">
               <select class="form-control" id="status-filter">
-                <option value="all">Všechny stavy</option>
+                <option value="all">📥 Doručená pošta</option>
                 <option value="unread">📧 Nepřečtené</option>
-                <option value="processed">✅ Zpracované</option>
                 <option value="approval">⏳ Čekající</option>
-                <option value="spam">🚫 Spam</option>
               </select>
               <select class="form-control" id="period-filter">
                 <option value="all">Všechna období</option>
