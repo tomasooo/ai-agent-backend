@@ -3788,8 +3788,7 @@
             </div>
             <div class="filter-row">
               <select class="form-control" id="status-filter">
-                <option value="all">📥 Doručená pošta</option>
-                <option value="unread">📧 Nepřečtené</option>
+                <option value="unread">📥 Doručená pošta</option>
                 <option value="approval">⏳ Čekající</option>
               </select>
               <select class="form-control" id="period-filter">
@@ -6221,7 +6220,9 @@ S pozdravem
       const numericLimit = Number(limit);
       const safePage = Number.isFinite(numericPage) && numericPage > 0 ? numericPage : 1;
       const safeLimit = Number.isFinite(numericLimit) && numericLimit > 0 ? numericLimit : EMAILS_PER_PAGE;
-      const url = `${window.BACKEND}/api/custom-email/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&limit=${safeLimit}&page=${safePage}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}`;
+      // ZMĚNA: Používáme sjednocený endpoint /api/gmail/emails, který umí i custom účty
+      // Důležité: parametr se jmenuje 'email', nikoliv 'emailAddress'
+      const url = `${window.BACKEND}/api/gmail/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}&limit=${safeLimit}&page=${safePage}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}`;
       const r = await fetch(url, { cache: 'no-store' });
       let j = null;
       try {
