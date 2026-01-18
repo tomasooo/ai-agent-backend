@@ -4093,8 +4093,13 @@ async function sendCustomReply({
   const replySubject = subject?.trim() ? (subject.startsWith('Re: ') ? subject : `Re: ${subject}`) : 'Re: (bez předmětu)';
   const fromHeader = fromName ? `${libmime.encodeWord(fromName, 'B', 'utf-8')} <${emailAddress}>` : emailAddress;
   const toHeader = toName ? `${libmime.encodeWord(toName, 'B', 'utf-8')} <${toAddr}>` : toAddr;
+  const now = new Date();
+  const dateHeader = now.toUTCString();
+  const messageIdHeader = `<${Date.now()}.${crypto.randomBytes(4).toString('hex')}@${emailAddress.split('@')[1]}>`;
+
   const rawLines = [
     `From: ${fromHeader}`, `To: ${toHeader}`, `Subject: ${libmime.encodeWord(replySubject, 'B', 'utf-8')}`,
+    `Date: ${dateHeader}`, `Message-ID: ${messageIdHeader}`,
     `In-Reply-To: ${origMessageId}`, `References: ${(origReferences ? `${origReferences} ${origMessageId}` : origMessageId).trim()}`,
     'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '', text
   ];
