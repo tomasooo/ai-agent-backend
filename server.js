@@ -4966,10 +4966,15 @@ ${String(bodyText).slice(0, 3000)}
               continue;
             }
 
+            console.log(`[IMAP Worker] UID: ${msg.uid} - Downloaded ${source.length} bytes.`);
+
             const parsed = await simpleParser(source);
             const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
 
+            console.log(`[IMAP Worker] UID: ${msg.uid} - Body text length: ${bodyText ? bodyText.length : 0}`);
+
             if (!bodyText || !bodyText.trim()) {
+              console.warn(`[IMAP Worker] UID: ${msg.uid} - Valid body text not found, skipping.`);
               continue;
             }
             const shouldAutoReply = !!acc.auto_reply;
@@ -4988,6 +4993,7 @@ ${String(bodyText).slice(0, 3000)}
                AND message_id=$3
           `, [acc.dashboard_user_email, acc.email_address, pendingKey]);
             if (alreadyPending.rowCount > 0) {
+              console.log(`[IMAP Worker] UID: ${msg.uid} - Already in pending_replies, skipping.`);
               continue;
             }
 
@@ -4996,6 +5002,8 @@ ${String(bodyText).slice(0, 3000)}
               console.warn(`[IMAP worker] ${acc.email_address}: vyčerpán limit AI akcí.`);
               continue;
             }
+
+            console.log(`[IMAP Worker] UID: ${msg.uid} - Proceeding to AI analysis...`);
 
             let rawAnalysis;
             try {
