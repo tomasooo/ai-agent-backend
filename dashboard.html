@@ -8132,7 +8132,7 @@ S pozdravem
           }
 
           const item = event.target.closest('.email-item');
-          if (item && !event.target.closest('.analyze-btn')) {
+          if (item && !event.target.closest('.analyze-btn') && !event.target.closest('.approve-btn') && !event.target.closest('.reject-btn')) {
             const ctx = buildEmailContextFromRow(item);
             window.__currentEmailCtx = ctx;
             const id = ctx?.id || item.dataset.id;
