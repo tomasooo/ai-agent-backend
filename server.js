@@ -3130,6 +3130,33 @@ app.get('/api/gmail/emails', async (req, res) => {
 
     // === Custom IMAP větev ===
     console.log(`[emails] CUSTOM account: ${email}`);
+
+    // --- NOVÁ LOGIKA: status=approval pro Custom účty ---
+    if (status === 'approval') {
+      const pendingRes = await db.query(`
+        SELECT message_id, subject, sender, snippet, metadata, last_generated_at
+          FROM pending_replies
+         WHERE dashboard_user_email = $1
+           AND connected_email = $2
+           AND provider = 'custom'
+           AND status = 'pending'
+      `, [dashboardUserEmail, email]);
+
+      const pendingEmails = pendingRes.rows.map(row => {
+        const meta = row.metadata || {};
+        return {
+          id: row.message_id,
+          snippet: row.snippet || '',
+          sender: row.sender || '',
+          subject: row.subject || '',
+          date: meta.internalDate || row.last_generated_at || new Date().toISOString(),
+          unread: true,
+          isPending: true
+        };
+      });
+      return res.json({ success: true, emails: pendingEmails, total: pendingEmails.length });
+    }
+
     try {
       const user = decSecret(customRow.enc_username);
       const pass = decSecret(customRow.enc_password);
