@@ -4855,13 +4855,18 @@ Pravidla pro tvorbu "suggested_reply":
 - Pokud STYLE_PROFILE.signature není prázdný:
   - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
   - Podpis neduplikuj, pokud už v textu je.
+- "requires_approval": Nastav na true, pokud:
+  - Email obsahuje sériová čísla (např. punv, pxnv, pwnv, atd.) nebo technické kódy.
+  - Email vyžaduje důležité lidské rozhodnutí nebo se jedná o citlivou záležitost.
+  - Si nejsi jistý správnou odpovědí.
 `;
 
         const buildTask = (bodyText) => `${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
 {
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
-  "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše"
+  "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše",
+  "requires_approval": true/false
 }
 Bez jakéhokoli dalšího textu mimo JSON. Odpovědi piš česky.
 
@@ -5022,7 +5027,13 @@ ${String(bodyText).slice(0, 3000)}
             const fromHeaderText = parsed.from?.text || fromAddr || '';
             const senderHeader = replyToHeader || fromHeaderText;
 
-            if (shouldAutoReply) {
+            // SMART APPROVAL LOGIC
+            const isReplySubject = subject.trim().toLowerCase().startsWith('re:');
+            const aiRequiresApproval = !!analysis?.requires_approval;
+            // Intercept ONLY if user explicitly enabled "Approval Required" setting
+            const smartApprovalNeeded = acc.approval_required && (isReplySubject || aiRequiresApproval);
+
+            if (shouldAutoReply && !smartApprovalNeeded) {
               const targetRecipient = (replyToHeader || fromHeaderText || '').trim();
               if (!targetRecipient) {
                 console.warn('[IMAP worker] Nelze určit adresáta pro auto-odpověď.');
@@ -5226,13 +5237,18 @@ Pravidla pro tvorbu "suggested_reply":
 - Pokud STYLE_PROFILE.signature není prázdný:
   - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
   - Podpis neduplikuj, pokud už v textu je.
+- "requires_approval": Nastav na true, pokud:
+  - Email obsahuje sériová čísla (např. punv, pxnv, pwnv, atd.) nebo technické kódy.
+  - Email vyžaduje důležité lidské rozhodnutí nebo se jedná o citlivou záležitost.
+  - Si nejsi jistý správnou odpovědí.
 `;
 
   const buildTask = (bodyText) => `${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
 {
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
-  "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše"
+  "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše",
+  "requires_approval": true/false
 }
 Bez jakéhokoli dalšího textu mimo JSON. Odpovědi piš česky.
 
@@ -5382,7 +5398,13 @@ ${String(bodyText).slice(0, 3000)}
       sender: replyToHdr || fromHdr || from
     };
 
-    if (shouldAutoReply) {
+    // SMART APPROVAL LOGIC
+    const isReplySubject = subject.trim().toLowerCase().startsWith('re:');
+    const aiRequiresApproval = !!analysis?.requires_approval;
+    // Intercept ONLY if user explicitly enabled "Approval Required" setting
+    const smartApprovalNeeded = acc.approval_required && (isReplySubject || aiRequiresApproval);
+
+    if (shouldAutoReply && !smartApprovalNeeded) {
       try {
         const { targetRecipient } = await sendGmailReplyMessage({
           gmail,
