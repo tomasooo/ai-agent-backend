@@ -3158,7 +3158,7 @@ app.get('/api/gmail/emails', async (req, res) => {
         { uid: true, envelope: true, internalDate: true, flags: true, headers: true }
       )) {
         // unread
-        if (normalizedStatus === 'unread' && msg.flags?.has('\\Seen')) continue;
+        if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
 
         const subjRaw = msg.envelope?.subject || '';
         const subjDecoded = decodeWords(String(subjRaw));
