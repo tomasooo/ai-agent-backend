@@ -3158,7 +3158,7 @@ app.get('/api/gmail/emails', async (req, res) => {
         { uid: true, envelope: true, internalDate: true, flags: true, headers: true }
       )) {
         // unread
-        if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
+        if (normalizedStatus === 'unread' && msg.flags?.has('\\Seen')) continue;
 
         const subjRaw = msg.envelope?.subject || '';
         const subjDecoded = decodeWords(String(subjRaw));
@@ -3190,7 +3190,8 @@ app.get('/api/gmail/emails', async (req, res) => {
           snippet: '',
           sender: from,
           subject: subj,
-          date: d ? d.toISOString() : null
+          date: d ? d.toISOString() : null,
+          unread: !msg.flags?.has('\\Seen')
         });
 
         if (++fetched >= 10) break;
