@@ -1,5 +1,6 @@
 // server.js-test
 // This file is the main server file.
+import 'dotenv/config';
 import express from 'express';
 import cron from 'node-cron';
 import cors from 'cors';
@@ -32,10 +33,6 @@ const ORIGINS = [
   ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()) : []),
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
 ];
-
-const NORMALIZED_ORIGINS = new Set(
-  ORIGINS.filter(Boolean).map(origin => origin.replace(/\/$/, ''))
-);
 
 
 
@@ -403,10 +400,8 @@ async function discoverMailConfig(emailAddress) {
 app.use(cors({
   origin(origin, cb) {
     if (!origin) return cb(null, true);
-    const normalized = origin.replace(/\/$/, '');
-    cb(null, NORMALIZED_ORIGINS.has(normalized));
+    cb(null, ORIGINS.includes(origin));
   },
-  
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: false,
@@ -430,6 +425,167 @@ const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-5-nano'; // pro vše ost
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: { rejectUnauthorized: false } // Nutné pro Render
+});
+
+// === DASHBOARD STATS (Relocated) ===
+app.get('/api/dashboard/stats', async (req, res) => {
+  const { dashboardUserEmail, email } = req.query;
+  if (!dashboardUserEmail) {
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail' });
+  }
+
+  const db = await pool.connect();
+  try {
+    const rUser = await db.query(
+      `SELECT ai_actions_used, plan FROM dashboard_users WHERE email=$1`,
+      [dashboardUserEmail]
+    );
+    const aiUsed = Number(rUser.rows[0]?.ai_actions_used) || 0;
+
+    const savedMinutes = aiUsed * 5;
+    const savedHours = (savedMinutes / 60).toFixed(1);
+
+    const rTpl = await db.query(
+      `SELECT COUNT(*) as count FROM templates WHERE dashboard_user_email=$1`,
+      [dashboardUserEmail]
+    );
+    const tplCount = Number(rTpl.rows[0]?.count) || 0;
+
+    const rLog = await db.query(
+      `SELECT status, COUNT(*) as cnt
+         FROM activity_log
+        WHERE dashboard_user_email=$1
+          AND status IN ('success', 'error')
+        GROUP BY status`,
+      [dashboardUserEmail]
+    );
+    let success = 0;
+    let error = 0;
+    rLog.rows.forEach(r => {
+      if (r.status === 'success') success += Number(r.cnt);
+      if (r.status === 'error') error += Number(r.cnt);
+    });
+    const total = success + error;
+    let successRate = 100;
+    if (total > 0) {
+      successRate = (success / total) * 100;
+    }
+
+    res.json({
+      success: true,
+      stats: {
+        processedEmails: aiUsed,
+        savedHours: savedHours,
+        activeTemplates: tplCount,
+        successRate: successRate.toFixed(1)
+      }
+    });
+
+  } catch (e) {
+    console.error('Dashboard stats error:', e);
+    res.status(500).json({ success: false, message: 'Chyba serveru' });
+  } finally {
+    db.release();
+  }
+});
+
+// === RECENT EMAILS (DASHBOARD) (Relocated) ===
+app.get('/api/dashboard/recent-emails', async (req, res) => {
+  const { dashboardUserEmail, email } = req.query;
+  if (!dashboardUserEmail || !email) {
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo email.' });
+  }
+
+  try {
+    const db = await pool.connect();
+
+    // 1. Check custom_accounts
+    const rCustom = await db.query(
+      `SELECT * FROM custom_accounts WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true`,
+      [dashboardUserEmail, email]
+    );
+
+    let emails = [];
+
+    if (rCustom.rowCount > 0) {
+      const acc = rCustom.rows[0];
+      const user = decSecret(acc.enc_username);
+      const pass = decSecret(acc.enc_password);
+
+      const imap = createImapClient({
+        host: acc.imap_host,
+        port: Number(acc.imap_port),
+        secure: !!acc.imap_secure,
+        auth: { user, pass }
+      });
+
+      await imap.connect();
+      await imap.mailboxOpen('INBOX');
+
+      const status = await imap.status('INBOX', { messages: true });
+      const total = status.messages;
+
+      if (total > 0) {
+        const start = Math.max(1, total - 2);
+        const fetchQuery = { seq: `${start}:${total}` };
+
+        for await (const msg of imap.fetch(fetchQuery, { envelope: true, internalDate: true, uid: true, flags: true })) {
+          emails.push({
+            id: msg.uid,
+            subject: decodeHeader(msg.envelope.subject),
+            from: msg.envelope.from?.[0]?.name || msg.envelope.from?.[0]?.address,
+            date: msg.internalDate,
+            snippet: '(Načítání...)',
+            isRead: msg.flags && msg.flags.has('\\Seen')
+          });
+        }
+        emails.reverse();
+      }
+      await imap.logout();
+
+    } else {
+      // Check Gmail
+      const rGmail = await db.query(
+        `SELECT refresh_token FROM connected_accounts WHERE dashboard_user_email=$1 AND email=$2`,
+        [dashboardUserEmail, email]
+      );
+
+      if (rGmail.rowCount > 0) {
+        const auth = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+        auth.setCredentials({ refresh_token: rGmail.rows[0].refresh_token });
+        const gmail = google.gmail({ version: 'v1', auth });
+
+        const resp = await gmail.users.messages.list({ userId: 'me', maxResults: 3 });
+        const messages = resp.data.messages || [];
+
+        for (const m of messages) {
+          const detail = await gmail.users.messages.get({ userId: 'me', id: m.id });
+          const headers = detail.data.payload.headers;
+          const subject = headers.find(h => h.name === 'Subject')?.value || '(Bez předmětu)';
+          const from = headers.find(h => h.name === 'From')?.value || '';
+          const snippet = detail.data.snippet;
+          const labelIds = detail.data.labelIds || [];
+          const isRead = !labelIds.includes('UNREAD');
+
+          emails.push({
+            id: m.id,
+            subject,
+            from,
+            date: new Date(Number(detail.data.internalDate)),
+            snippet,
+            isRead
+          });
+        }
+      }
+    }
+
+    db.release();
+    res.json({ success: true, emails });
+
+  } catch (e) {
+    console.error('Recent emails error:', e);
+    res.status(500).json({ success: false, message: 'Chyba při načítání emailů: ' + e.message });
+  }
 });
 
 
@@ -500,7 +656,8 @@ async function setupDatabase() {
                 ADD COLUMN IF NOT EXISTS password_hash TEXT,
                 ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false,
                 ADD COLUMN IF NOT EXISTS verification_token TEXT,
-                ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';`,
+                ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user',
+                ADD COLUMN IF NOT EXISTS ai_actions_used INT DEFAULT 0;`,
       `CREATE TABLE IF NOT EXISTS connected_accounts (
                 email VARCHAR(255) PRIMARY KEY,
                 refresh_token TEXT NOT NULL,
@@ -1641,81 +1798,8 @@ app.get('/api/analytics/categories', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ success: false, message: 'Analytics: categories selhala.' });
- } finally { db.release(); }
+  } finally { db.release(); }
 });
-
-// === DASHBOARD: přehledové statistiky pro účet ===
-app.get('/api/dashboard/stats', async (req, res) => {
-  const { dashboardUserEmail, email } = req.query || {};
-  if (!dashboardUserEmail || !email) {
-    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo email.' });
-  }
-
-  const db = await pool.connect();
-  try {
-    const replyStats = await db.query(`
-      SELECT
-        COUNT(*) FILTER (WHERE status IN ('sent','rejected'))::int AS processed_total,
-        COUNT(*) FILTER (WHERE status IN ('sent','rejected') AND created_at >= NOW() - INTERVAL '7 days')::int AS processed_last7,
-        COUNT(*) FILTER (WHERE status IN ('sent','rejected') AND created_at >= NOW() - INTERVAL '14 days' AND created_at < NOW() - INTERVAL '7 days')::int AS processed_prev7,
-        COUNT(*) FILTER (WHERE status = 'sent')::int AS sent_total,
-        COUNT(*) FILTER (WHERE status = 'sent' AND created_at >= NOW() - INTERVAL '7 days')::int AS sent_last7,
-        COUNT(*) FILTER (WHERE status = 'sent' AND created_at >= NOW() - INTERVAL '14 days' AND created_at < NOW() - INTERVAL '7 days')::int AS sent_prev7
-      FROM pending_replies
-      WHERE dashboard_user_email = $1
-        AND connected_email = $2
-    `, [dashboardUserEmail, email]);
-
-    const templatesStats = await db.query(`
-      SELECT
-        COUNT(*)::int AS total_templates,
-        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::int AS templates_last30
-      FROM templates
-      WHERE dashboard_user_email = $1
-    `, [dashboardUserEmail]);
-
-    const replyRow = replyStats.rows[0] || {};
-    const templateRow = templatesStats.rows[0] || {};
-    const processedTotal = Number(replyRow.processed_total || 0);
-    const processedLast7 = Number(replyRow.processed_last7 || 0);
-    const processedPrev7 = Number(replyRow.processed_prev7 || 0);
-    const sentTotal = Number(replyRow.sent_total || 0);
-    const sentLast7 = Number(replyRow.sent_last7 || 0);
-    const sentPrev7 = Number(replyRow.sent_prev7 || 0);
-
-    const minutesSavedPerEmail = 2.5;
-    const savedHoursTotal = (processedTotal * minutesSavedPerEmail) / 60;
-    const savedHoursLast7 = (processedLast7 * minutesSavedPerEmail) / 60;
-    const savedHoursPrev7 = (processedPrev7 * minutesSavedPerEmail) / 60;
-
-    const successRateTotal = processedTotal > 0 ? (sentTotal / processedTotal) * 100 : 0;
-    const successRateLast7 = processedLast7 > 0 ? (sentLast7 / processedLast7) * 100 : 0;
-    const successRatePrev7 = processedPrev7 > 0 ? (sentPrev7 / processedPrev7) * 100 : 0;
-
-    res.json({
-      success: true,
-      stats: {
-        processedTotal,
-        processedLast7,
-        processedPrev7,
-        savedHoursTotal,
-        savedHoursLast7,
-        savedHoursPrev7,
-        successRateTotal,
-        successRateLast7,
-        successRatePrev7,
-        templatesTotal: Number(templateRow.total_templates || 0),
-        templatesLast30: Number(templateRow.templates_last30 || 0)
-      }
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ success: false, message: 'Dashboard statistiky selhaly.' });
-  } finally {
-    db.release();
-  }
-});
-
 
 
 
@@ -5871,13 +5955,172 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
   }
 });
 
+
+// === DASHBOARD STATS ===
+app.get('/api/dashboard/stats', async (req, res) => {
+  const { dashboardUserEmail, email } = req.query;
+  if (!dashboardUserEmail) {
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail' });
+  }
+
+  const db = await pool.connect();
+  try {
+    const rUser = await db.query(
+      `SELECT ai_actions_used, plan FROM dashboard_users WHERE email=$1`,
+      [dashboardUserEmail]
+    );
+    const aiUsed = Number(rUser.rows[0]?.ai_actions_used) || 0;
+
+    const savedMinutes = aiUsed * 5;
+    const savedHours = (savedMinutes / 60).toFixed(1);
+
+    const rTpl = await db.query(
+      `SELECT COUNT(*) as count FROM templates WHERE dashboard_user_email=$1`,
+      [dashboardUserEmail]
+    );
+    const tplCount = Number(rTpl.rows[0]?.count) || 0;
+
+    const rLog = await db.query(
+      `SELECT status, COUNT(*) as cnt
+         FROM activity_log
+        WHERE dashboard_user_email=$1
+          AND status IN ('success', 'error')
+        GROUP BY status`,
+      [dashboardUserEmail]
+    );
+    let success = 0;
+    let error = 0;
+    rLog.rows.forEach(r => {
+      if (r.status === 'success') success += Number(r.cnt);
+      if (r.status === 'error') error += Number(r.cnt);
+    });
+    const total = success + error;
+    let successRate = 100;
+    if (total > 0) {
+      successRate = (success / total) * 100;
+    }
+
+    res.json({
+      success: true,
+      stats: {
+        processedEmails: aiUsed,
+        savedHours: savedHours,
+        activeTemplates: tplCount,
+        successRate: successRate.toFixed(1)
+      }
+    });
+
+  } catch (e) {
+    console.error('Dashboard stats error:', e);
+    res.status(500).json({ success: false, message: 'Chyba serveru' });
+  } finally {
+    db.release();
+  }
+});
+
+// === RECENT EMAILS (DASHBOARD) ===
+app.get('/api/dashboard/recent-emails', async (req, res) => {
+  const { dashboardUserEmail, email } = req.query;
+  if (!dashboardUserEmail || !email) {
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo email.' });
+  }
+
+  try {
+    const db = await pool.connect();
+
+    // 1. Check custom_accounts
+    const rCustom = await db.query(
+      `SELECT * FROM custom_accounts WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true`,
+      [dashboardUserEmail, email]
+    );
+
+    let emails = [];
+
+    if (rCustom.rowCount > 0) {
+      const acc = rCustom.rows[0];
+      const user = decSecret(acc.enc_username);
+      const pass = decSecret(acc.enc_password);
+
+      const imap = createImapClient({
+        host: acc.imap_host,
+        port: Number(acc.imap_port),
+        secure: !!acc.imap_secure,
+        auth: { user, pass }
+      });
+
+      await imap.connect();
+      await imap.mailboxOpen('INBOX');
+
+      const status = await imap.status('INBOX', { messages: true });
+      const total = status.messages;
+
+      if (total > 0) {
+        const start = Math.max(1, total - 2);
+        const fetchQuery = { seq: `${start}:${total}` };
+
+        for await (const msg of imap.fetch(fetchQuery, { envelope: true, internalDate: true, uid: true, flags: true })) {
+          emails.push({
+            id: msg.uid,
+            subject: decodeHeader(msg.envelope.subject),
+            from: msg.envelope.from?.[0]?.name || msg.envelope.from?.[0]?.address,
+            date: msg.internalDate,
+            snippet: '(Načítání...)',
+            isRead: msg.flags && msg.flags.has('\\Seen')
+          });
+        }
+        emails.reverse();
+      }
+      await imap.logout();
+
+    } else {
+      // Check Gmail
+      const rGmail = await db.query(
+        `SELECT refresh_token FROM connected_accounts WHERE dashboard_user_email=$1 AND email=$2`,
+        [dashboardUserEmail, email]
+      );
+
+      if (rGmail.rowCount > 0) {
+        const auth = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+        auth.setCredentials({ refresh_token: rGmail.rows[0].refresh_token });
+        const gmail = google.gmail({ version: 'v1', auth });
+
+        const resp = await gmail.users.messages.list({ userId: 'me', maxResults: 3 });
+        const messages = resp.data.messages || [];
+
+        for (const m of messages) {
+          const detail = await gmail.users.messages.get({ userId: 'me', id: m.id });
+          const headers = detail.data.payload.headers;
+          const subject = headers.find(h => h.name === 'Subject')?.value || '(Bez předmětu)';
+          const from = headers.find(h => h.name === 'From')?.value || '';
+          const snippet = detail.data.snippet;
+          const labelIds = detail.data.labelIds || [];
+          const isRead = !labelIds.includes('UNREAD');
+
+          emails.push({
+            id: m.id,
+            subject,
+            from,
+            date: new Date(Number(detail.data.internalDate)),
+            snippet,
+            isRead
+          });
+        }
+      }
+    }
+
+    db.release();
+    res.json({ success: true, emails });
+
+  } catch (e) {
+    console.error('Recent emails error:', e);
+    res.status(500).json({ success: false, message: 'Chyba při načítání emailů: ' + e.message });
+  }
+});
+
 // Spuštění serveru
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
-
-
 
 
 
