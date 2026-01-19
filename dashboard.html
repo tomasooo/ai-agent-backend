@@ -3654,14 +3654,14 @@
                     </svg>
                   </span>
                 </div>
-                <div class="stat-value">1,247</div>
-                <div class="stat-change positive">
-                  <span>↗</span>
-                  <span>+15% tento týden</span>
+                <div class="stat-value" id="dashboard-processed-count">—</div>
+                <div class="stat-change" id="dashboard-processed-change">
+                  <span>•</span>
+                  <span>Za 7 dní: —</span>
                 </div>
               </div>
 
-              <div class="stat-card">
+              <div class="stat-card">␊
                 <div class="stat-header">
                   <span class="stat-title">Ušetřený čas</span>
                   <span class="stat-icon" style="display: flex; align-items: center; justify-content: center;">
@@ -3672,10 +3672,10 @@
                     </svg>
                   </span>
                 </div>
-                <div class="stat-value">24.5h</div>
-                <div class="stat-change positive">
-                  <span>↗</span>
-                  <span>+8% tento měsíc</span>
+                <div class="stat-value" id="dashboard-saved-time">—</div>
+                <div class="stat-change" id="dashboard-saved-change">
+                  <span>•</span>
+                  <span>Za 7 dní: —</span>
                 </div>
               </div>
 
@@ -3691,10 +3691,10 @@
                     </svg>
                   </span>
                 </div>
-                <div class="stat-value">94.2%</div>
-                <div class="stat-change positive">
-                  <span>↗</span>
-                  <span>+2.1% dnes</span>
+                <div class="stat-value" id="dashboard-success-rate">—</div>
+                <div class="stat-change" id="dashboard-success-change">
+                  <span>•</span>
+                  <span>Za 7 dní: —</span>
                 </div>
               </div>
 
@@ -3712,60 +3712,24 @@
                     </svg>
                   </span>
                 </div>
-                <div class="stat-value">12</div>
-                <div class="stat-change">
-                  <span>→</span>
-                  <span>Beze změny</span>
+                <div class="stat-value" id="dashboard-templates-count">—</div>
+                <div class="stat-change" id="dashboard-templates-change">
+                  <span>•</span>
+                  <span>Nové za 30 dní: —</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="email-list">
+          <div class="email-list" id="recent-email-list">
             <div class="email-list-header">
               <h3>Poslední emaily</h3>
             </div>
-
-            <div class="email-item">
-              <div class="email-status processed"></div>
-              <div class="email-content">
-                <div class="email-sender">Petr Svoboda</div>
-                <div class="email-subject">Re: Schůzka ohledně projektu</div>
-                <div class="email-preview">Děkuji za rychlou odpověď. Termín mi vyhovuje...</div>
-              </div>
-              <div class="email-meta">
-                <div>15:42</div>
-                <div>Odpovězeno AI</div>
-              </div>
-            </div>
-
-            <div class="email-item">
-              <div class="email-status pending"></div>
-              <div class="email-content">
-                <div class="email-sender">Marie Nováková</div>
-                <div class="email-subject">Dotaz na vaše služby</div>
-                <div class="email-preview">Dobrý den, chtěla bych se zeptat na možnost...</div>
-              </div>
-              <div class="email-meta">
-                <div>14:28</div>
-                <div>Čeká na schválení</div>
-              </div>
-              <div class="email-actions">
-                <button class="action-btn approve">✓ Schválit</button>
-                <button class="action-btn reject">✗ Zamítnout</button>
-              </div>
-            </div>
-
-            <div class="email-item">
-              <div class="email-status unread"></div>
-              <div class="email-content">
-                <div class="email-sender">Jan Procházka</div>
-                <div class="email-subject">Připomínky k návrhu</div>
-                <div class="email-preview">Ahoj, mám několik připomínek k tvému návrhu...</div>
-              </div>
-              <div class="email-meta">
-                <div>13:15</div>
-                <div>Nový</div>
+            <div id="recent-email-items">
+              <div class="empty-state" style="padding: 2rem;">
+                <span>📭</span>
+                <h3>Načítám emaily...</h3>
+                <p>Vyberte primární účet v Nastavení → Email účty.</p>
               </div>
             </div>
           </div>
@@ -4877,8 +4841,172 @@
     // změň, pokud máš jinou base URL backendu
     // === BACKEND BASE (změň pokud máš jinou URL) ===
 
-    // === BACKEND BASE ===
+   // === BACKEND BASE ===
     window.BACKEND = 'https://ai-email-server-stejdesign.onrender.com';
+
+    function formatDashboardNumber(value) {
+      const num = Number(value || 0);
+      return Number.isFinite(num) ? num.toLocaleString('cs-CZ') : '0';
+    }
+
+    function formatDashboardHours(value) {
+      const num = Number(value || 0);
+      if (!Number.isFinite(num)) return '0 h';
+      return `${num.toLocaleString('cs-CZ', { maximumFractionDigits: 1, minimumFractionDigits: num > 0 ? 1 : 0 })} h`;
+    }
+
+    function formatDashboardPercent(value) {
+      const num = Number(value || 0);
+      if (!Number.isFinite(num)) return '0 %';
+      return `${num.toLocaleString('cs-CZ', { maximumFractionDigits: 1, minimumFractionDigits: num > 0 ? 1 : 0 })} %`;
+    }
+
+    function updateStatChange(el, currentValue, previousValue, label, formatter = formatDashboardNumber) {
+      if (!el) return;
+      const current = Number(currentValue || 0);
+      const previous = Number(previousValue || 0);
+      const diff = current - previous;
+      const trend = diff > 0 ? '↗' : diff < 0 ? '↘' : '→';
+      el.classList.remove('positive', 'negative');
+      if (diff > 0) el.classList.add('positive');
+      if (diff < 0) el.classList.add('negative');
+      const diffText = diff !== 0 ? ` (${diff > 0 ? '+' : ''}${formatter(diff)})` : '';
+      el.innerHTML = `<span>${trend}</span><span>${label}: ${formatter(current)}${diffText}</span>`;
+    }
+
+    function parseSenderName(raw = '') {
+      const cleaned = String(raw || '').trim();
+      if (!cleaned) return 'Neznámý odesílatel';
+      const match = cleaned.match(/"?([^"]+)"?\s*<[^>]+>/);
+      return (match?.[1] || cleaned).trim();
+    }
+
+    function renderRecentEmails(items = []) {
+      const container = document.getElementById('recent-email-items');
+      if (!container) return;
+      if (!Array.isArray(items) || items.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state" style="padding: 2rem;">
+            <span>📭</span>
+            <h3>Žádné nové emaily</h3>
+            <p>Jakmile dorazí, zobrazí se tady.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = items.map((email) => {
+        const status = email?.isPending ? 'pending' : (email?.unread ? 'unread' : 'processed');
+        const statusLabel = email?.isPending ? 'Čeká na schválení' : (email?.unread ? 'Nový' : 'Přečteno');
+        const sender = parseSenderName(email?.from || email?.sender || '');
+        const subject = email?.subject || '(Bez předmětu)';
+        const preview = email?.snippet || 'Bez náhledu zprávy.';
+        const date = email?.date ? new Date(email.date) : null;
+        const timeLabel = date && !Number.isNaN(date.getTime())
+          ? date.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })
+          : '—';
+
+        return `
+          <div class="email-item">
+            <div class="email-status ${status}"></div>
+            <div class="email-content">
+              <div class="email-sender">${escapeHtml(sender)}</div>
+              <div class="email-subject">${escapeHtml(subject)}</div>
+              <div class="email-preview">${escapeHtml(preview)}</div>
+            </div>
+            <div class="email-meta">
+              <div>${timeLabel}</div>
+              <div>${statusLabel}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function loadDashboardSummary() {
+      const dashboardUserEmail = localStorage.getItem('userEmail');
+      const primaryEmail = localStorage.getItem('primaryEmail');
+      const processedEl = document.getElementById('dashboard-processed-count');
+      const savedEl = document.getElementById('dashboard-saved-time');
+      const successEl = document.getElementById('dashboard-success-rate');
+      const templatesEl = document.getElementById('dashboard-templates-count');
+      const recentContainer = document.getElementById('recent-email-items');
+
+      if (!dashboardUserEmail || !primaryEmail) {
+        processedEl && (processedEl.textContent = '—');
+        savedEl && (savedEl.textContent = '—');
+        successEl && (successEl.textContent = '—');
+        templatesEl && (templatesEl.textContent = '—');
+        updateStatChange(document.getElementById('dashboard-processed-change'), 0, 0, 'Za 7 dní');
+        updateStatChange(document.getElementById('dashboard-saved-change'), 0, 0, 'Za 7 dní', formatDashboardHours);
+        updateStatChange(document.getElementById('dashboard-success-change'), 0, 0, 'Za 7 dní', formatDashboardPercent);
+        updateStatChange(document.getElementById('dashboard-templates-change'), 0, 0, 'Nové za 30 dní');
+        if (recentContainer) {
+          recentContainer.innerHTML = `
+            <div class="empty-state" style="padding: 2rem;">
+              <span>📭</span>
+              <h3>Vyberte primární účet</h3>
+              <p>Pro přehled emailů si zvolte účet v Nastavení → Email účty.</p>
+            </div>
+          `;
+        }
+        return;
+      }
+
+      try {
+        const statsUrl = `${window.BACKEND}/api/dashboard/stats?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}`;
+        const statsRes = await fetch(statsUrl);
+        const statsData = await statsRes.json();
+        if (!statsRes.ok || !statsData?.success) {
+          throw new Error(statsData?.message || 'Nepodařilo se načíst statistiky.');
+        }
+
+        const stats = statsData.stats || {};
+        if (processedEl) processedEl.textContent = formatDashboardNumber(stats.processedTotal);
+        if (savedEl) savedEl.textContent = formatDashboardHours(stats.savedHoursTotal);
+        if (successEl) successEl.textContent = formatDashboardPercent(stats.successRateTotal);
+        if (templatesEl) templatesEl.textContent = formatDashboardNumber(stats.templatesTotal);
+
+        updateStatChange(document.getElementById('dashboard-processed-change'), stats.processedLast7, stats.processedPrev7, 'Za 7 dní');
+        updateStatChange(document.getElementById('dashboard-saved-change'), stats.savedHoursLast7, stats.savedHoursPrev7, 'Za 7 dní', formatDashboardHours);
+        updateStatChange(document.getElementById('dashboard-success-change'), stats.successRateLast7, stats.successRatePrev7, 'Za 7 dní', formatDashboardPercent);
+        updateStatChange(document.getElementById('dashboard-templates-change'), stats.templatesLast30, 0, 'Nové za 30 dní');
+      } catch (error) {
+        console.error(error);
+      }
+
+      try {
+        if (recentContainer) {
+          recentContainer.innerHTML = `
+            <div class="empty-state" style="padding: 2rem;">
+              <span>📬</span>
+              <h3>Načítám emaily...</h3>
+              <p>Chvilku strpení.</p>
+            </div>
+          `;
+        }
+
+        const emailUrl = `${window.BACKEND}/api/gmail/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}&status=all&period=week`;
+        const emailRes = await fetch(emailUrl, { cache: 'no-store' });
+        const emailData = await emailRes.json();
+        if (!emailRes.ok || !emailData?.success) {
+          throw new Error(emailData?.message || 'Nepodařilo se načíst emaily.');
+        }
+        const recent = Array.isArray(emailData.emails) ? emailData.emails.slice(0, 3) : [];
+        renderRecentEmails(recent);
+      } catch (error) {
+        console.error(error);
+        if (recentContainer) {
+          recentContainer.innerHTML = `
+            <div class="empty-state" style="padding: 2rem;">
+              <span>⚠️</span>
+              <h3>Emaily se nepodařilo načíst</h3>
+              <p>${escapeHtml(error.message || 'Zkuste to později.')}</p>
+            </div>
+          `;
+        }
+      }
+    }
 
     // === Helpery na window ===
     window.fetchSentReplies = async function (dashboardUserEmail, email, limit = 200) {
@@ -7394,9 +7522,10 @@ S pozdravem
       radioWrapper.querySelector('.radio-input').checked = true;
       document.getElementById('currentConfigEmail').textContent = email;
 
-      // NOVÉ: Okamžitě načteme nastavení pro nově vybraný účet
+       // NOVÉ: Okamžitě načteme nastavení pro nově vybraný účet
       loadSettings();
       fetchEmails();
+      loadDashboardSummary();
     }
 
     async function toggleAccount(wrapper, email, currentActive) {
@@ -7720,6 +7849,7 @@ S pozdravem
         const emailsPageActive = document.getElementById('emails')?.classList.contains('active');
         if (emailsPageActive) fetchEmails();
       }
+      await loadDashboardSummary();
     }
 
     (function () {
@@ -7841,9 +7971,10 @@ S pozdravem
           }
 
           // Načtení dat pro příslušnou stránku
-          if (targetPageId === 'emails') fetchEmails();
+         if (targetPageId === 'emails') fetchEmails();
           if (targetPageId === 'settings') loadSettings();
           if (targetPageId === 'analytics') loadAnalytics(7);
+          if (targetPageId === 'dashboard') loadDashboardSummary();
           if (targetPageId === 'admin') {
             loadAdminUsers();
             loadActivityLog();
@@ -9240,3 +9371,4 @@ S pozdravem
 </body>
 
 </html>
+
