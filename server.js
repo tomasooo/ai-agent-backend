@@ -1635,8 +1635,81 @@ app.get('/api/analytics/categories', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ success: false, message: 'Analytics: categories selhala.' });
-  } finally { db.release(); }
+ } finally { db.release(); }
 });
+
+// === DASHBOARD: přehledové statistiky pro účet ===
+app.get('/api/dashboard/stats', async (req, res) => {
+  const { dashboardUserEmail, email } = req.query || {};
+  if (!dashboardUserEmail || !email) {
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo email.' });
+  }
+
+  const db = await pool.connect();
+  try {
+    const replyStats = await db.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status IN ('sent','rejected'))::int AS processed_total,
+        COUNT(*) FILTER (WHERE status IN ('sent','rejected') AND created_at >= NOW() - INTERVAL '7 days')::int AS processed_last7,
+        COUNT(*) FILTER (WHERE status IN ('sent','rejected') AND created_at >= NOW() - INTERVAL '14 days' AND created_at < NOW() - INTERVAL '7 days')::int AS processed_prev7,
+        COUNT(*) FILTER (WHERE status = 'sent')::int AS sent_total,
+        COUNT(*) FILTER (WHERE status = 'sent' AND created_at >= NOW() - INTERVAL '7 days')::int AS sent_last7,
+        COUNT(*) FILTER (WHERE status = 'sent' AND created_at >= NOW() - INTERVAL '14 days' AND created_at < NOW() - INTERVAL '7 days')::int AS sent_prev7
+      FROM pending_replies
+      WHERE dashboard_user_email = $1
+        AND connected_email = $2
+    `, [dashboardUserEmail, email]);
+
+    const templatesStats = await db.query(`
+      SELECT
+        COUNT(*)::int AS total_templates,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::int AS templates_last30
+      FROM templates
+      WHERE dashboard_user_email = $1
+    `, [dashboardUserEmail]);
+
+    const replyRow = replyStats.rows[0] || {};
+    const templateRow = templatesStats.rows[0] || {};
+    const processedTotal = Number(replyRow.processed_total || 0);
+    const processedLast7 = Number(replyRow.processed_last7 || 0);
+    const processedPrev7 = Number(replyRow.processed_prev7 || 0);
+    const sentTotal = Number(replyRow.sent_total || 0);
+    const sentLast7 = Number(replyRow.sent_last7 || 0);
+    const sentPrev7 = Number(replyRow.sent_prev7 || 0);
+
+    const minutesSavedPerEmail = 2.5;
+    const savedHoursTotal = (processedTotal * minutesSavedPerEmail) / 60;
+    const savedHoursLast7 = (processedLast7 * minutesSavedPerEmail) / 60;
+    const savedHoursPrev7 = (processedPrev7 * minutesSavedPerEmail) / 60;
+
+    const successRateTotal = processedTotal > 0 ? (sentTotal / processedTotal) * 100 : 0;
+    const successRateLast7 = processedLast7 > 0 ? (sentLast7 / processedLast7) * 100 : 0;
+    const successRatePrev7 = processedPrev7 > 0 ? (sentPrev7 / processedPrev7) * 100 : 0;
+
+    res.json({
+      success: true,
+      stats: {
+        processedTotal,
+        processedLast7,
+        processedPrev7,
+        savedHoursTotal,
+        savedHoursLast7,
+        savedHoursPrev7,
+        successRateTotal,
+        successRateLast7,
+        successRatePrev7,
+        templatesTotal: Number(templateRow.total_templates || 0),
+        templatesLast30: Number(templateRow.templates_last30 || 0)
+      }
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, message: 'Dashboard statistiky selhaly.' });
+  } finally {
+    db.release();
+  }
+});
+
 
 
 
@@ -5796,6 +5869,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
