@@ -33,6 +33,10 @@ const ORIGINS = [
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
 ];
 
+const NORMALIZED_ORIGINS = new Set(
+  ORIGINS.filter(Boolean).map(origin => origin.replace(/\/$/, ''))
+);
+
 
 
 
@@ -399,8 +403,10 @@ async function discoverMailConfig(emailAddress) {
 app.use(cors({
   origin(origin, cb) {
     if (!origin) return cb(null, true);
-    cb(null, ORIGINS.includes(origin));
+    const normalized = origin.replace(/\/$/, '');
+    cb(null, NORMALIZED_ORIGINS.has(normalized));
   },
+  
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: false,
@@ -5869,6 +5875,7 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
+
 
 
 
