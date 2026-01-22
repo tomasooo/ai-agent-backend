@@ -5105,11 +5105,7 @@ ${String(bodyText).slice(0, 3000)}
             const rawSubject = msg.envelope?.subject || '';
             const subject = decodeWords(String(rawSubject));
 
-            const s = `${subject} ${bodyText || ''}`.toLowerCase();
-            const promoTokens = ['benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'sleva', 'newsletter', 'reklama', 'akce'];
-            const looksLikeAd = promoTokens.some(t => s.includes(t));
-
-            let isHeaderSpam = isSpamByHeadersMap(msg.headers, subject) || looksLikeAd;
+            let isHeaderSpam = isSpamByHeadersMap(msg.headers, subject);
 
             console.log(`[IMAP Worker] UID: ${msg.uid} | Subject: "${subject}" | HeaderSpam: ${isHeaderSpam} | AutoReply: ${acc.auto_reply}`);
 
@@ -5180,6 +5176,21 @@ ${String(bodyText).slice(0, 3000)}
               console.warn(`[IMAP Worker] UID: ${msg.uid} - Valid body text not found, skipping.`);
               continue;
             }
+
+            // --- LATE SPAM CHECK (Body) ---
+            const subjectBodyLower = `${subject} ${bodyText}`.toLowerCase();
+            const promoTokens = ['benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'sleva', 'newsletter', 'reklama', 'akce'];
+            const looksLikeAd = promoTokens.some(t => subjectBodyLower.includes(t));
+
+            if (looksLikeAd) {
+              console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/ad based on body content.`);
+              if (acc.spam_filter || acc.auto_reply) {
+                await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
+              }
+              continue;
+            }
+            // ------------------------------
+
             const shouldAutoReply = !!acc.auto_reply;
             if (!shouldAutoReply && !acc.approval_required) {
               await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
