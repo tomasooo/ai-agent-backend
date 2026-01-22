@@ -5105,7 +5105,11 @@ ${String(bodyText).slice(0, 3000)}
             const rawSubject = msg.envelope?.subject || '';
             const subject = decodeWords(String(rawSubject));
 
-            let isHeaderSpam = isSpamByHeadersMap(msg.headers, subject);
+            const s = `${subject} ${bodyText || ''}`.toLowerCase();
+            const promoTokens = ['benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'sleva', 'newsletter', 'reklama', 'akce'];
+            const looksLikeAd = promoTokens.some(t => s.includes(t));
+
+            let isHeaderSpam = isSpamByHeadersMap(msg.headers, subject) || looksLikeAd;
 
             console.log(`[IMAP Worker] UID: ${msg.uid} | Subject: "${subject}" | HeaderSpam: ${isHeaderSpam} | AutoReply: ${acc.auto_reply}`);
 
@@ -5253,9 +5257,17 @@ ${String(bodyText).slice(0, 3000)}
 
             // SMART APPROVAL LOGIC
             const isReplySubject = subject.trim().toLowerCase().startsWith('re:');
+            const hasSerialNumber = /(pxnv|punv|pwnv)\d+/i.test(bodyText || subject);
+
+            // Detekce citlivých témat (stížnosti, právní hrozby)
+            const sLower = `${subject} ${bodyText || ''}`.toLowerCase();
+            const sensitiveKeywords = ['žalob', 'právník', 'soud', 'policie', 'závažný problém', 'stížnost', 'zranění', 'bezmocn'];
+            const isSensitive = sensitiveKeywords.some(w => sLower.includes(w));
+
             const aiRequiresApproval = !!analysis?.requires_approval;
+
             // Intercept ONLY if user explicitly enabled "Approval Required" setting
-            const smartApprovalNeeded = acc.approval_required && (isReplySubject || aiRequiresApproval);
+            const smartApprovalNeeded = acc.approval_required && (isReplySubject || hasSerialNumber || isSensitive || aiRequiresApproval);
 
             if (shouldAutoReply && !smartApprovalNeeded) {
               const targetRecipient = (replyToHeader || fromHeaderText || '').trim();
@@ -5489,7 +5501,7 @@ ${String(bodyText).slice(0, 3000)}
   };
   const looksLikeSpam = (subject, snippet, headers) => {
     const s = `${subject} ${snippet}`.toLowerCase();
-    const promoTokens = ['unsubscribe', 'newsletter', 'promo', 'reklama', 'sleva', 'akce', 'kup nyní', '% sleva', 'sale'];
+    const promoTokens = ['unsubscribe', 'newsletter', 'promo', 'reklama', 'sleva', 'akce', 'kup nyní', '% sleva', 'sale', 'benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu'];
     if (promoTokens.some(t => s.includes(t))) return true;
     if (hasListUnsub(headers)) return true;
     if (hasPrecedenceBulk(headers)) return true;
@@ -5624,9 +5636,16 @@ ${String(bodyText).slice(0, 3000)}
 
     // SMART APPROVAL LOGIC
     const isReplySubject = subject.trim().toLowerCase().startsWith('re:');
+    const hasSerialNumber = /(pxnv|punv|pwnv)\d+/i.test(bodyText || snippet || subject);
+
+    // Detekce citlivých témat (stížnosti, právní hrozby)
+    const sLower = `${subject} ${bodyText || snippet || ''}`.toLowerCase();
+    const sensitiveKeywords = ['žalob', 'právník', 'soud', 'policie', 'závažný problém', 'stížnost', 'zranění', 'bezmocn'];
+    const isSensitive = sensitiveKeywords.some(w => sLower.includes(w));
+
     const aiRequiresApproval = !!analysis?.requires_approval;
     // Intercept ONLY if user explicitly enabled "Approval Required" setting
-    const smartApprovalNeeded = acc.approval_required && (isReplySubject || aiRequiresApproval);
+    const smartApprovalNeeded = acc.approval_required && (isReplySubject || hasSerialNumber || isSensitive || aiRequiresApproval);
 
     if (shouldAutoReply && !smartApprovalNeeded) {
       try {
