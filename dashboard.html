@@ -9200,14 +9200,26 @@ S pozdravem
             return;
           }
 
-          const rows = emails.slice(0, 3).map(e => {
+
+          // Filter out emails sent by me (assuming 'from' contains my email)
+          const filteredEmails = emails.filter(e => {
+            if (!account) return true;
+            return !e.from.toLowerCase().includes(account.toLowerCase());
+          });
+
+          if (!filteredEmails.length) {
+            list.innerHTML = '<div style="padding:1rem; text-align:center; color:#94a3b8;">Žádné příchozí emaily.</div>';
+            return;
+          }
+
+          const rows = filteredEmails.slice(0, 3).map(e => {
             const time = new Date(e.date).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
             let statusClass = 'processed';
             let statusText = 'Zpracováno';
             if (e.isRead === false) { statusClass = 'unread'; statusText = 'Nový'; }
 
             return `
-              <div class="email-item" onclick="openEmailDetail(null, '${e.id}', 'custom')">
+              <div class="email-item" style="cursor: default;">
                 <div class="email-status ${statusClass}"></div>
                 <div class="email-content">
                   <div class="email-sender">${escapeHtml(e.from)}</div>
