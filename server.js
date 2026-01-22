@@ -512,36 +512,42 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
       const user = decSecret(acc.enc_username);
       const pass = decSecret(acc.enc_password);
 
-      const imap = createImapClient({
-        host: acc.imap_host,
-        port: Number(acc.imap_port),
-        secure: !!acc.imap_secure,
-        auth: { user, pass }
-      });
+      let imap;
+      try {
+        imap = createImapClient({
+          host: acc.imap_host,
+          port: Number(acc.imap_port),
+          secure: !!acc.imap_secure,
+          auth: { user, pass }
+        });
 
-      await imap.connect();
-      await imap.mailboxOpen('INBOX');
+        await imap.connect();
+        await imap.mailboxOpen('INBOX');
 
-      const status = await imap.status('INBOX', { messages: true });
-      const total = status.messages;
+        const status = await imap.status('INBOX', { messages: true });
+        const total = status.messages;
 
-      if (total > 0) {
-        const start = Math.max(1, total - 2);
-        const fetchQuery = { seq: `${start}:${total}` };
+        if (total > 0) {
+          const start = Math.max(1, total - 2);
+          const fetchQuery = { seq: `${start}:${total}` };
 
-        for await (const msg of imap.fetch(fetchQuery, { envelope: true, internalDate: true, uid: true, flags: true })) {
-          emails.push({
-            id: msg.uid,
-            subject: decodeHeader(msg.envelope.subject),
-            from: msg.envelope.from?.[0]?.name || msg.envelope.from?.[0]?.address,
-            date: msg.internalDate,
-            snippet: '(Načítání...)',
-            isRead: msg.flags && msg.flags.has('\\Seen')
-          });
+          for await (const msg of imap.fetch(fetchQuery, { envelope: true, internalDate: true, uid: true, flags: true })) {
+            emails.push({
+              id: msg.uid,
+              subject: decodeHeader(msg.envelope.subject),
+              from: msg.envelope.from?.[0]?.name || msg.envelope.from?.[0]?.address,
+              date: msg.internalDate,
+              snippet: '(Načítání...)',
+              isRead: msg.flags && msg.flags.has('\\Seen')
+            });
+          }
+          emails.reverse();
         }
-        emails.reverse();
+      } finally {
+        if (imap) {
+          try { await imap.logout(); } catch (e) { console.warn('Logout failed in recent-emails', e.message); }
+        }
       }
-      await imap.logout();
 
     } else {
       // Check Gmail
@@ -1034,49 +1040,53 @@ app.get('/api/unread', async (req, res) => {
         }
       });
 
-      await client.connect();
-      let lock = await client.getMailboxLock('INBOX'); // čti jen doručenou poštu
-      const messages = [];
       try {
-        const uids = await client.search({ seen: false });
-        for await (let msg of client.fetch(uids, { envelope: true, internalDate: true, headers: true })) {
-          // 1) Filtrování nepřečtených už máš výš přes search({ seen: false })
+        await client.connect();
+        let lock;
+        try {
+          lock = await client.getMailboxLock('INBOX'); // čti jen doručenou poštu
+          const messages = [];
 
-          // 2) Serverové spam značky
-          const spamFlag = (msg.headers.get('x-spam-flag') || '').toString().toLowerCase();
-          const spamStatus = (msg.headers.get('x-spam-status') || '').toString().toLowerCase();
-          if (spamFlag.includes('yes') || spamStatus.startsWith('yes')) continue;
+          const uids = await client.search({ seen: false });
+          for await (let msg of client.fetch(uids, { envelope: true, internalDate: true, headers: true })) {
+            // 1) Filtrování nepřečtených už máš výš přes search({ seen: false })
 
-          // 3) Dekódovaný předmět (z =?UTF-8?...?= atd.)
-          const rawSubject = msg.envelope?.subject || '';
-          const subjectDecoded = decodeWords(String(rawSubject));
+            // 2) Serverové spam značky
+            const spamFlag = (msg.headers.get('x-spam-flag') || '').toString().toLowerCase();
+            const spamStatus = (msg.headers.get('x-spam-status') || '').toString().toLowerCase();
+            if (spamFlag.includes('yes') || spamStatus.startsWith('yes')) continue;
 
-          // 4) Lokální pravidlo: prefix "*****SPAM*****" (případně i [SPAM])
-          //    → přeskoč zprávu, ať se v UI neukáže
-          const customSpamPrefixes = (process.env.CUSTOM_SPAM_SUBJECT_PREFIXES || '*****SPAM*****,[SPAM]').split(',')
-            .map(s => s.trim()).filter(Boolean);
+            // 3) Dekódovaný předmět (z =?UTF-8?...?= atd.)
+            const rawSubject = msg.envelope?.subject || '';
+            const subjectDecoded = decodeWords(String(rawSubject));
 
-          const matchesCustomSpam = customSpamPrefixes.some(prefix =>
-            new RegExp(`^\\s*${prefix.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`, 'i').test(subjectDecoded)
-          );
-          if (matchesCustomSpam) continue;
+            // 4) Lokální pravidlo: prefix "*****SPAM*****" (případně i [SPAM])
+            //    → přeskoč zprávu, ať se v UI neukáže
+            const customSpamPrefixes = (process.env.CUSTOM_SPAM_SUBJECT_PREFIXES || '*****SPAM*****,[SPAM]').split(',')
+              .map(s => s.trim()).filter(Boolean);
 
-          messages.push({
-            id: String(msg.uid),
-            subject: subjectDecoded || '(bez předmětu)',
-            from: msg.envelope?.from?.map(a => a.address).join(', ') || '',
-            date: msg.internalDate?.toISOString?.() || '',
-            snippet: '',
-            provider: 'imap'
-          });
-          if (messages.length >= 50) break;
+            const matchesCustomSpam = customSpamPrefixes.some(prefix =>
+              new RegExp(`^\\s*${prefix.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`, 'i').test(subjectDecoded)
+            );
+            if (matchesCustomSpam) continue;
+
+            messages.push({
+              id: String(msg.uid),
+              subject: subjectDecoded || '(bez předmětu)',
+              from: msg.envelope?.from?.map(a => a.address).join(', ') || '',
+              date: msg.internalDate?.toISOString?.() || '',
+              snippet: '',
+              provider: 'imap'
+            });
+            if (messages.length >= 50) break;
+          }
+          return res.json({ messages });
+        } finally {
+          if (lock) lock.release();
         }
       } finally {
-        lock.release();
-        await client.logout();
+        if (client) await client.logout().catch(() => { });
       }
-
-      return res.json({ messages });
     }
 
     res.status(400).json({ error: 'Neznámý MAIL_PROVIDER (gmail nebo imap).' });
@@ -1636,14 +1646,12 @@ app.get('/api/custom-email/emails', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Nepodařilo se načíst emaily (custom).' });
   } finally {
     try {
-      if (imap?.connected) {
+      if (imap) {
         await imap.logout();
       }
-    } catch { }
-
-    try {
-      await imap?.close?.();
-    } catch { }
+    } catch (err) {
+      console.warn('IMAP logout error:', err.message);
+    }
 
     db.release();
   }
@@ -6121,7 +6129,6 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
 
 
 
