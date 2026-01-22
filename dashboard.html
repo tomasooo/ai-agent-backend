@@ -3654,7 +3654,7 @@
                     </svg>
                   </span>
                 </div>
-                <div class="stat-value" id="stat-processed">1,247</div>
+                <div class="stat-value" id="stat-processed">...</div>
                 <div class="stat-change positive">
                   <span>↗</span>
                   <span>+15% tento týden</span>
@@ -3672,7 +3672,7 @@
                     </svg>
                   </span>
                 </div>
-                <div class="stat-value" id="stat-saved-time">24.5h</div>
+                <div class="stat-value" id="stat-saved-time">...</div>
                 <div class="stat-change positive">
                   <span>↗</span>
                   <span>+8% tento měsíc</span>
@@ -3691,7 +3691,7 @@
                     </svg>
                   </span>
                 </div>
-                <div class="stat-value" id="stat-ai-success">94.2%</div>
+                <div class="stat-value" id="stat-ai-success">...</div>
                 <div class="stat-change positive">
                   <span>↗</span>
                   <span>+2.1% dnes</span>
@@ -3712,7 +3712,7 @@
                     </svg>
                   </span>
                 </div>
-                <div class="stat-value" id="stat-active-templates">12</div>
+                <div class="stat-value" id="stat-active-templates">...</div>
                 <div class="stat-change">
                   <span>→</span>
                   <span>Beze změny</span>
@@ -9145,9 +9145,15 @@ S pozdravem
 
     // === DASHBOARD LOGIC (RESTORED) ===
     async function loadDashboardStats() {
+      console.log('Called loadDashboardStats');
       const dashboardUserEmail = localStorage.getItem('userEmail');
       const account = localStorage.getItem('primaryEmail');
-      if (!dashboardUserEmail) return;
+      console.log('Dashboard stats params:', { dashboardUserEmail, account });
+
+      if (!dashboardUserEmail) {
+        console.warn('Missing dashboardUserEmail, cannot load stats');
+        return;
+      }
 
       try {
         const url = new URL(`${window.BACKEND}/api/dashboard/stats`);
