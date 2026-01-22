@@ -3365,8 +3365,7 @@ app.get('/api/gmail/emails', async (req, res) => {
         host: customRow.imap_host,
         port: customRow.imap_port,
         secure: customRow.imap_secure,
-        auth: { user, pass },
-        logger: console.log // ADDED DEBUG LOGGER
+        auth: { user, pass }
       });
 
       console.log(`[CustomEmails] Connecting to ${customRow.imap_host}:${customRow.imap_port} (${customRow.imap_secure ? 'SSL' : 'Clear'})...`);
@@ -3383,8 +3382,8 @@ app.get('/api/gmail/emails', async (req, res) => {
       const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
       const oneWeekAgo = new Date(now); oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-      // ZMĚNA: Redukce range pro testing (500 -> 100) pro rychlejší odezvu
-      const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 100);
+      // ZMĚNA: Redukce range pro testing (500 -> 100 -> 20) pro rychlejší odezvu
+      const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 20);
       console.log(`[CustomEmails] Fetching seq range: ${startSeq}:*`);
 
       for await (let msg of imap.fetch(
@@ -3392,12 +3391,16 @@ app.get('/api/gmail/emails', async (req, res) => {
         { uid: true, envelope: true, internalDate: true, flags: true, headers: true }
       )) {
         try {
-          if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
+          if (status === 'unread' && msg.flags?.has('\\Seen')) {
+            // console.log(`[CustomEmails] Skipping UID ${msg.uid} - Already Seen (requested unread)`);
+            continue;
+          }
 
           const subjRaw = msg.envelope?.subject || '';
           const subjDecoded = decodeWords(String(subjRaw));
           const isSpam = isSpamByHeadersMap(msg.headers, subjDecoded);
           if (isSpam) {
+            console.log(`[CustomEmails] Skipping UID ${msg.uid} - Detected as SPAM.`);
             try {
               await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true });
             } catch (_) { }
@@ -3405,16 +3408,27 @@ app.get('/api/gmail/emails', async (req, res) => {
           }
 
           const d = msg.internalDate;
-          if (period === 'today' && (!d || d < startOfToday)) continue;
-          if (period === 'week' && (!d || d < oneWeekAgo)) continue;
+          if (period === 'today' && (!d || d < startOfToday)) {
+            // console.log(`[CustomEmails] Skipping UID ${msg.uid} - Not Today (${d})`);
+            continue;
+          }
+          if (period === 'week' && (!d || d < oneWeekAgo)) {
+            console.log(`[CustomEmails] Skipping UID ${msg.uid} - Not This Week (${d})`);
+            continue;
+          }
 
           const subj = subjDecoded;
           const from = (msg.envelope?.from?.[0]?.address || '').trim();
 
           if (searchQuery) {
             const q = String(searchQuery).toLowerCase();
-            if (!subj.toLowerCase().includes(q) && !from.toLowerCase().includes(q)) continue;
+            if (!subj.toLowerCase().includes(q) && !from.toLowerCase().includes(q)) {
+              console.log(`[CustomEmails] Skipping UID ${msg.uid} - Search Mismatch ("${q}")`);
+              continue;
+            }
           }
+
+          console.log(`[CustomEmails] MATCH UID ${msg.uid} - Adding to output.`);
 
           out.push({
             id: String(msg.uid),
