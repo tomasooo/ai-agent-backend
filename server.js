@@ -5160,6 +5160,28 @@ ${String(bodyText).slice(0, 3000)}
               for await (const c of content) chunks.push(c);
               source = Buffer.concat(chunks);
 
+              // OK, máme data. Rovnou je zpracujeme a zkontrolujeme SPAM, dokud máme tempClient.
+              const parsed = await simpleParser(source);
+              const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
+
+              // --- LATE SPAM CHECK (Body) ---
+              const subjectBodyLower = `${subject} ${bodyText}`.toLowerCase();
+              const promoTokens = ['benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'sleva', 'newsletter', 'reklama', 'akce'];
+              const looksLikeAd = promoTokens.some(t => subjectBodyLower.includes(t));
+
+              if (looksLikeAd) {
+                console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/ad based on body content.`);
+                if (acc.spam_filter || acc.auto_reply) {
+                  console.log(`[IMAP Worker] Marking UID ${msg.uid} as SEEN (body spam/ad) via tempClient...`);
+                  await tempClient.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }).catch((err) => {
+                    console.error(`[IMAP Worker] Failed to mark body spam UID ${msg.uid} as SEEN:`, err);
+                  });
+                }
+                // Odhlásit a jít na další zprávu
+                await tempClient.logout().catch(() => { });
+                continue;
+              }
+
               await tempClient.logout().catch(() => { });
             } catch (freshErr) {
               console.error(`[IMAP Worker] Fresh connection download failed for UID ${msg.uid}:`, freshErr);
@@ -5168,34 +5190,24 @@ ${String(bodyText).slice(0, 3000)}
               continue;
             }
 
-            console.log(`[IMAP Worker] UID: ${msg.uid} - Downloaded ${source.length} bytes.`);
+            console.log(`[IMAP Worker] UID: ${msg.uid} - Downloaded and checked. Body len: ${source.length}`);
 
+            // Parsujeme znovu jen pokud bychom to potřebovali (ale my už to máme v parsed/bodyText z try bloku... 
+            // no, to variable scope nepustí. Takže musíme bodyText dostat ven, nebo to celé přesunout.)
+            // Pro jednoduchost (aby diff nebyl obří) to necháme, jen si uvědomíme, že bodyText musíme mít k dispozici níže.
+            // Ale wait, variable 'parsed' a 'bodyText' jsou ve scope 'try'.
+
+            // Řešení: Zkopírujeme potřebné proměnné ven před try blokem, nebo parsing uděláme znovu (což je neefektivní).
+            // Nebo lépe: Celý zbytek logiky (AI analysis) necháme až po try bloku, ale musíme bodyText vytáhnout ven.
+
+            // Quick fix for variable scope:
             const parsed = await simpleParser(source);
             const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
-
-            console.log(`[IMAP Worker] UID: ${msg.uid} - Body text length: ${bodyText ? bodyText.length : 0}`);
 
             if (!bodyText || !bodyText.trim()) {
               console.warn(`[IMAP Worker] UID: ${msg.uid} - Valid body text not found, skipping.`);
               continue;
             }
-
-            // --- LATE SPAM CHECK (Body) ---
-            const subjectBodyLower = `${subject} ${bodyText}`.toLowerCase();
-            const promoTokens = ['benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'sleva', 'newsletter', 'reklama', 'akce'];
-            const looksLikeAd = promoTokens.some(t => subjectBodyLower.includes(t));
-
-            if (looksLikeAd) {
-              console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/ad based on body content.`);
-              if (acc.spam_filter || acc.auto_reply) {
-                console.log(`[IMAP Worker] Marking UID ${msg.uid} as SEEN (body spam/ad)...`);
-                await imap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }).catch((err) => {
-                  console.error(`[IMAP Worker] Failed to mark body spam UID ${msg.uid} as SEEN:`, err);
-                });
-              }
-              continue;
-            }
-            // ------------------------------
 
             const shouldAutoReply = !!acc.auto_reply;
             if (!shouldAutoReply && !acc.approval_required) {
