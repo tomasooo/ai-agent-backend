@@ -67,7 +67,7 @@ process.on('uncaughtException', (err) => {
 
 // --- IMAP helper: keepalive + delší timeout + bezpečné logování ---
 
-function createImapClient({ host, port = 993, secure = true, auth, servername }) {
+function createImapClient({ host, port = 993, secure = true, auth, servername, ...opts }) {
   const client = new ImapFlow({
     host,                           // sem může jít IPv4 adresa
     port: Number(port),
@@ -83,7 +83,8 @@ function createImapClient({ host, port = 993, secure = true, auth, servername })
       forceNoop: true,
       timeout: 10 * 1000
     },
-    socketTimeout: 180 * 1000 // 180 s na handshake (zvýšeno z 90s)
+    socketTimeout: 180 * 1000, // 180 s na handshake (zvýšeno z 90s)
+    ...opts
   });
 
   client.on('error', (err) => {
@@ -3364,11 +3365,15 @@ app.get('/api/gmail/emails', async (req, res) => {
         host: customRow.imap_host,
         port: customRow.imap_port,
         secure: customRow.imap_secure,
-        auth: { user, pass }
+        auth: { user, pass },
+        logger: console.log // ADDED DEBUG LOGGER
       });
 
+      console.log(`[CustomEmails] Connecting to ${customRow.imap_host}:${customRow.imap_port} (${customRow.imap_secure ? 'SSL' : 'Clear'})...`);
       await imap.connect();
+      console.log(`[CustomEmails] Connected. Opening INBOX...`);
       await imap.mailboxOpen('INBOX');
+      console.log(`[CustomEmails] INBOX opened. Exists: ${imap.mailbox?.exists}`);
 
       const out = [];
       let fetched = 0;
@@ -3379,10 +3384,13 @@ app.get('/api/gmail/emails', async (req, res) => {
       const oneWeekAgo = new Date(now); oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
       const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 500);
+      console.log(`[CustomEmails] Fetching seq range: ${startSeq}:*`);
+
       for await (let msg of imap.fetch(
         { seq: `${startSeq}:*` },
         { uid: true, envelope: true, internalDate: true, flags: true, headers: true }
       )) {
+        // console.log(`[CustomEmails] Got msg UID ${msg.uid}`);
         // unread
         if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
 
