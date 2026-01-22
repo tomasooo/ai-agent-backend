@@ -5129,7 +5129,10 @@ ${String(bodyText).slice(0, 3000)}
             if (isHeaderSpam) {
               console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/bulk.`);
               if (acc.spam_filter || acc.auto_reply) {
-                await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
+                console.log(`[IMAP Worker] Marking UID ${msg.uid} as SEEN (header spam/bulk)...`);
+                await imap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }).catch((err) => {
+                  console.error(`[IMAP Worker] Failed to mark header spam UID ${msg.uid} as SEEN:`, err);
+                });
               }
               continue;
             }
@@ -5185,7 +5188,10 @@ ${String(bodyText).slice(0, 3000)}
             if (looksLikeAd) {
               console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/ad based on body content.`);
               if (acc.spam_filter || acc.auto_reply) {
-                await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
+                console.log(`[IMAP Worker] Marking UID ${msg.uid} as SEEN (body spam/ad)...`);
+                await imap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }).catch((err) => {
+                  console.error(`[IMAP Worker] Failed to mark body spam UID ${msg.uid} as SEEN:`, err);
+                });
               }
               continue;
             }
