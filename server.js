@@ -5160,6 +5160,14 @@ ${String(bodyText).slice(0, 3000)}
                 await imap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }).catch((err) => {
                   console.error(`[IMAP Worker] Failed to mark header spam UID ${msg.uid} as SEEN:`, err);
                 });
+
+                // Count as processed email (as per user request)
+                await tryConsumeAiAction(pool, acc.dashboard_user_email, 0).catch(() => { });
+                await logActivity(acc.dashboard_user_email, 'Spam Detekce (Hlavičky)', 'success', {
+                  account: acc.email_address,
+                  subject: subject,
+                  action: 'marked_seen'
+                });
               }
               continue;
             }
@@ -5202,6 +5210,14 @@ ${String(bodyText).slice(0, 3000)}
                   console.log(`[IMAP Worker] Marking UID ${msg.uid} as SEEN (body spam/ad) via tempClient...`);
                   await tempClient.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }).catch((err) => {
                     console.error(`[IMAP Worker] Failed to mark body spam UID ${msg.uid} as SEEN:`, err);
+                  });
+
+                  // Count as processed email
+                  await tryConsumeAiAction(pool, acc.dashboard_user_email, 0).catch(() => { });
+                  await logActivity(acc.dashboard_user_email, 'Spam Detekce (Obsah)', 'success', {
+                    account: acc.email_address,
+                    subject: subject,
+                    action: 'marked_seen'
                   });
                 }
                 // Odhlásit a jít na další zprávu
@@ -5421,6 +5437,15 @@ ${String(bodyText).slice(0, 3000)}
             ]);
 
             await imap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true }).catch(() => { });
+
+            // Count as processed email (Pending Approval)
+            await tryConsumeAiAction(pool, acc.dashboard_user_email, 0).catch(() => { });
+            await logActivity(acc.dashboard_user_email, 'Návrh odpovědi (čeká na schválení)', 'success', {
+              account: acc.email_address,
+              subject: subject,
+              status: 'pending_approval'
+            });
+
             console.log(`         "${subject || '(bez předmětu)'}" → návrh odpovědi uložen a čeká na schválení (Custom).`);
 
           } catch (msgErr) {
@@ -5790,6 +5815,14 @@ ${String(bodyText).slice(0, 3000)}
       requestBody: {
         addLabelIds: [approvalLabel.id]
       }
+    });
+
+    // Count as processed email (Pending Approval - Gmail)
+    await tryConsumeAiAction(pool, acc.dashboard_user_email, 0).catch(() => { });
+    await logActivity(acc.dashboard_user_email, 'Návrh odpovědi (čeká na schválení)', 'success', {
+      account: acc.connected_email,
+      subject: subject,
+      status: 'pending_approval'
     });
 
     console.log(`         "${subject}" → návrh odpovědi uložen a čeká na schválení.`);
