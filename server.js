@@ -3383,57 +3383,57 @@ app.get('/api/gmail/emails', async (req, res) => {
       const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
       const oneWeekAgo = new Date(now); oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-      const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 500);
+      // ZMĚNA: Redukce range pro testing (500 -> 100) pro rychlejší odezvu
+      const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 100);
       console.log(`[CustomEmails] Fetching seq range: ${startSeq}:*`);
 
       for await (let msg of imap.fetch(
         { seq: `${startSeq}:*` },
         { uid: true, envelope: true, internalDate: true, flags: true, headers: true }
       )) {
-        // console.log(`[CustomEmails] Got msg UID ${msg.uid}`);
-        // unread
-        if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
+        try {
+          if (status === 'unread' && msg.flags?.has('\\Seen')) continue;
 
-        const subjRaw = msg.envelope?.subject || '';
-        const subjDecoded = decodeWords(String(subjRaw));
-        const isSpam = isSpamByHeadersMap(msg.headers, subjDecoded);
-        if (isSpam) {
-          // označ spam jako přečtený, aby se nezobrazoval mezi nepřečtenými
-          try {
-            await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true });
-          } catch (_) { }
-          continue;
+          const subjRaw = msg.envelope?.subject || '';
+          const subjDecoded = decodeWords(String(subjRaw));
+          const isSpam = isSpamByHeadersMap(msg.headers, subjDecoded);
+          if (isSpam) {
+            try {
+              await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true });
+            } catch (_) { }
+            continue;
+          }
+
+          const d = msg.internalDate;
+          if (period === 'today' && (!d || d < startOfToday)) continue;
+          if (period === 'week' && (!d || d < oneWeekAgo)) continue;
+
+          const subj = subjDecoded;
+          const from = (msg.envelope?.from?.[0]?.address || '').trim();
+
+          if (searchQuery) {
+            const q = String(searchQuery).toLowerCase();
+            if (!subj.toLowerCase().includes(q) && !from.toLowerCase().includes(q)) continue;
+          }
+
+          out.push({
+            id: String(msg.uid),
+            snippet: '',
+            sender: from,
+            subject: subj,
+            date: d ? d.toISOString() : null,
+            unread: !msg.flags?.has('\\Seen')
+          });
+
+          if (++fetched >= 10) break;
+        } catch (msgErr) {
+          console.error(`[CustomEmails] Error processing msg UID ${msg.uid}:`, msgErr);
         }
-
-        // period
-        const d = msg.internalDate;
-        if (period === 'today' && (!d || d < startOfToday)) continue;
-        if (period === 'week' && (!d || d < oneWeekAgo)) continue;
-
-        const subj = subjDecoded;
-        const from = (msg.envelope?.from?.[0]?.address || '').trim();
-
-        // searchQuery (subject + from)
-        if (searchQuery) {
-          const q = String(searchQuery).toLowerCase();
-          if (!subj.toLowerCase().includes(q) && !from.toLowerCase().includes(q)) continue;
-        }
-
-        out.push({
-          id: String(msg.uid),
-          snippet: '',
-          sender: from,
-          subject: subj,
-          date: d ? d.toISOString() : null,
-          unread: !msg.flags?.has('\\Seen')
-        });
-
-        if (++fetched >= 10) break;
       }
 
       return res.json({ success: true, emails: out, total: out.length });
     } catch (e) {
-      console.error("Chyba IMAP:", e);
+      console.error("Chyba IMAP (catch block):", e);
       return res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily (custom)." });
     } finally {
       try { if (imap?.connected) await imap.logout(); } catch { }
