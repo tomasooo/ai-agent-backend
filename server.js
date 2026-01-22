@@ -830,6 +830,15 @@ async function setupDatabase() {
                 action TEXT NOT NULL,
                 status VARCHAR(50) NOT NULL,
                 details JSONB
+            );`,
+      `CREATE TABLE IF NOT EXISTS activity_log (
+                id BIGSERIAL PRIMARY KEY,
+                dashboard_user_email VARCHAR(255) NOT NULL,
+                connected_email VARCHAR(255),
+                action TEXT NOT NULL,
+                status VARCHAR(50) NOT NULL,
+                details JSONB,
+                created_at TIMESTAMPTZ DEFAULT NOW()
             );`
     ];
 
@@ -913,12 +922,28 @@ async function logActivity(user_email, action, status, details = {}) {
   const emailForLog = user_email || (typeof details === 'object' ? details?.user_email : undefined) || 'system';
   try {
     client = await pool.connect();
+
+    // 1. Audit Log (Legacy/Admin)
     await client.query(
       'INSERT INTO audit_log (user_email, action, status, details) VALUES ($1, $2, $3, $4)',
       [emailForLog, action, status, normaliseLogDetails(details)]
     );
+
+    // 2. Activity Log (Dashboard Stats)
+    // Try to find connected email
+    let connectedEmail = null;
+    if (typeof details === 'object') {
+      connectedEmail = details.account || details.connectedEmail || details.email || null;
+    }
+
+    await client.query(
+      `INSERT INTO activity_log (dashboard_user_email, connected_email, action, status, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [emailForLog, connectedEmail, action, status, normaliseLogDetails(details)]
+    );
+
   } catch (e) {
-    console.error('Chyba při zápisu do audit_log:', e);
+    console.error('Chyba při zápisu do audit/activity logu:', e);
   } finally {
     if (client) client.release();
   }
