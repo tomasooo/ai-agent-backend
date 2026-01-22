@@ -436,11 +436,12 @@ app.get('/api/dashboard/stats', async (req, res) => {
 
   const db = await pool.connect();
   try {
-    const rUser = await db.query(
-      `SELECT ai_actions_used, plan FROM dashboard_users WHERE email=$1`,
+    // FIX: Read real usage from usage_counters table
+    const rUsage = await db.query(
+      `SELECT SUM(ai_actions_used) as total FROM usage_counters WHERE dashboard_user_email=$1`,
       [dashboardUserEmail]
     );
-    const aiUsed = Number(rUser.rows[0]?.ai_actions_used) || 0;
+    const aiUsed = Number(rUsage.rows[0]?.total) || 0;
 
     const savedMinutes = aiUsed * 5;
     const savedHours = (savedMinutes / 60).toFixed(1);
