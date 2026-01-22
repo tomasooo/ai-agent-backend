@@ -3357,6 +3357,7 @@ app.get('/api/gmail/emails', async (req, res) => {
       return res.json({ success: true, emails: pendingEmails, total: pendingEmails.length });
     }
 
+    let out = [];
     try {
       const user = decSecret(customRow.enc_username);
       const pass = decSecret(customRow.enc_password);
@@ -3365,7 +3366,8 @@ app.get('/api/gmail/emails', async (req, res) => {
         host: customRow.imap_host,
         port: customRow.imap_port,
         secure: customRow.imap_secure,
-        auth: { user, pass }
+        auth: { user, pass },
+        logger: { debug: () => { }, info: () => { }, warn: () => { }, error: () => { } } // SILENT LOGGER
       });
 
       console.log(`[CustomEmails] Connecting to ${customRow.imap_host}:${customRow.imap_port} (${customRow.imap_secure ? 'SSL' : 'Clear'})...`);
@@ -3373,8 +3375,6 @@ app.get('/api/gmail/emails', async (req, res) => {
       console.log(`[CustomEmails] Connected. Opening INBOX...`);
       await imap.mailboxOpen('INBOX');
       console.log(`[CustomEmails] INBOX opened. Exists: ${imap.mailbox?.exists}`);
-
-      const out = [];
       let fetched = 0;
 
       // datumové filtry pro "today" a "week"
@@ -3448,7 +3448,12 @@ app.get('/api/gmail/emails', async (req, res) => {
       return res.json({ success: true, emails: out, total: out.length });
     } catch (e) {
       console.error("Chyba IMAP (catch block):", e);
-      return res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily (custom)." });
+      // PARTIAL SUCCESS FALLBACK
+      if (out.length > 0) {
+        console.log(`[CustomEmails] Returning ${out.length} emails despite error.`);
+        return res.json({ success: true, emails: out, total: out.length });
+      }
+      return res.status(500).json({ success: false, message: "Nepodařilo se načíst emaily (custom) - chyba spojení." });
     } finally {
       try { if (imap?.connected) await imap.logout(); } catch { }
       if (db) { db.release(); db = null; }
