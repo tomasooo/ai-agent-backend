@@ -1037,6 +1037,8 @@
       background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
       color: #ecf0f1;
       overflow-x: hidden;
+      /* Prevent horizontal scroll on body */
+      width: 100%;
       min-height: 100vh;
     }
 
@@ -2359,6 +2361,43 @@
       .settings-tab {
         flex: 0 0 auto;
         /* Prevent shrinking */
+      }
+
+      /* GLOBAL MOBILE RESET */
+      html,
+      body {
+        overflow-x: hidden !important;
+        width: 100%;
+      }
+
+      .main-content {
+        width: 100vw;
+        max-width: 100vw;
+        overflow-x: hidden;
+        padding-right: 0;
+      }
+
+      /* Ensure containers don't push width */
+      .page-container,
+      .content-area {
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+
+      /* Admin Specifics */
+      .users-section {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      /* Settings Specifics */
+      .settings-tabs {
+        width: 100%;
+        max-width: 100%;
+        padding-right: 1rem;
+        /* Space for scroll */
       }
     }
 
