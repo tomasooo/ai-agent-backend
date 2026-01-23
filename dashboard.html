@@ -2322,6 +2322,44 @@
       .page-container {
         width: 100%;
       }
+
+      /* FIX: Stack custom grids on mobile */
+      .admin-stats,
+      .chart-container .chart-wrapper,
+      /* if wrapper exists */
+      div[style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+        gap: 1.5rem !important;
+      }
+
+      /* FIX: Ensure charts fit screen */
+      .chart-placeholder,
+      canvas {
+        width: 100% !important;
+        max-width: 100%;
+      }
+
+      /* FIX: Table responsiveness */
+      .users-section {
+        overflow-x: auto;
+      }
+
+      .users-table {
+        min-width: 600px;
+        /* Force min width to trigger scroll */
+      }
+
+      /* FIX: Settings tabs scrolling */
+      .settings-tabs {
+        overflow-x: auto;
+        white-space: nowrap;
+        padding-bottom: 0.5rem;
+      }
+
+      .settings-tab {
+        flex: 0 0 auto;
+        /* Prevent shrinking */
+      }
     }
 
     /* Overlay for mobile sidebar */
