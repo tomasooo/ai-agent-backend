@@ -2263,8 +2263,8 @@
       }
 
       .mobile-menu-btn {
-        display: flex;
-        /* Show on mobile */
+        display: flex !important;
+        /* Force show on mobile */
         align-items: center;
         justify-content: center;
         background: rgba(255, 255, 255, 0.1);
@@ -2276,6 +2276,8 @@
         font-size: 1.2rem;
         margin-right: auto;
         /* Push to the left */
+        z-index: 1001;
+        /* Ensure on top */
       }
 
       .stats-grid {
