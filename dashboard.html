@@ -2247,6 +2247,22 @@
         /* Force width ignoring .collapsed */
       }
 
+      /* Hide collapse button on mobile */
+      .collapse-btn {
+        display: none !important;
+      }
+
+      /* Force text visibility on mobile */
+      .sidebar .nav-text {
+        opacity: 1 !important;
+        display: inline-block !important;
+      }
+
+      /* Hide logo text if needed or ensure it is visible */
+      .sidebar .logo span {
+        display: inline-block !important;
+      }
+
       .sidebar.open {
         transform: translateX(0);
         box-shadow: 5px 0 15px rgba(0, 0, 0, 0.5);
@@ -5885,8 +5901,10 @@ S pozdravem
     }
 
     function checkMobile() {
+      // On mobile, we want the sidebar NOT to be collapsed (mini), because we hide/show the whole thing.
+      // So we ensure 'collapsed' class is REMOVED so texts are visible when opened.
       if (sidebar && window.innerWidth <= 768) {
-        sidebar.classList.add('collapsed');
+        sidebar.classList.remove('collapsed');
       }
     }
 
