@@ -55,6 +55,18 @@ const REDIRECT_URI = `${SERVER_URL}/api/oauth/google/callback`;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+async function runWithRetry(fn, retries = 3, delay = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      console.warn(`[Retry] Operace selhala, opakuji za ${delay}ms... (Pokus ${i + 1}/${retries})`, err.message || err);
+      await wait(delay);
+    }
+  }
+}
+
 // --- [NEW] globální handlery, aby proces nespadl na neodchycenou chybu ---
 process.on('unhandledRejection', (reason) => {
   console.error('[UNHANDLED REJECTION]', reason);
@@ -83,7 +95,7 @@ function createImapClient({ host, port = 993, secure = true, auth, servername, .
       forceNoop: true,
       timeout: 10 * 1000
     },
-    socketTimeout: 15 * 1000, // 15 s na handshake/data - FAIL FAST
+    socketTimeout: 45 * 1000, // 45 s na handshake/data - ZVÝŠENO kvůli Forpsi timeoutům
     ...opts
   });
 
@@ -5185,9 +5197,10 @@ ${String(bodyText).slice(0, 3000)}
               console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/bulk.`);
               if (acc.spam_filter || acc.auto_reply) {
                 console.log(`[IMAP Worker] Marking UID ${msg.uid} as SEEN (header spam/bulk)...`);
-                await imap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }).catch((err) => {
-                  console.error(`[IMAP Worker] Failed to mark header spam UID ${msg.uid} as SEEN:`, err);
-                });
+                await runWithRetry(() => imap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }))
+                  .catch((err) => {
+                    console.error(`[IMAP Worker] Failed to mark header spam UID ${msg.uid} as SEEN (after retries):`, err);
+                  });
 
                 // Count as processed email (as per user request)
                 await tryConsumeAiAction(pool, acc.dashboard_user_email, 0).catch(() => { });
@@ -5236,9 +5249,10 @@ ${String(bodyText).slice(0, 3000)}
                 console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/ad based on body content.`);
                 if (acc.spam_filter || acc.auto_reply) {
                   console.log(`[IMAP Worker] Marking UID ${msg.uid} as SEEN (body spam/ad) via tempClient...`);
-                  await tempClient.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }).catch((err) => {
-                    console.error(`[IMAP Worker] Failed to mark body spam UID ${msg.uid} as SEEN:`, err);
-                  });
+                  await runWithRetry(() => tempClient.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }))
+                    .catch((err) => {
+                      console.error(`[IMAP Worker] Failed to mark body spam UID ${msg.uid} as SEEN (after retries):`, err);
+                    });
 
                   // Count as processed email
                   await tryConsumeAiAction(pool, acc.dashboard_user_email, 0).catch(() => { });
@@ -5282,7 +5296,7 @@ ${String(bodyText).slice(0, 3000)}
 
             const shouldAutoReply = !!acc.auto_reply;
             if (!shouldAutoReply && !acc.approval_required) {
-              await imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true }).catch(() => { });
+              await runWithRetry(() => imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true })).catch(() => { });
               continue;
             }
 
@@ -5464,7 +5478,7 @@ ${String(bodyText).slice(0, 3000)}
               JSON.stringify(metadata)
             ]);
 
-            await imap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true }).catch(() => { });
+            await runWithRetry(() => imap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true })).catch(() => { });
 
             // Count as processed email (Pending Approval)
             await tryConsumeAiAction(pool, acc.dashboard_user_email, 0).catch(() => { });
@@ -6106,7 +6120,6 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
 
 
 
