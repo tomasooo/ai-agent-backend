@@ -5092,10 +5092,21 @@ async function runImapWorker() {
         auth: { user, pass }
       });
 
+      // Druhé spojení PRO ZÁPIS/AKCE (pokud běží fetch loop, spojení je zamknuté)
+      const actionImap = createImapClient({
+        host: acc.imap_host,
+        port: Number(acc.imap_port || 993),
+        secure: !!acc.imap_secure,
+        auth: { user, pass }
+      });
+
       let dbClient;
       try {
         await imap.connect();
         await imap.mailboxOpen('INBOX');
+
+        await actionImap.connect();
+        await actionImap.mailboxOpen('INBOX');
 
         dbClient = await pool.connect();
 
@@ -5197,7 +5208,7 @@ ${String(bodyText).slice(0, 3000)}
               console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/bulk.`);
               if (acc.spam_filter || acc.auto_reply) {
                 console.log(`[IMAP Worker] Marking UID ${msg.uid} as SEEN (header spam/bulk)...`);
-                await runWithRetry(() => imap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }))
+                await runWithRetry(() => actionImap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }))
                   .catch((err) => {
                     console.error(`[IMAP Worker] Failed to mark header spam UID ${msg.uid} as SEEN (after retries):`, err);
                   });
@@ -5213,30 +5224,17 @@ ${String(bodyText).slice(0, 3000)}
               continue;
             }
 
-            console.log(`[IMAP Worker] UID: ${msg.uid} - Downloading content (Fresh Connection)...`);
+            console.log(`[IMAP Worker] UID: ${msg.uid} - Downloading content (via Action Client)...`);
 
             let source;
-            // Vytvoříme dočasného klienta jen pro stažení této jedné zprávy.
-            // Tím se vyhneme problémům s timeouty/zámky na hlavním spojení.
-            const tempClient = createImapClient({
-              host: acc.imap_host,
-              port: Number(acc.imap_port || 993),
-              secure: !!acc.imap_secure,
-              auth: { user, pass },
-              socketTimeout: 120 * 1000
-            });
-
             try {
-              await tempClient.connect();
-              await tempClient.mailboxOpen('INBOX');
-
-              const { content } = await tempClient.download(msg.uid, null, { uid: true, maxBytes: 20 * 1024 * 1024 });
+              const { content } = await actionImap.download(msg.uid, null, { uid: true, maxBytes: 20 * 1024 * 1024 });
 
               const chunks = [];
               for await (const c of content) chunks.push(c);
               source = Buffer.concat(chunks);
 
-              // OK, máme data. Rovnou je zpracujeme a zkontrolujeme SPAM, dokud máme tempClient.
+              // OK, máme data. Rovnou je zpracujeme a zkontrolujeme SPAM.
               const parsed = await simpleParser(source);
               const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
 
@@ -5248,8 +5246,8 @@ ${String(bodyText).slice(0, 3000)}
               if (looksLikeAd) {
                 console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/ad based on body content.`);
                 if (acc.spam_filter || acc.auto_reply) {
-                  console.log(`[IMAP Worker] Marking UID ${msg.uid} as SEEN (body spam/ad) via tempClient...`);
-                  await runWithRetry(() => tempClient.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }))
+                  console.log(`[IMAP Worker] Marking UID ${msg.uid} as SEEN (body spam/ad) via actionImap...`);
+                  await runWithRetry(() => actionImap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }))
                     .catch((err) => {
                       console.error(`[IMAP Worker] Failed to mark body spam UID ${msg.uid} as SEEN (after retries):`, err);
                     });
@@ -5262,16 +5260,11 @@ ${String(bodyText).slice(0, 3000)}
                     action: 'marked_seen'
                   });
                 }
-                // Odhlásit a jít na další zprávu
-                await tempClient.logout().catch(() => { });
                 continue;
               }
 
-              await tempClient.logout().catch(() => { });
-            } catch (freshErr) {
-              console.error(`[IMAP Worker] Fresh connection download failed for UID ${msg.uid}:`, freshErr);
-              // Ujistíme se, že je odpojeno
-              tempClient.close().catch(() => { });
+            } catch (downloadErr) {
+              console.error(`[IMAP Worker] Download failed for UID ${msg.uid}:`, downloadErr);
               continue;
             }
 
@@ -5296,7 +5289,7 @@ ${String(bodyText).slice(0, 3000)}
 
             const shouldAutoReply = !!acc.auto_reply;
             if (!shouldAutoReply && !acc.approval_required) {
-              await runWithRetry(() => imap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true })).catch(() => { });
+              await runWithRetry(() => actionImap.messageFlagsAdd(msg.uid, ['\\Seen'], { uid: true })).catch(() => { });
               continue;
             }
 
@@ -5478,7 +5471,7 @@ ${String(bodyText).slice(0, 3000)}
               JSON.stringify(metadata)
             ]);
 
-            await runWithRetry(() => imap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true })).catch(() => { });
+            await runWithRetry(() => actionImap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true })).catch(() => { });
 
             // Count as processed email (Pending Approval)
             await tryConsumeAiAction(pool, acc.dashboard_user_email, 0).catch(() => { });
@@ -5502,6 +5495,8 @@ ${String(bodyText).slice(0, 3000)}
         if (dbClient) dbClient.release();
         try { if (imap.connected) await imap.logout(); } catch { }
         try { await imap.close?.(); } catch { }
+        try { if (actionImap.connected) await actionImap.logout(); } catch { }
+        try { await actionImap.close?.(); } catch { }
       }
     }
   } finally {
