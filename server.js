@@ -5240,7 +5240,7 @@ ${String(bodyText).slice(0, 3000)}
 
               // --- LATE SPAM CHECK (Body) ---
               const subjectBodyLower = `${subject} ${bodyText}`.toLowerCase();
-              const promoTokens = ['benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'sleva', 'newsletter', 'reklama', 'akce'];
+              const promoTokens = ['benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'sleva', 'newsletter', 'reklama', 'akce', 'google play developer program', 'seo audit', 'ranking on google', 'mobile app development services', 'app development', 'everbot'];
               const looksLikeAd = promoTokens.some(t => subjectBodyLower.includes(t));
 
               if (looksLikeAd) {
@@ -5619,7 +5619,7 @@ ${String(bodyText).slice(0, 3000)}
   };
   const looksLikeSpam = (subject, snippet, headers) => {
     const s = `${subject} ${snippet}`.toLowerCase();
-    const promoTokens = ['unsubscribe', 'newsletter', 'promo', 'reklama', 'sleva', 'akce', 'kup nyní', '% sleva', 'sale', 'benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu'];
+    const promoTokens = ['unsubscribe', 'newsletter', 'promo', 'reklama', 'sleva', 'akce', 'kup nyní', '% sleva', 'sale', 'benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'google play developer program', 'seo audit', 'ranking on google', 'mobile app development services', 'app development', 'everbot'];
     if (promoTokens.some(t => s.includes(t))) return true;
     if (hasListUnsub(headers)) return true;
     if (hasPrecedenceBulk(headers)) return true;
@@ -5660,20 +5660,27 @@ ${String(bodyText).slice(0, 3000)}
       continue;
     }
 
-    // Modifikace: Pokud je auto_reply zapnuto, ignorujeme heuristiku "looksLikeSpam" (promo, slevy atd.),
-    // abychom odpověděli na vše (technický spam je filtrován výše funkcí isHeaderSpam).
-    if (!acc.auto_reply && looksLikeSpam(subject, snippet, headers)) {
+    // Modifikace: VŽDY kontrolujeme spam/reklamu. 
+    // Dříve se to přeskakovalo, pokud bylo auto_reply = true. 
+    // Teď chceme, aby se i při auto_reply filtroval zjevný balast (app dev, seo, google play notice).
+    if (looksLikeSpam(subject, snippet, headers)) {
       if (acc.spam_filter) {
         await gmail.users.messages.modify({
           userId: 'me',
           id: msg.id,
           requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX', 'UNREAD'] }
         });
-        console.log(`         "${subject}" → ignorováno (spam/reklama).`);
-        continue;
+        console.log(`         "${subject}" → ignorováno (spam/reklama) - přesunuto do SPAMu.`);
+      } else {
+        // Pokud nemáme zapnutý tvrdý spam filter (přesun), tak jen označíme jako přečtené a neřešíme dál
+        await gmail.users.messages.modify({
+          userId: 'me',
+          id: msg.id,
+          requestBody: { removeLabelIds: ['UNREAD'] }
+        });
+        console.log(`         "${subject}" → ignorováno (spam/reklama) - označeno jako přečtené.`);
       }
-      // Původní blok 'if (acc.auto_reply)' zde byl odstraněn, protože nyní
-      // se tento blok vůbec nespustí, pokud je auto_reply = true.
+      continue;
     }
 
     const shouldAutoReply = !!acc.auto_reply;
@@ -6115,7 +6122,6 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
 
 
 
