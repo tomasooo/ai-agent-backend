@@ -3105,14 +3105,7 @@ app.post('/api/gmail/send-reply', async (req, res) => {
     const db = await pool.connect();
 
 
-    const consume = await tryConsumeAiAction(db, dashboardUserEmail);
-    if (!consume.ok) {
-      db.release();
-      return res.status(429).json({
-        success: false,
-        message: `Vyčerpán měsíční limit AI akcí (${consume.limit}). Zvažte navýšení tarifu.`
-      });
-    }
+
 
 
 
@@ -5213,8 +5206,7 @@ ${String(bodyText).slice(0, 3000)}
                     console.error(`[IMAP Worker] Failed to mark header spam UID ${msg.uid} as SEEN (after retries):`, err);
                   });
 
-                // Count as processed email (as per user request)
-                await tryConsumeAiAction(pool, acc.dashboard_user_email, 0).catch(() => { });
+
                 await logActivity(acc.dashboard_user_email, 'Spam Detekce (Hlavičky)', 'success', {
                   account: acc.email_address,
                   subject: subject,
@@ -5252,8 +5244,7 @@ ${String(bodyText).slice(0, 3000)}
                       console.error(`[IMAP Worker] Failed to mark body spam UID ${msg.uid} as SEEN (after retries):`, err);
                     });
 
-                  // Count as processed email
-                  await tryConsumeAiAction(pool, acc.dashboard_user_email, 0).catch(() => { });
+
                   await logActivity(acc.dashboard_user_email, 'Spam Detekce (Obsah)', 'success', {
                     account: acc.email_address,
                     subject: subject,
@@ -5473,8 +5464,7 @@ ${String(bodyText).slice(0, 3000)}
 
             await runWithRetry(() => actionImap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true })).catch(() => { });
 
-            // Count as processed email (Pending Approval)
-            await tryConsumeAiAction(pool, acc.dashboard_user_email, 0).catch(() => { });
+
             await logActivity(acc.dashboard_user_email, 'Návrh odpovědi (čeká na schválení)', 'success', {
               account: acc.email_address,
               subject: subject,
@@ -5861,8 +5851,7 @@ ${String(bodyText).slice(0, 3000)}
       }
     });
 
-    // Count as processed email (Pending Approval - Gmail)
-    await tryConsumeAiAction(pool, acc.dashboard_user_email, 0).catch(() => { });
+
     await logActivity(acc.dashboard_user_email, 'Návrh odpovědi (čeká na schválení)', 'success', {
       account: acc.connected_email,
       subject: subject,
