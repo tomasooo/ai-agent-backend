@@ -456,24 +456,42 @@ app.get('/api/dashboard/stats', async (req, res) => {
     );
     const aiUsed = Number(rUsage.rows[0]?.total) || 0;
 
+    const savedMinutes = aiUsed * 5;
+    const savedHours = (savedMinutes / 60).toFixed(1);
+
     const rTpl = await db.query(
       `SELECT COUNT(*) as count FROM templates WHERE dashboard_user_email=$1`,
       [dashboardUserEmail]
     );
     const tplCount = Number(rTpl.rows[0]?.count) || 0;
 
-    const rPending = await db.query(
-      `SELECT COUNT(*) as count FROM pending_replies WHERE dashboard_user_email=$1 AND status='pending'`,
+    const rLog = await db.query(
+      `SELECT status, COUNT(*) as cnt
+         FROM activity_log
+        WHERE dashboard_user_email=$1
+          AND status IN ('success', 'error')
+        GROUP BY status`,
       [dashboardUserEmail]
     );
-    const pendingCount = Number(rPending.rows[0]?.count) || 0;
+    let success = 0;
+    let error = 0;
+    rLog.rows.forEach(r => {
+      if (r.status === 'success') success += Number(r.cnt);
+      if (r.status === 'error') error += Number(r.cnt);
+    });
+    const total = success + error;
+    let successRate = 100;
+    if (total > 0) {
+      successRate = (success / total) * 100;
+    }
 
     res.json({
       success: true,
       stats: {
         processedEmails: aiUsed,
-        pendingCount: pendingCount,
-        activeTemplates: tplCount
+        savedHours: savedHours,
+        activeTemplates: tplCount,
+        successRate: successRate.toFixed(1)
       }
     });
 
