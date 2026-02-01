@@ -5226,7 +5226,7 @@ ${String(bodyText).slice(0, 3000)}
               for await (const c of content) chunks.push(c);
               source = Buffer.concat(chunks);
 
-              // OK, máme data. Rovnou je zpracujeme a zkontrolujeme SPAM.
+
               const parsed = await simpleParser(source);
               const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
 
@@ -5261,13 +5261,6 @@ ${String(bodyText).slice(0, 3000)}
 
             console.log(`[IMAP Worker] UID: ${msg.uid} - Downloaded and checked. Body len: ${source.length}`);
 
-            // Parsujeme znovu jen pokud bychom to potřebovali (ale my už to máme v parsed/bodyText z try bloku... 
-            // no, to variable scope nepustí. Takže musíme bodyText dostat ven, nebo to celé přesunout.)
-            // Pro jednoduchost (aby diff nebyl obří) to necháme, jen si uvědomíme, že bodyText musíme mít k dispozici níže.
-            // Ale wait, variable 'parsed' a 'bodyText' jsou ve scope 'try'.
-
-            // Řešení: Zkopírujeme potřebné proměnné ven před try blokem, nebo parsing uděláme znovu (což je neefektivní).
-            // Nebo lépe: Celý zbytek logiky (AI analysis) necháme až po try bloku, ale musíme bodyText vytáhnout ven.
 
             // Quick fix for variable scope:
             const parsed = await simpleParser(source);
@@ -5609,7 +5602,7 @@ ${String(bodyText).slice(0, 3000)}
   };
   const looksLikeSpam = (subject, snippet, headers) => {
     const s = `${subject} ${snippet}`.toLowerCase();
-    const promoTokens = ['unsubscribe', 'newsletter', 'promo', 'reklama', 'sleva', 'akce', 'kup nyní', '% sleva', 'sale', 'benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'google play developer program', 'seo audit', 'ranking on google', 'mobile app development services', 'app development', 'everbot'];
+    const promoTokens = ['unsubscribe', 'newsletter', 'promo', 'reklama', 'sleva', 'akce', 'kup nyní', '% sleva', 'sale', 'benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'google play developer program', 'seo audit', 'ranking on google', 'mobile app development services', 'app development', 'everbot', 'avaya users list', 'technologies users list', 'mitel', 'verint', 'contact details of users'];
     if (promoTokens.some(t => s.includes(t))) return true;
     if (hasListUnsub(headers)) return true;
     if (hasPrecedenceBulk(headers)) return true;
