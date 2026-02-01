@@ -3816,7 +3816,25 @@
 
               <div class="stat-card">
                 <div class="stat-header">
-                  <span class="stat-title">Ušetřený čas</span>
+                  <span class="stat-title">Zpracované emaily</span>
+                  <span class="stat-icon" style="display: flex; align-items: center; justify-content: center;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                      <polyline points="22,6 12,13 2,6"></polyline>
+                    </svg>
+                  </span>
+                </div>
+                <div class="stat-value" id="stat-processed">...</div>
+                <div class="stat-change positive">
+                  <span>↗</span>
+                  <span>+15% tento týden</span>
+                </div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-header">
+                  <span class="stat-title">Čeká na schválení</span>
                   <span class="stat-icon" style="display: flex; align-items: center; justify-content: center;">
                     <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
                       stroke-linecap="round" stroke-linejoin="round">
@@ -3825,29 +3843,10 @@
                     </svg>
                   </span>
                 </div>
-                <div class="stat-value" id="stat-saved-time">...</div>
-                <div class="stat-change positive">
-                  <span>↗</span>
-                  <span>+8% tento měsíc</span>
-                </div>
-              </div>
-
-              <div class="stat-card">
-                <div class="stat-header">
-                  <span class="stat-title">Úspěšnost AI</span>
-                  <span class="stat-icon" style="display: flex; align-items: center; justify-content: center;">
-                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
-                      stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <circle cx="12" cy="12" r="6"></circle>
-                      <circle cx="12" cy="12" r="2"></circle>
-                    </svg>
-                  </span>
-                </div>
-                <div class="stat-value" id="stat-ai-success">...</div>
-                <div class="stat-change positive">
-                  <span>↗</span>
-                  <span>+2.1% dnes</span>
+                <div class="stat-value" id="stat-pending">...</div>
+                <div class="stat-change" style="color: #f59e0b;">
+                  <span>⏳</span>
+                  <span>Vyžaduje akci</span>
                 </div>
               </div>
 
@@ -9358,8 +9357,7 @@ S pozdravem
             if (el) el.textContent = val;
           };
           setTxt('stat-processed', s.processedEmails || 0);
-          setTxt('stat-saved-time', (s.savedHours || 0) + 'h');
-          setTxt('stat-ai-success', (s.successRate || 0) + '%');
+          setTxt('stat-pending', s.pendingCount || 0);
           setTxt('stat-active-templates', s.activeTemplates || 0);
         }
       } catch (e) {
