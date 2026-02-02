@@ -519,42 +519,77 @@ app.get('/api/analytics/complaints', async (req, res) => {
     sinceDate.setDate(sinceDate.getDate() - daysLimit);
 
     const r = await db.query(
-      `SELECT summary, subject, sentiment, created_at
+      `SELECT summary, subject, sentiment, category, created_at
          FROM pending_replies
         WHERE dashboard_user_email = $1
-          AND created_at >= $2
-          AND (sentiment ILIKE '%negative%' OR sentiment ILIKE '%angry%' OR sentiment ILIKE '%stížnost%')`,
+          AND created_at >= $2`,
       [dashboardUserEmail, sinceDate]
     );
 
-    // 2. Klíčová slova pro kategorizaci
-    const categories = {
+    // Definované kategorie stížností (ostatní budeme ignorovat nebo dáme do Ostatní)
+    const complaintCategories = [
+      'Doprava / Zásilky',
+      'Produkt / Funkčnost',
+      'Reklamace / Vrácení',
+      'Komunikace',
+      'Fakturace'
+    ];
+
+    // Klíčová slova pro fallback (staré záznamy bez category)
+    const keywordsMap = {
       'Doprava / Zásilky': ['doprava', 'doručení', 'nedorazilo', 'přepravce', 'ppl', 'dpd', 'zásilkovna', 'pošta', 'zpoždění', 'zásilka', 'balík'],
-      'Poškozené zboží': ['poškozené', 'rozbité', 'nefunguje', 'kazové', 'kvalita', 'vada', 'zničené', 'střep'],
+      'Produkt / Funkčnost': ['poškozené', 'rozbité', 'nefunguje', 'kazové', 'kvalita', 'vada', 'zničené', 'střep', 'aktivace', 'kód', 'chyba', 'chybný', 'návod'],
       'Reklamace / Vrácení': ['reklamace', 'vrátit', 'vrácení', 'odstoupení', 'peníze', 'náhrada'],
-      'Komunikace': ['neodpovídáte', 'komunikace', 'telefon', 'email', 'čekám', 'reakce'],
+      'Komunikace': ['neodpovídáte', 'komunikace', 'telefon', 'email', 'čekám', 'reakce', 'odpověď', 'nedostal'],
       'Fakturace': ['faktura', 'platba', 'účtenka', 'cena', 'částka']
     };
 
     const counts = {};
-    Object.keys(categories).forEach(k => counts[k] = 0);
+    complaintCategories.forEach(k => counts[k] = 0);
     counts['Ostatní'] = 0;
 
-    // 3. Analýza textů
     for (const row of r.rows) {
-      const text = ((row.summary || '') + ' ' + (row.subject || '')).toLowerCase();
-      let matched = false;
-
-      for (const [cat, keywords] of Object.entries(categories)) {
-        if (keywords.some(kw => text.includes(kw))) {
-          counts[cat]++;
-          matched = true;
-          break; // řadíme do první nalezené kategorie
+      // 1. Pokud má záznam už kategorii od AI
+      if (row.category) {
+        // Zkontrolujeme, zda je to jedna z našich sledovaných "stížnostních" kategorií
+        if (complaintCategories.includes(row.category)) {
+          counts[row.category]++;
+        } else if (row.category === 'Stížnost') {
+          // AI vrátila obecnou "Stížnost" -> zkusíme upřesnit podle klíčových slov, jinak Ostatní
+          const text = ((row.summary || '') + ' ' + (row.subject || '')).toLowerCase();
+          let refined = false;
+          for (const [cat, kws] of Object.entries(keywordsMap)) {
+            if (kws.some(kw => text.includes(kw))) {
+              counts[cat]++;
+              refined = true;
+              break;
+            }
+          }
+          if (!refined) counts['Ostatní']++;
         }
+        // Ostatní kategorie (Objednávka, Dotaz...) do grafu stížností NEPATŘÍ, ignorujeme.
+        continue;
       }
 
-      if (!matched) {
-        counts['Ostatní']++;
+      // 2. Fallback: Staré záznamy bez kategorie -> analýza klíčových slov
+      // Bereme jen ty, co NEJSOU pozitivní/děkovné (aby se do grafu stížností nedostaly pochvaly)
+      const sentiment = (row.sentiment || '').toLowerCase();
+      const isPositive = sentiment.includes('positive') || sentiment.includes('děkovn') || sentiment.includes('pochval');
+
+      if (!isPositive) {
+        const text = ((row.summary || '') + ' ' + (row.subject || '')).toLowerCase();
+        let matched = false;
+        for (const [cat, kws] of Object.entries(keywordsMap)) {
+          if (kws.some(kw => text.includes(kw))) {
+            counts[cat]++;
+            matched = true;
+            break;
+          }
+        }
+        // Pokud klíčová slova nenašla, ale je to explicitně negativní, dáme do Ostatní
+        if (!matched && (sentiment.includes('negative') || sentiment.includes('angry') || sentiment.includes('stížnost'))) {
+          counts['Ostatní']++;
+        }
       }
     }
 
@@ -867,7 +902,8 @@ async function setupDatabase() {
                 ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
                 ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
                 ADD COLUMN IF NOT EXISTS last_generated_at TIMESTAMPTZ DEFAULT NOW(),
-                ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;`,
+                ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS category TEXT;`,
       `UPDATE pending_replies
                 SET provider = 'gmail'
               WHERE provider IS NULL;`,
@@ -5223,10 +5259,23 @@ Pravidla pro tvorbu "suggested_reply":
 {
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
+  "category": "Objednávka|Poptávka|Dotaz|Stížnost|Fakturace|Ostatní",
   "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše",
   "requires_approval": true/false
 }
 Bez jakéhokoli dalšího textu mimo JSON. Odpovědi piš česky.
+
+Kategorie:
+- Objednávka: Nová nebo existující objednávka (běžná komunikace).
+- Poptávka: Zájem o zboží/služby.
+- Dotaz: Obecné info, otevírací doba, dostupnost.
+- Doprava / Zásilky: Problém s doručením, zpoždění, kde je balík.
+- Produkt / Funkčnost: Zboží je rozbité, nefunguje, návod, instalace.
+- Reklamace / Vrácení: Chci vrátit zboží, odstoupení od smlouvy, reklamace.
+- Komunikace: Stížnost na neodpovídání, chování personálu.
+- Fakturace: Problém s fakturou, platbou, vrácením peněz.
+- Ostatní: Cokoliv jiného.
+
 
 Text e-mailu:
 ---
@@ -5391,7 +5440,7 @@ ${String(bodyText).slice(0, 3000)}
               try {
                 const fixed = await chatJson({
                   model: DEFAULT_MODEL,
-                  system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "suggested_reply":"" }.',
+                  system: 'Vrať POUZE validní JSON dle schématu { "summary":"", "sentiment":"", "category":"", "suggested_reply":"" }.',
                   user: `Oprav na validní JSON:\n${rawAnalysis}`,
                   client: dbClient,
                   dashboardUserEmail: acc.dashboard_user_email
@@ -5496,15 +5545,17 @@ ${String(bodyText).slice(0, 3000)}
               reply_body,
               summary,
               sentiment,
+              category,
               metadata
             ) VALUES (
-              $1,$2,'custom',$3,NULL,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+              $1,$2,'custom',$3,NULL,$4,$5,$6,$7,$8,$9,$10,$11,$12,$16,$13
             )
             ON CONFLICT (dashboard_user_email, connected_email, provider, message_id)
             DO UPDATE SET
               reply_body = EXCLUDED.reply_body,
               summary = EXCLUDED.summary,
               sentiment = EXCLUDED.sentiment,
+              category = EXCLUDED.category,
               snippet = EXCLUDED.snippet,
               original_body = EXCLUDED.original_body,
               status = 'pending',
@@ -5523,7 +5574,10 @@ ${String(bodyText).slice(0, 3000)}
               replyBody,
               analysis?.summary ? String(analysis.summary).trim() : null,
               analysis?.sentiment ? String(analysis.sentiment).trim() : null,
-              JSON.stringify(metadata)
+              JSON.stringify(metadata),
+              null,
+              null,
+              analysis?.category ? String(analysis.category).trim() : null
             ]);
 
             await runWithRetry(() => actionImap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true })).catch(() => { });
@@ -5655,10 +5709,23 @@ Pravidla pro tvorbu "suggested_reply":
 {
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
+  "category": "Objednávka|Poptávka|Dotaz|Stížnost|Fakturace|Ostatní",
   "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše",
   "requires_approval": true/false
 }
 Bez jakéhokoli dalšího textu mimo JSON. Odpovědi piš česky.
+
+Kategorie:
+- Objednávka: Nová nebo existující objednávka (běžná komunikace).
+- Poptávka: Zájem o zboží/služby.
+- Dotaz: Obecné info, otevírací doba, dostupnost.
+- Doprava / Zásilky: Problém s doručením, zpoždění, kde je balík.
+- Produkt / Funkčnost: Zboží je rozbité, nefunguje, návod, instalace.
+- Reklamace / Vrácení: Chci vrátit zboží, odstoupení od smlouvy, reklamace.
+- Komunikace: Stížnost na neodpovídání, chování personálu.
+- Fakturace: Problém s fakturou, platbou, vrácením peněz.
+- Ostatní: Cokoliv jiného.
+
 
 Text e-mailu:
 ---
@@ -5876,15 +5943,17 @@ ${String(bodyText).slice(0, 3000)}
         reply_body,
         summary,
         sentiment,
+        category,
         metadata
       ) VALUES (
-        $1,$2,'gmail',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+        $1,$2,'gmail',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$15,$14
       )
       ON CONFLICT (dashboard_user_email, connected_email, provider, message_id)
       DO UPDATE SET
         reply_body = EXCLUDED.reply_body,
         summary = EXCLUDED.summary,
         sentiment = EXCLUDED.sentiment,
+        category = EXCLUDED.category,
         snippet = EXCLUDED.snippet,
         original_body = EXCLUDED.original_body,
         status = 'pending',
@@ -5904,7 +5973,8 @@ ${String(bodyText).slice(0, 3000)}
       replyBody,
       analysis?.summary ? String(analysis.summary).trim() : null,
       analysis?.sentiment ? String(analysis.sentiment).trim() : null,
-      JSON.stringify(metadata)
+      JSON.stringify(metadata),
+      analysis?.category ? String(analysis.category).trim() : null
     ]);
 
     await gmail.users.messages.modify({
