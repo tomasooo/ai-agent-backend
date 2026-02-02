@@ -3814,7 +3814,7 @@
                 </div>
               </div>
 
-            
+
 
               <div class="stat-card">
                 <div class="stat-header">
@@ -4521,17 +4521,29 @@
           </div>
         </div>
 
-        <div class="chart-container">
-          <div class="chart-header">
-            <h3 class="chart-title">Nejčastěji používané šablony</h3>
-            <div class="chart-filters">
-              <button class="filter-btn active" data-days="7">7 dní</button>
-              <button class="filter-btn" data-days="30">30 dní</button>
-              <button class="filter-btn" data-days="90">3 měsíce</button>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; margin-top: 2rem;">
+          <div class="chart-container">
+            <div class="chart-header">
+              <h3 class="chart-title">Nejčastěji používané šablony</h3>
+              <div class="chart-filters">
+                <button class="filter-btn active" data-days="7">7 dní</button>
+              </div>
+            </div>
+            <div class="chart-placeholder">
+              <canvas id="templateUsageChart" style="height:300px"></canvas>
             </div>
           </div>
-          <div class="chart-placeholder">
-            <canvas id="templateUsageChart" style="height:300px"></canvas>
+
+          <div class="chart-container">
+            <div class="chart-header">
+              <h3 class="chart-title">Analýza stížností</h3>
+              <div class="chart-filters">
+                <!-- Placeholder pro filtry -->
+              </div>
+            </div>
+            <div class="chart-placeholder">
+              <canvas id="complaintsChart" style="height:300px"></canvas>
+            </div>
           </div>
         </div>
       </div>
@@ -5069,6 +5081,7 @@
       if (window.__responseTimeChart) window.__responseTimeChart.destroy();
       if (window.__aiQualityChart) window.__aiQualityChart.destroy();
       if (window.__templateUsageChart) window.__templateUsageChart.destroy();
+      if (window.__complaintsChart) window.__complaintsChart.destroy();
 
       // === 1. Graf: Průměrná doba odpovědi (zatím statická ukázka) ===
       const ctx1 = document.getElementById('responseTimeChart')?.getContext('2d');
@@ -5127,6 +5140,63 @@
       } catch (e) {
         console.error("Chyba při načítání dat o šablonách:", e);
         showToast("Nepodařilo se načíst data o šablonách.", "error");
+      }
+
+      // === 4. Graf: Analýza stížností (nové) ===
+      try {
+        const compRes = await fetch(`${window.BACKEND}/api/analytics/complaints?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&days=${days}`);
+        const compData = await compRes.json();
+
+        const topics = compData.complaints || [];
+        // Fallback pokud nejsou data
+        const labels = topics.length ? topics.map(t => t.topic) : ['Zatím žádná data'];
+        const data = topics.length ? topics.map(t => t.count) : [1];
+        const colors = [
+          '#ef4444', // Červená (nejkritičtější)
+          '#f97316', // Oranžová
+          '#eab308', // Žlutá
+          '#3b82f6', // Modrá
+          '#a855f7', // Fialová
+          '#64748b'  // Šedá (ostatní)
+        ];
+
+        const ctx4 = document.getElementById('complaintsChart')?.getContext('2d');
+        if (ctx4) {
+          window.__complaintsChart = new Chart(ctx4, {
+            type: 'doughnut',
+            data: {
+              labels: labels,
+              datasets: [{
+                data: data,
+                backgroundColor: colors.slice(0, labels.length),
+                borderWidth: 1
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: 'right',
+                  labels: { boxWidth: 12, padding: 15 }
+                },
+                tooltip: {
+                  callbacks: {
+                    label: function (context) {
+                      const label = context.label || '';
+                      const value = context.raw || 0;
+                      const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                      const percentage = ((value / total) * 100).toFixed(1) + '%';
+                      return `${label}: ${value} (${percentage})`;
+                    }
+                  }
+                }
+              }
+            }
+          });
+        }
+      } catch (e) {
+        console.error("Chyba při načítání analýzy stížností:", e);
       }
 
       // Zajistíme funkčnost tlačítek pro změnu časového období
@@ -9514,4 +9584,3 @@ S pozdravem
 </body>
 
 </html>
-
