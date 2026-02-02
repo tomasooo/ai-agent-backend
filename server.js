@@ -503,6 +503,77 @@ app.get('/api/dashboard/stats', async (req, res) => {
   }
 });
 
+// === COMPLAINTS ANALYTICS (NEW) ===
+app.get('/api/analytics/complaints', async (req, res) => {
+  const { dashboardUserEmail, days } = req.query;
+  if (!dashboardUserEmail) {
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail' });
+  }
+
+  const db = await pool.connect();
+  try {
+    // 1. Získáme relevantní emaily (pending_replies, případně v budoucnu archiv)
+    // Bereme ty se sentimentem 'negative' nebo kde summary obsahuje klíčová slova
+    const daysLimit = Number(days) || 7;
+    const sinceDate = new Date();
+    sinceDate.setDate(sinceDate.getDate() - daysLimit);
+
+    const r = await db.query(
+      `SELECT summary, subject, sentiment, created_at
+         FROM pending_replies
+        WHERE dashboard_user_email = $1
+          AND created_at >= $2
+          AND (sentiment ILIKE '%negative%' OR sentiment ILIKE '%angry%' OR sentiment ILIKE '%stížnost%')`,
+      [dashboardUserEmail, sinceDate]
+    );
+
+    // 2. Klíčová slova pro kategorizaci
+    const categories = {
+      'Doprava / Zásilky': ['doprava', 'doručení', 'nedorazilo', 'přepravce', 'ppl', 'dpd', 'zásilkovna', 'pošta', 'zpoždění', 'zásilka', 'balík'],
+      'Poškozené zboží': ['poškozené', 'rozbité', 'nefunguje', 'kazové', 'kvalita', 'vada', 'zničené', 'střep'],
+      'Reklamace / Vrácení': ['reklamace', 'vrátit', 'vrácení', 'odstoupení', 'peníze', 'náhrada'],
+      'Komunikace': ['neodpovídáte', 'komunikace', 'telefon', 'email', 'čekám', 'reakce'],
+      'Fakturace': ['faktura', 'platba', 'účtenka', 'cena', 'částka']
+    };
+
+    const counts = {};
+    Object.keys(categories).forEach(k => counts[k] = 0);
+    counts['Ostatní'] = 0;
+
+    // 3. Analýza textů
+    for (const row of r.rows) {
+      const text = ((row.summary || '') + ' ' + (row.subject || '')).toLowerCase();
+      let matched = false;
+
+      for (const [cat, keywords] of Object.entries(categories)) {
+        if (keywords.some(kw => text.includes(kw))) {
+          counts[cat]++;
+          matched = true;
+          break; // řadíme do první nalezené kategorie
+        }
+      }
+
+      if (!matched) {
+        counts['Ostatní']++;
+      }
+    }
+
+    // 4. Formátování pro graf
+    const result = Object.entries(counts)
+      .filter(([_, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([topic, count]) => ({ topic, count }));
+
+    res.json({ success: true, complaints: result });
+
+  } catch (e) {
+    console.error('Analytics complaints error:', e);
+    res.status(500).json({ success: false, message: 'Chyba serveru' });
+  } finally {
+    db.release();
+  }
+});
+
 // === RECENT EMAILS (DASHBOARD) (Relocated) ===
 app.get('/api/dashboard/recent-emails', async (req, res) => {
   const { dashboardUserEmail, email } = req.query;
@@ -6104,7 +6175,6 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
 
 
 
