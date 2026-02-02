@@ -5249,10 +5249,6 @@ Pravidla pro tvorbu "suggested_reply":
 - Pokud STYLE_PROFILE.signature není prázdný:
   - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
   - Podpis neduplikuj, pokud už v textu je.
-- "requires_approval": Nastav na true, pokud:
-  - Email obsahuje sériová čísla (např. punv, pxnv, pwnv, atd.) nebo technické kódy.
-  - Email vyžaduje důležité lidské rozhodnutí nebo se jedná o citlivou záležitost.
-  - Si nejsi jistý správnou odpovědí.
 `;
 
         const buildTask = (bodyText) => `${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
@@ -5260,8 +5256,8 @@ Pravidla pro tvorbu "suggested_reply":
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
   "category": "Objednávka|Poptávka|Dotaz|Stížnost|Fakturace|Ostatní",
-  "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše",
-  "requires_approval": true/false
+  "action": "auto_reply|require_approval|ignore",
+  "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše"
 }
 Bez jakéhokoli dalšího textu mimo JSON. Odpovědi piš česky.
 
@@ -5275,6 +5271,15 @@ Kategorie:
 - Komunikace: Stížnost na neodpovídání, chování personálu.
 - Fakturace: Problém s fakturou, platbou, vrácením peněz.
 - Ostatní: Cokoliv jiného.
+
+Pravidla pro 'action':
+- "ignore": Pokud je e-mail spam, reklama, newsletter, nabídka služeb (SEO, App Dev), automatická notifikace bez nutnosti reakce.
+- "require_approval":
+  - Pokud je sentiment "negativní" (stížnost, nespokojenost, hrozba).
+  - Pokud e-mail obsahuje sériová čísla (pxnv..., punv..., pwnv...).
+  - Pokud si nejsi jistý odpovědí nebo jde o citlivé téma.
+- "auto_reply": Všechny ostatní validní e-maily (dotazy, objednávky), na které lze bezpečně odpovědět.
+
 
 
 Text e-mailu:
@@ -5466,55 +5471,68 @@ ${String(bodyText).slice(0, 3000)}
             const fromHeaderText = parsed.from?.text || fromAddr || '';
             const senderHeader = replyToHeader || fromHeaderText;
 
-            // SMART APPROVAL LOGIC
-            const isReplySubject = subject.trim().toLowerCase().startsWith('re:');
-            const hasSerialNumber = /(pxnv|punv|pwnv)\d+/i.test(bodyText || subject);
+            // --- AI DECISION LOGIC (Replaces Smart Approval) ---
+            const action = analysis?.action || 'require_approval';
 
-            // Detekce citlivých témat (stížnosti, právní hrozby)
-            const sLower = `${subject} ${bodyText || ''}`.toLowerCase();
-            const sensitiveKeywords = ['žalob', 'právník', 'soud', 'policie', 'závažný problém', 'stížnost', 'zranění', 'bezmocn'];
-            const isSensitive = sensitiveKeywords.some(w => sLower.includes(w));
+            console.log(`[IMAP Worker] UID: ${msg.uid} - AI Action: "${action}"`);
 
-            const aiRequiresApproval = !!analysis?.requires_approval;
+            // 1. IGNORE
+            if (action === 'ignore') {
+              console.log(`[IMAP Worker] AI rozhodla IGNOROVAT (spam/reklama/nezajímavé).`);
+              // Označíme jako přečtené, aby to už neotravovalo
+              await runWithRetry(() => actionImap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true })).catch(() => { });
 
-            // Intercept ONLY if user explicitly enabled "Approval Required" setting
-            const smartApprovalNeeded = acc.approval_required && (isReplySubject || hasSerialNumber || isSensitive || aiRequiresApproval);
+              await logActivity(acc.dashboard_user_email, 'AI Ignorovalo', 'success', {
+                account: acc.email_address,
+                subject: subject,
+                reason: 'action_ignore'
+              });
+              continue;
+            }
 
-            if (shouldAutoReply && !smartApprovalNeeded) {
+            // 2. AUTO REPLY
+            // Podmínka: Musí být zapnuto globální auto_reply (acc.auto_reply) A AI musí zvolit "auto_reply".
+            if (shouldAutoReply && action === 'auto_reply') {
               const targetRecipient = (replyToHeader || fromHeaderText || '').trim();
               if (!targetRecipient) {
                 console.warn('[IMAP worker] Nelze určit adresáta pro auto-odpověď.');
-                continue;
-              }
-              if (!messageIdHeader) {
+                // Fallback -> uložit jako pending, ať to vidí člověk
+              } else if (!messageIdHeader) {
                 console.warn('[IMAP worker] Chybí Message-ID, auto-odpověď přeskočena.');
-                continue;
-              }
+                // Fallback -> uložit jako pending
+              } else {
+                try {
+                  await sendCustomReply({
+                    accountDetails: acc,
+                    emailAddress: acc.email_address,
+                    targetRecipient,
+                    subject,
+                    text: replyBody,
+                    fromName: '',
+                    origMessageId: messageIdHeader || '',
+                    origReferences: referencesHeader || '',
+                    replyToUid: msg.uid
+                  });
 
-              try {
-                await sendCustomReply({
-                  accountDetails: acc,
-                  emailAddress: acc.email_address,
-                  targetRecipient,
-                  subject,
-                  text: replyBody,
-                  fromName: '',
-                  origMessageId: messageIdHeader || '',
-                  origReferences: referencesHeader || '',
-                  replyToUid: msg.uid
-                });
-
-                await logActivity(
-                  acc.dashboard_user_email,
-                  'Odeslání automatické odpovědi (Custom)',
-                  'success',
-                  { account: acc.email_address, to: targetRecipient }
-                );
-              } catch (sendErr) {
-                console.error('[IMAP worker] Odeslání auto-odpovědi selhalo:', sendErr?.message || sendErr);
+                  await logActivity(
+                    acc.dashboard_user_email,
+                    'Odeslání automatické odpovědi (AI Auto)',
+                    'success',
+                    { account: acc.email_address, to: targetRecipient }
+                  );
+                  // Hotovo, jdeme na další
+                  continue;
+                } catch (sendErr) {
+                  console.error('[IMAP worker] Odeslání auto-odpovědi selhalo:', sendErr?.message || sendErr);
+                  // Pokud selže odeslání, uložíme do pending, aby se to neztratilo
+                }
               }
-              continue;
             }
+
+            // 3. REQUIRE APPROVAL (nebo fallback pokud selhalo auto_reply)
+            // Pokračujeme v kódu níže, který ukládá do pending_replies...
+
+
 
             const metadata = {
               replyToUid: msg.uid,
@@ -5699,10 +5717,6 @@ Pravidla pro tvorbu "suggested_reply":
 - Pokud STYLE_PROFILE.signature není prázdný:
   - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
   - Podpis neduplikuj, pokud už v textu je.
-- "requires_approval": Nastav na true, pokud:
-  - Email obsahuje sériová čísla (např. punv, pxnv, pwnv, atd.) nebo technické kódy.
-  - Email vyžaduje důležité lidské rozhodnutí nebo se jedná o citlivou záležitost.
-  - Si nejsi jistý správnou odpovědí.
 `;
 
   const buildTask = (bodyText) => `${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
@@ -5710,8 +5724,8 @@ Pravidla pro tvorbu "suggested_reply":
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
   "category": "Objednávka|Poptávka|Dotaz|Stížnost|Fakturace|Ostatní",
-  "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše",
-  "requires_approval": true/false
+  "action": "auto_reply|require_approval|ignore",
+  "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše"
 }
 Bez jakéhokoli dalšího textu mimo JSON. Odpovědi piš česky.
 
@@ -5725,6 +5739,15 @@ Kategorie:
 - Komunikace: Stížnost na neodpovídání, chování personálu.
 - Fakturace: Problém s fakturou, platbou, vrácením peněz.
 - Ostatní: Cokoliv jiného.
+
+Pravidla pro 'action':
+- "ignore": Pokud je e-mail spam, reklama, newsletter, nabídka služeb (SEO, App Dev), automatická notifikace bez nutnosti reakce.
+- "require_approval":
+  - Pokud je sentiment "negativní" (stížnost, nespokojenost, hrozba).
+  - Pokud e-mail obsahuje sériová čísla (pxnv..., punv..., pwnv...).
+  - Pokud si nejsi jistý odpovědí nebo jde o citlivé téma.
+- "auto_reply": Všechny ostatní validní e-maily (dotazy, objednávky), na které lze bezpečně odpovědět.
+
 
 
 Text e-mailu:
@@ -5873,27 +5896,28 @@ ${String(bodyText).slice(0, 3000)}
       continue;
     }
 
-    const metadata = {
-      fromHeader: fromHdr,
-      replyToHeader: replyToHdr,
-      replyTo: replyToAddress,
-      sender: replyToHdr || fromHdr || from
-    };
+    // --- AI DECISION LOGIC (Replaces Smart Approval) ---
+    const action = analysis?.action || 'require_approval';
+    console.log(`[Gmail Worker] Msg ID: ${msg.id} - AI Action: "${action}"`);
 
-    // SMART APPROVAL LOGIC
-    const isReplySubject = subject.trim().toLowerCase().startsWith('re:');
-    const hasSerialNumber = /(pxnv|punv|pwnv)\d+/i.test(bodyText || snippet || subject);
+    // 1. IGNORE
+    if (action === 'ignore') {
+      console.log(`[Gmail Worker] AI rozhodla IGNOROVAT (spam/reklama/nezajímavé).`);
+      await gmail.users.messages.modify({
+        userId: 'me',
+        id: msg.id,
+        requestBody: { removeLabelIds: ['UNREAD'] }
+      });
+      await logActivity(acc.dashboard_user_email, 'AI Ignorovalo (Gmail)', 'success', {
+        account: acc.connected_email,
+        subject: subject,
+        reason: 'action_ignore'
+      });
+      continue;
+    }
 
-    // Detekce citlivých témat (stížnosti, právní hrozby)
-    const sLower = `${subject} ${bodyText || snippet || ''}`.toLowerCase();
-    const sensitiveKeywords = ['žalob', 'právník', 'soud', 'policie', 'závažný problém', 'stížnost', 'zranění', 'bezmocn'];
-    const isSensitive = sensitiveKeywords.some(w => sLower.includes(w));
-
-    const aiRequiresApproval = !!analysis?.requires_approval;
-    // Intercept ONLY if user explicitly enabled "Approval Required" setting
-    const smartApprovalNeeded = acc.approval_required && (isReplySubject || hasSerialNumber || isSensitive || aiRequiresApproval);
-
-    if (shouldAutoReply && !smartApprovalNeeded) {
+    // 2. AUTO REPLY
+    if (shouldAutoReply && action === 'auto_reply') {
       try {
         const { targetRecipient } = await sendGmailReplyMessage({
           gmail,
@@ -5917,15 +5941,24 @@ ${String(bodyText).slice(0, 3000)}
 
         await logActivity(
           acc.dashboard_user_email,
-          'Odeslání automatické odpovědi (Gmail)',
+          'Odeslání automatické odpovědi (Gmail AI)',
           'success',
           { account: acc.connected_email, to: targetRecipient }
         );
+        continue;
       } catch (sendErr) {
         console.error('         Auto-odpověď se nepodařila odeslat:', sendErr?.message || sendErr);
+        // Fallback -> uložíme do pending
       }
-      continue;
     }
+
+    // 3. REQUIRE APPROVAL (nebo fallback)
+    const metadata = {
+      fromHeader: fromHdr,
+      replyToHeader: replyToHdr,
+      replyTo: replyToAddress,
+      sender: replyToHdr || fromHdr || from
+    };
 
     await dbClient.query(`
       INSERT INTO pending_replies (
