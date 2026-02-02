@@ -5566,7 +5566,7 @@ ${String(bodyText).slice(0, 3000)}
               category,
               metadata
             ) VALUES (
-              $1,$2,'custom',$3,NULL,$4,$5,$6,$7,$8,$9,$10,$11,$12,$16,$13
+              $1,$2,'custom',$3,NULL,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
             )
             ON CONFLICT (dashboard_user_email, connected_email, provider, message_id)
             DO UPDATE SET
@@ -5592,10 +5592,8 @@ ${String(bodyText).slice(0, 3000)}
               replyBody,
               analysis?.summary ? String(analysis.summary).trim() : null,
               analysis?.sentiment ? String(analysis.sentiment).trim() : null,
-              JSON.stringify(metadata),
-              null,
-              null,
-              analysis?.category ? String(analysis.category).trim() : null
+              analysis?.category ? String(analysis.category).trim() : null,
+              JSON.stringify(metadata)
             ]);
 
             await runWithRetry(() => actionImap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true })).catch(() => { });
@@ -5979,7 +5977,7 @@ ${String(bodyText).slice(0, 3000)}
         category,
         metadata
       ) VALUES (
-        $1,$2,'gmail',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$15,$14
+        $1,$2,'gmail',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
       )
       ON CONFLICT (dashboard_user_email, connected_email, provider, message_id)
       DO UPDATE SET
@@ -6006,8 +6004,8 @@ ${String(bodyText).slice(0, 3000)}
       replyBody,
       analysis?.summary ? String(analysis.summary).trim() : null,
       analysis?.sentiment ? String(analysis.sentiment).trim() : null,
-      JSON.stringify(metadata),
-      analysis?.category ? String(analysis.category).trim() : null
+      analysis?.category ? String(analysis.category).trim() : null,
+      JSON.stringify(metadata)
     ]);
 
     await gmail.users.messages.modify({
