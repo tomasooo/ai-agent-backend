@@ -5472,7 +5472,14 @@ ${String(bodyText).slice(0, 3000)}
             const senderHeader = replyToHeader || fromHeaderText;
 
             // --- AI DECISION LOGIC (Replaces Smart Approval) ---
-            const action = analysis?.action || 'require_approval';
+            let action = analysis?.action || 'require_approval';
+
+            // FORCE APPROVAL FOR REPLIES (Re: / Odp:)
+            const subjLower = (subject || '').toLowerCase().trim();
+            if (subjLower.startsWith('re:') || subjLower.startsWith('odp:')) {
+              console.log(`[IMAP Worker] UID: ${msg.uid} - Subject starts with Re:/Odp: -> FORCING require_approval`);
+              action = 'require_approval';
+            }
 
             console.log(`[IMAP Worker] UID: ${msg.uid} - AI Action: "${action}"`);
 
@@ -5895,7 +5902,15 @@ ${String(bodyText).slice(0, 3000)}
     }
 
     // --- AI DECISION LOGIC (Replaces Smart Approval) ---
-    const action = analysis?.action || 'require_approval';
+    let action = analysis?.action || 'require_approval';
+
+    // FORCE APPROVAL FOR REPLIES (Re: / Odp:)
+    const subjLower = (subject || '').toLowerCase().trim();
+    if (subjLower.startsWith('re:') || subjLower.startsWith('odp:')) {
+      console.log(`[Gmail Worker] Msg ID: ${msg.id} - Subject starts with Re:/Odp: -> FORCING require_approval`);
+      action = 'require_approval';
+    }
+
     console.log(`[Gmail Worker] Msg ID: ${msg.id} - AI Action: "${action}"`);
 
     // 1. IGNORE
@@ -6276,7 +6291,6 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
 
 
 
