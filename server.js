@@ -836,6 +836,8 @@ async function setupDatabase() {
                 ADD COLUMN IF NOT EXISTS verification_token TEXT,
                 ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user',
                 ADD COLUMN IF NOT EXISTS ai_actions_used INT DEFAULT 0;`,
+      // HOTFIX: Existing users (legacy) don't have a token, so we mark them as verified so they can login.
+      `UPDATE dashboard_users SET email_verified = true WHERE email_verified = false AND verification_token IS NULL;`,
       `CREATE TABLE IF NOT EXISTS connected_accounts (
                 email VARCHAR(255) PRIMARY KEY,
                 refresh_token TEXT NOT NULL,
@@ -2123,9 +2125,9 @@ app.post('/api/auth/google', async (req, res) => {
     client = await pool.connect();
     // Vytvoříme uživatele, pokud neexistuje (s výchozí rolí 'user')
     await client.query(
-      `INSERT INTO dashboard_users (email, name, plan, role)
-             VALUES ($1, $2, 'Starter', 'user')
-             ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name`,
+      `INSERT INTO dashboard_users (email, name, plan, role, email_verified)
+             VALUES ($1, $2, 'Starter', 'user', true)
+             ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, email_verified = true`,
       [payload.email, payload.name]
     );
 
