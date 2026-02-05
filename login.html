@@ -1132,8 +1132,9 @@
                 const data = await r.json();
                 if (!r.ok || !data.success) throw new Error(data.message || 'Registrace selhala.');
 
-                localStorage.setItem('userName', data.user.name);
-                localStorage.setItem('userEmail', data.user.email);
+                // NE-ukládáme do localStorage, protože uživatel ještě není ověřený
+                // localStorage.setItem('userName', data.user.name);
+                // localStorage.setItem('userEmail', data.user.email);
 
                 // Místo přesměrování zobrazíme Step 3 (Info o emailu)
                 document.getElementById('step1').classList.remove('active');
@@ -1187,7 +1188,12 @@
 
         // === Krok 2 a 3 – přesměrování ===
         document.getElementById('step2Skip')?.addEventListener('click', () => window.location.href = 'dashboard.html');
-        document.getElementById('goToDashboard')?.addEventListener('click', () => window.location.href = 'dashboard.html');
+        // Tlačítko "Přejít do aplikace" v kroku 3 (po registraci) nyní pošle uživatele na login (protože musí ověřit email)
+        document.getElementById('goToDashboard')?.addEventListener('click', () => {
+            enterLoginMode();
+            // Skryjeme Step 3 a zobrazíme login
+            document.getElementById('step3').classList.remove('active');
+        });
 
     </script>
 
