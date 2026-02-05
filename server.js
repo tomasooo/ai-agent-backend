@@ -2141,7 +2141,7 @@ app.post('/api/auth/google', async (req, res) => {
   } catch (error) {
     console.error("Chyba při ověřování přihlašovacího tokenu:", error);
     await logActivity(emailForLog, 'Přihlášení (Google)', 'error', { reason: error.message || String(error) });
-    res.status(401).json({ success: false, message: 'Ověření selhalo.' });
+    res.status(401).json({ success: false, message: 'Ověření selhalo: ' + (error.message || String(error)) });
   } finally {
     if (client) client.release();
   }
