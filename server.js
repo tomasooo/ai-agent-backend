@@ -2109,8 +2109,11 @@ const oauth2Client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, RE
 
 
 
+console.log('[DEBUG] Server GOOGLE_CLIENT_ID:', GOOGLE_CLIENT_ID);
+
 // ENDPOINT PRO PŘIHLÁŠENÍ
 app.post('/api/auth/google', async (req, res) => {
+  console.log('[DEBUG] /api/auth/google called');
   let client;
   const { token } = req.body || {};
   let emailForLog = extractEmailFromIdToken(token);
