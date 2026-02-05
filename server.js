@@ -2875,13 +2875,19 @@ app.post('/api/auth/login', async (req, res) => {
   const client = await pool.connect();
   try {
     const r = await client.query(
-      'SELECT email, name, plan, role, password_hash FROM dashboard_users WHERE email = $1',
+      'SELECT email, name, plan, role, password_hash, email_verified FROM dashboard_users WHERE email = $1',
       [email]
     );
     if (r.rowCount === 0 || !r.rows[0].password_hash) {
       await logActivity(email, 'Přihlášení (heslo)', 'error', { reason: 'Uživatel nenalezen nebo bez hesla' });
       return res.status(401).json({ success: false, message: 'Nesprávný email nebo heslo.' });
     }
+
+    // Check verification
+    if (r.rows[0].email_verified === false) {
+      return res.status(403).json({ success: false, message: 'Email není ověřen. Zkontrolujte prosím svou schránku.' });
+    }
+
     const ok = await bcrypt.compare(password, r.rows[0].password_hash);
     if (!ok) {
       await logActivity(email, 'Přihlášení (heslo)', 'error', { reason: 'Neplatné heslo' });
