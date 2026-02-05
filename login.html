@@ -7,7 +7,7 @@
     <title>Začít zdarma - AI Emailový Agent</title>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
-        window.BACKEND = 'https://ai-email-server-stejdesign.onrender.com';
+        window.BACKEND = 'http://localhost:3000';
     </script>
     <style>
         * {
@@ -823,7 +823,7 @@
     <header class="header">
         <div class="container">
             <div class="header-content">
-                <a href="index.html" class="logo">
+                <a href="#" class="logo">
                     <div class="logo-img-wrapper">
                         <img src="logo-Agent.png" alt="AI Agent Logo">
                     </div>
@@ -1008,6 +1008,25 @@
     <script>
         // === GOOGLE SIGN-IN ===
         window.onload = function () {
+            // Check for verification success
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('verified') === 'success') {
+                enterLoginMode();
+                const container = document.querySelector('.signup-form-container');
+                // Vložíme hlášku o úspěchu nad formulář
+                const msg = document.createElement('div');
+                msg.className = 'success-message show';
+                msg.style.marginBottom = '20px';
+                msg.style.padding = '10px';
+                msg.style.background = 'rgba(46, 204, 113, 0.1)';
+                msg.style.borderRadius = '10px';
+                msg.innerHTML = '<span style="color:#2ecc71;font-weight:bold;font-size:1.1rem;">✓ Email úspěšně ověřen!</span><p style="margin:5px 0 0 0;color:#2c3e50;">Nyní se můžete přihlásit.</p>';
+
+                // Vložíme za nadpis "Přihlášení do účtu"
+                const header = document.querySelector('.form-header');
+                if (header) header.insertAdjacentElement('afterend', msg);
+            }
+
             google.accounts.id.initialize({
                 client_id: "990614891314-kugic255rq68tt1m7uqg4rdp9jdig5lb.apps.googleusercontent.com",
                 callback: handleCredentialResponse
@@ -1115,7 +1134,17 @@
 
                 localStorage.setItem('userName', data.user.name);
                 localStorage.setItem('userEmail', data.user.email);
-                window.location.href = 'dashboard.html';
+
+                // Místo přesměrování zobrazíme Step 3 (Info o emailu)
+                document.getElementById('step1').classList.remove('active');
+                document.getElementById('step3').classList.add('active');
+
+                // Aktualizace indikátoru kroků
+                const steps = document.querySelectorAll('.step');
+                steps[0].classList.remove('active');
+                steps[0].innerHTML = '<div class="step-number">✓</div><span>Účet</span>';
+                steps[2].classList.add('active');
+
             } catch (err) {
                 console.error(err);
                 alert(err.message || 'Chyba při registraci.');
@@ -1173,5 +1202,3 @@
 </body>
 
 </html>
-
-
