@@ -52,6 +52,56 @@ console.log("DEBUG: Načtená DATABASE_URL je:", DATABASE_URL);
 const SERVER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 const REDIRECT_URI = `${SERVER_URL}/api/oauth/google/callback`;
 
+// --- SMTP Config ---
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = process.env.SMTP_PORT || 465;
+const SMTP_SECURE = process.env.SMTP_SECURE === 'true'; // string to bool
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+
+async function sendVerificationEmail(toEmail, token) {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    console.warn('[AUTH] SMTP credentials missing, skipping verification email.');
+    return;
+  }
+
+  const link = `${SERVER_URL}/api/auth/verify?token=${token}`;
+
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: Number(SMTP_PORT),
+    secure: SMTP_SECURE,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+  });
+
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2>Ověření emailové adresy</h2>
+      <p>Dobrý den,</p>
+      <p>děkujeme za registraci. Pro aktivaci účtu prosím klikněte na následující odkaz:</p>
+      <p style="margin: 20px 0;">
+        <a href="${link}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Ověřit email</a>
+      </p>
+      <p>Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:</p>
+      <p><a href="${link}">${link}</a></p>
+      <p>S pozdravem,</p>
+      <p>Tým StejDesign</p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `"AI Agent" <${SMTP_USER}>`,
+    to: toEmail,
+    subject: 'Ověření emailové adresy',
+    html,
+  });
+  console.log(`[AUTH] Verification email sent to ${toEmail}`);
+}
+
+
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -2745,16 +2795,22 @@ app.post('/api/auth/register', async (req, res) => {
     const verificationToken = crypto.randomBytes(24).toString('hex');
 
     await client.query(`
-      INSERT INTO dashboard_users (email, name, plan, password_hash, email_verified, verification_token)
+       INSERT INTO dashboard_users (email, name, plan, password_hash, email_verified, verification_token)
       VALUES ($1,$2,$3,$4,$5,$6)
       ON CONFLICT (email) DO UPDATE
       SET name = EXCLUDED.name,
           password_hash = EXCLUDED.password_hash,
           verification_token = EXCLUDED.verification_token
-    `, [email, fullName, 'Starter', passwordHash, /* email_verified: */ true, verificationToken]);
+    `, [email, fullName, 'Starter', passwordHash, /* email_verified: */ false, verificationToken]);
 
-    // TODO: odeslání verifikačního e-mailu (volitelné)
-    // Zatím vrátíme úspěch a „přihlásíme“
+    // Odeslání verifikačního e-mailu
+    try {
+      await sendVerificationEmail(email, verificationToken);
+    } catch (err) {
+      console.error('[AUTH] Failed to send verification email:', err);
+      // nezastavujeme flow, uživatel se může přihlásit (nebo mu řekneme, at si to necha poslat znovu - TODO)
+    }
+
     await logActivity(email, 'Registrace', 'success');
     return res.json({
       success: true,
@@ -2768,6 +2824,44 @@ app.post('/api/auth/register', async (req, res) => {
     client.release();
   }
 });
+
+app.get('/api/auth/verify', async (req, res) => {
+  const { token } = req.query;
+  if (!token) {
+    return res.status(400).send('Chybí verifikační token.');
+  }
+
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      'SELECT email FROM dashboard_users WHERE verification_token = $1',
+      [token]
+    );
+
+    if (r.rowCount === 0) {
+      return res.status(400).send('Neplatný nebo expirovaný verifikační odkaz.');
+    }
+
+    const email = r.rows[0].email;
+
+    await client.query(
+      'UPDATE dashboard_users SET email_verified = true, verification_token = NULL WHERE email = $1',
+      [email]
+    );
+
+    await logActivity(email, 'Verifikace emailu', 'success');
+
+    // Přesměrování na frontend s parametrem
+    res.redirect(`${FRONTEND_URL}/login.html?verified=success`);
+
+  } catch (e) {
+    console.error('VERIFY ERROR', e);
+    res.status(500).send('Chyba serveru při verifikaci.');
+  } finally {
+    client.release();
+  }
+});
+
 
 
 
