@@ -5482,9 +5482,26 @@ ${String(bodyText).slice(0, 3000)}
             let isHeaderSpam = isSpamByHeadersMap(msg.headers, subject);
 
             const fromAddr = (msg.envelope?.from?.[0]?.address || '').toLowerCase();
-            if (userBlacklist.includes(fromAddr)) {
+            const isBlacklisted = userBlacklist.includes(fromAddr);
+
+            if (isBlacklisted) {
               console.log(`[IMAP Worker] UID: ${msg.uid} - Zablokováno uživatelským blacklistem: ${fromAddr}`);
-              isHeaderSpam = true;
+
+              const consume = await tryConsumeAiAction(dbClient, acc.dashboard_user_email);
+              if (consume.ok) {
+                // Označit jako přečtené (vždy)
+                await runWithRetry(() => actionImap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }))
+                  .catch((err) => console.error(`[IMAP Worker] Failed to mark blacklisted UID ${msg.uid} as SEEN:`, err));
+
+                await logActivity(acc.dashboard_user_email, 'Ignorováno (Blacklist)', 'success', {
+                  account: acc.email_address,
+                  subject: subject,
+                  action: 'marked_seen_blacklist'
+                });
+              } else {
+                console.warn(`[IMAP Worker] UID: ${msg.uid} - Blacklisted, ale vyčerpán limit AI akcí.`);
+              }
+              continue;
             }
 
             console.log(`[IMAP Worker] UID: ${msg.uid} | Subject: "${subject}" | HeaderSpam: ${isHeaderSpam} | AutoReply: ${acc.auto_reply}`);
