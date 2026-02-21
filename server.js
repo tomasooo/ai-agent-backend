@@ -2841,7 +2841,7 @@ app.get('/api/auth/verify', async (req, res) => {
   const client = await pool.connect();
   try {
     const r = await client.query(
-      'SELECT email FROM dashboard_users WHERE verification_token = $1',
+      'SELECT email, email_verified FROM dashboard_users WHERE verification_token = $1',
       [token]
     );
 
@@ -2849,14 +2849,15 @@ app.get('/api/auth/verify', async (req, res) => {
       return res.status(400).send('Neplatný nebo expirovaný verifikační odkaz.');
     }
 
-    const email = r.rows[0].email;
+    const { email, email_verified } = r.rows[0];
 
-    await client.query(
-      'UPDATE dashboard_users SET email_verified = true, verification_token = NULL WHERE email = $1',
-      [email]
-    );
-
-    await logActivity(email, 'Verifikace emailu', 'success');
+    if (!email_verified) {
+      await client.query(
+        'UPDATE dashboard_users SET email_verified = true WHERE email = $1',
+        [email]
+      );
+      await logActivity(email, 'Verifikace emailu', 'success');
+    }
 
     // Přesměrování na frontend s parametrem
     res.redirect(`${FRONTEND_URL}/login.html?verified=success`);
@@ -6494,7 +6495,6 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
 
 
 
