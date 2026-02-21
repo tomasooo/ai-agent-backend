@@ -4240,6 +4240,24 @@
                 </div>
               </div>
 
+              <div class="form-section">
+                <h3>Vlastní Spam List (Blacklist)</h3>
+                <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 1rem;">
+                  E-maily od těchto odesílatelů budou automaticky ignorovány a označeny jako přečtené (nevyčerpají AI
+                  akce).
+                </p>
+                <div class="form-group" style="display: flex; gap: 10px; align-items: flex-start;">
+                  <input type="email" id="spamlist-input" class="form-control" placeholder="např. otravny@reklamka.cz"
+                    style="flex: 1;">
+                  <button type="button" class="btn btn-primary" id="spamlist-add-btn"
+                    style="white-space: nowrap; padding: 10px 16px;">Přidat na list</button>
+                </div>
+                <!-- Zde se dynamicky načtou položky spam listu -->
+                <div id="spamlist-container"
+                  style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem; max-height: 250px; overflow-y: auto;">
+                </div>
+              </div>
+
               <button type="submit" class="btn btn-primary">
                 <span>💾</span>
                 Uložit nastavení
@@ -7279,7 +7297,93 @@ S pozdravem
           showToast(`Pro ${primaryEmail} zatím nebylo uloženo žádné nastavení.`, 'info');
         }
       } catch (error) { showToast('Nepodařilo se načíst nastavení.', 'error'); }
+
+      await loadSpamList();
+    }    // === VLASTNÍ SPAM LIST ===
+    async function loadSpamList() {
+      if (!dashboardUserEmail) return;
+      try {
+        const res = await fetch(`https://ai-email-server-stejdesign.onrender.com/api/spamlist?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`);
+        const data = await res.json();
+        const container = document.getElementById('spamlist-container');
+        if (!container) return;
+
+        container.innerHTML = '';
+        if (data.success && data.spamlist && data.spamlist.length > 0) {
+          data.spamlist.forEach(item => {
+            const row = document.createElement('div');
+            row.style = 'display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;';
+            row.innerHTML = `
+              <span style="font-size: 0.95rem; color: #334155; font-weight: 500;">${item.email_address}</span>
+              <button type="button" class="btn btn-sm" onclick="removeSpamEmail(${item.id})" style="background: #fee2e2; color: #ef4444; border: 1px solid #fca5a5; padding: 4px 10px; border-radius: 6px; cursor: pointer;">✕ Odebrat</button>
+            `;
+            container.appendChild(row);
+          });
+        } else {
+          container.innerHTML = '<div style="color: #94a3b8; font-size: 0.9rem; padding: 10px; text-align: center; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;">Zatím nemáte žádné e-maily na listu.</div>';
+        }
+      } catch (err) {
+        console.error('Chyba při načítání spam listu:', err);
+      }
     }
+
+    async function addSpamEmail() {
+      const input = document.getElementById('spamlist-input');
+      const emailObj = input ? input.value.trim() : '';
+      if (!emailObj) {
+        showToast('Zadejte e-mailovou adresu.', 'warning');
+        return;
+      }
+
+      const btn = document.getElementById('spamlist-add-btn');
+      if (btn) btn.disabled = true;
+
+      try {
+        const res = await fetch('https://ai-email-server-stejdesign.onrender.com/api/spamlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dashboardUserEmail, emailAddress: emailObj })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message, 'success');
+          if (input) input.value = '';
+          loadSpamList();
+        } else {
+          showToast(data.message || 'Chyba při přidávání.', 'error');
+        }
+      } catch (err) {
+        showToast('Nepodařilo se přidat na spam list.', 'error');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function removeSpamEmail(id) {
+      if (!confirm('Opravdu chcete odebrat tento e-mail ze spam listu?')) return;
+      try {
+        const res = await fetch(`https://ai-email-server-stejdesign.onrender.com/api/spamlist/${id}?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message, 'success');
+          loadSpamList();
+        } else {
+          showToast(data.message || 'Chyba při odebírání.', 'error');
+        }
+      } catch (err) {
+        showToast('Nepodařilo se odebrat ze spam listu.', 'error');
+      }
+    }
+
+    // Attach listener for the Add button
+    document.addEventListener('DOMContentLoaded', () => {
+      const spamlistAddBtn = document.getElementById('spamlist-add-btn');
+      if (spamlistAddBtn) {
+        spamlistAddBtn.addEventListener('click', addSpamEmail);
+      }
+    });
 
     // ZMĚNA: Funkce ukládá nastavení pro aktuálně vybraný primární email
     async function saveSettings(event) {
