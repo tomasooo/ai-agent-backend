@@ -49,7 +49,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL;
 const DATABASE_URL = process.env.DATABASE_URL;
 const CRON_SECRET = process.env.CRON_SECRET;
 console.log("DEBUG: Načtená DATABASE_URL je:", DATABASE_URL);
-const SERVER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+const SERVER_URL = process.env.SERVER_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 const REDIRECT_URI = `${SERVER_URL}/api/oauth/google/callback`;
 
 // --- SMTP Config ---
@@ -2891,7 +2891,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // Check verification
-    if (r.rows[0].email_verified === false) {
+    if (!r.rows[0].email_verified) {
       return res.status(403).json({ success: false, message: 'Email není ověřen. Zkontrolujte prosím svou schránku.' });
     }
 
