@@ -2813,13 +2813,15 @@ app.post('/api/auth/register', async (req, res) => {
       await sendVerificationEmail(email, verificationToken);
     } catch (err) {
       console.error('[AUTH] Failed to send verification email:', err);
-      // nezastavujeme flow, uživatel se může přihlásit (nebo mu řekneme, at si to necha poslat znovu - TODO)
+      // Smazat nedokončeného uživatele, když nešel odeslat email
+      await client.query('DELETE FROM dashboard_users WHERE email = $1', [email]);
+      return res.status(500).json({ success: false, message: 'Nepodařilo se odeslat ověřovací e-mail. Zkuste to prosím znovu.' });
     }
 
     await logActivity(email, 'Registrace', 'success');
     return res.json({
       success: true,
-      user: { email, name: fullName, plan: 'Starter' }
+      message: 'Registrace úspěšná, zkontrolujte svůj e-mail.'
     });
   } catch (e) {
     console.error('REG ERROR', e);
