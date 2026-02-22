@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /api/
+Allow: /
+
+Sitemap: https://ai-agent-frontend-9nrf.onrender.com/sitemap.xml
