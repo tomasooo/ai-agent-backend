@@ -5976,7 +5976,6 @@ ${String(bodyText).slice(0, 3000)}
     if (promoTokens.some(t => s.includes(t))) return true;
     if (hasListUnsub(headers)) return true;
     if (hasPrecedenceBulk(headers)) return true;
-    if (/\b\d{2,3}[ ,.\u00A0]?(kč|czk|eur|€|\$)\b/i.test(s)) return true;
     return false;
   };
   const extractEmail = (addr) => {
