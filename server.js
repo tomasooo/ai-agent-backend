@@ -6488,8 +6488,16 @@ app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req
   }
 });
 
+import path from 'path';
+import { fileURLToPath } from 'url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
+// Fallback for 404 Pages
+app.use((req, res, next) => {
+  res.status(404).sendFile(path.join(__dirname, '404.html'));
+});
 
 // Spuštění serveru
 app.listen(PORT, () => {
