@@ -4266,11 +4266,15 @@ app.post('/api/gmail/pending-replies/:id/reject', async (req, res) => {
     const approvalLabelId = labelsRes.data.labels?.find((l) => l.name === 'ceka-na-schvaleni')?.id;
     const removeLabelIds = approvalLabelId ? [approvalLabelId] : [];
 
-    await gmail.users.messages.modify({
-      userId: 'me',
-      id: pending.message_id,
-      requestBody: { removeLabelIds }
-    });
+    try {
+      await gmail.users.messages.modify({
+        userId: 'me',
+        id: pending.message_id,
+        requestBody: { removeLabelIds }
+      });
+    } catch (apiErr) {
+      console.warn(`[pending-replies] reject: modify failed for msg ${pending.message_id}, ignoring API error.`, apiErr?.message);
+    }
 
     await client.query(`
       UPDATE pending_replies
@@ -4526,7 +4530,13 @@ app.post('/api/custom-email/pending-replies/:id/reject', async (req, res) => {
           await imapClient.mailboxOpen('INBOX');
           const replyUid = metadata.replyToUid || metadata.uid || metadata.messageUid;
           if (replyUid) {
-            await imapClient.messageFlagsRemove(String(replyUid), ['\\Flagged'], { uid: true }).catch(() => { });
+            try {
+              await imapClient.messageFlagsRemove(String(replyUid), ['\\Flagged', '$LabelCekaNaSchvaleni'], { uid: true });
+              // Přidáme značku přečteno, když to rovnou vyhodí
+              await imapClient.messageFlagsAdd(String(replyUid), ['\\Seen'], { uid: true });
+            } catch (err) {
+              console.warn(`[custom reject] Nepodařilo se odebrat příznak z IMAPu (možná byla zpráva smazána):`, err.message);
+            }
           }
         } catch (imapErr) {
           console.warn('[custom pending] Nepodařilo se odebrat příznak:', imapErr?.message || imapErr);
@@ -6502,7 +6512,6 @@ app.use((req, res, next) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
 
 
 
