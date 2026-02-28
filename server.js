@@ -680,7 +680,7 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
         ORDER BY COALESCE(thread_id, id), date DESC
       )
       SELECT 
-        f.id, f.provider, f.subject, f.from, f.date, f.snippet, f."isRead",
+        f.id, f.provider, f.subject, f.from, f.date, f.snippet, f."isRead", f.thread_group as thread_id,
         (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count
       FROM FilteredThreads f
       ORDER BY f.date DESC
@@ -3452,7 +3452,7 @@ app.get('/api/gmail/emails', async (req, res) => {
         ORDER BY COALESCE(thread_id, id), date DESC
       )
       SELECT 
-        f.id, f.subject, f.sender, f.snippet, f.date, f."isRead",
+        f.id, f.subject, f.sender, f.snippet, f.date, f."isRead", f.thread_group as thread_id,
         (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count
       FROM FilteredThreads f
       ORDER BY f.date DESC
@@ -3466,7 +3466,8 @@ app.get('/api/gmail/emails', async (req, res) => {
       subject: row.subject || '(Bez předmětu)',
       date: row.date,
       unread: !row.isRead,
-      threadCount: Number(row.thread_count) || 1
+      threadCount: Number(row.thread_count) || 1,
+      threadId: row.thread_id
     }));
 
     res.json({ success: true, emails, total: totalCount });
