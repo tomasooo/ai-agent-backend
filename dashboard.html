@@ -6279,203 +6279,39 @@ S pozdravem
     }
 
 
-    async function tryGmailEmails(primaryEmail, status, period, searchQuery, page = 1, limit = EMAILS_PER_PAGE) {
+    async function fetchEmailsFromDb(primaryEmail, status, period, searchQuery, page = 1, limit = EMAILS_PER_PAGE) {
       if (!primaryEmail) return null;
+      const safePage = Number.isFinite(Number(page)) && Number(page) > 0 ? Number(page) : 1;
+      const safeLimit = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : EMAILS_PER_PAGE;
+      const url = `${window.BACKEND}/api/gmail/emails?email=${encodeURIComponent(primaryEmail)}&dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}&page=${safePage}&limit=${safeLimit}`;
 
-      const normalizedStatus = String(status || 'all').toLowerCase();
-
-      if (normalizedStatus === 'approval') {
-        try {
-          const pendingUrl = new URL(`${window.BACKEND}/api/gmail/pending-replies`);
-          pendingUrl.searchParams.set('dashboardUserEmail', dashboardUserEmail);
-          pendingUrl.searchParams.set('email', primaryEmail);
-
-          const r = await fetch(pendingUrl.toString(), { cache: 'no-store' });
-          let j = null;
-          try {
-            j = await r.json();
-          } catch (_) {
-            j = null;
-          }
-          if (!r.ok || !j || !j.success) {
-            return { src: 'gmail', total: Array.isArray(j?.pending) ? j.pending.length : 0, emails: [] };
-          }
-
-          const normalized = (j.pending || []).map((item) => {
-            const createdAt = item.created_at || item.last_generated_at || item.sent_at;
-            let meta = {};
-            if (item.metadata) {
-              try {
-                meta = typeof item.metadata === 'object' ? item.metadata : JSON.parse(item.metadata);
-              } catch (_) {
-                meta = {};
-              }
-            }
-            const replyTo = meta.replyToHeader || meta.replyTo || item.sender || '';
-            const originalFrom = meta.fromHeader || meta.sender || item.sender || '';
-            const displaySender = replyTo || originalFrom || item.sender || '';
-            return {
-              id: item.message_id,
-              messageId: item.message_id,
-              pendingId: item.id,
-              sender: displaySender,
-              replyTo: replyTo || displaySender,
-              originalFrom,
-              subject: item.subject || 'Bez předmětu',
-              snippet: item.summary || item.snippet || '',
-              date: createdAt || new Date().toISOString(),
-              _src: 'gmail',
-              _pending: true,
-              account: primaryEmail,
-              replyBody: item.reply_body || '',
-              originalBody: item.original_body || '',
-              summary: item.summary || '',
-              sentiment: item.sentiment || '',
-              threadId: item.thread_id || '',
-              status: item.status || 'pending'
-            };
-          });
-
-
-          return { src: 'gmail', total: normalized.length, emails: normalized };
-        } catch (error) {
-          console.error('Nepodařilo se načíst čekající odpovědi:', error);
-          return { src: 'gmail', total: 0, emails: [] };
-        }
-      }
-
-      const url = `${window.BACKEND}/api/gmail/emails?email=${encodeURIComponent(primaryEmail)}&dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}&page=${page}&limit=${limit}`;
-      const r = await fetch(url, { cache: 'no-store' });
-      let j = null;
       try {
-        j = await r.json();
-      } catch (_) {
-        j = null;
+        const r = await fetch(url, { cache: 'no-store' });
+        const j = await r.json();
+        if (!r.ok || !j || !j.success) return null;
+
+        const normalized = (j.emails || []).map(e => {
+          if (status === 'approval') {
+            return { ...e, _src: 'db', _pending: true, account: primaryEmail, isPending: true };
+          }
+          return {
+            ...e,
+            uid: e.id,
+            _src: 'db',
+            _pending: false,
+            account: primaryEmail,
+            unread: e.unread === true,
+            status: status === 'spam' ? 'spam' : (e.status || '')
+          };
+        });
+        return { src: 'db', total: j.total || normalized.length, emails: normalized };
+      } catch (err) {
+        console.error('Nepodařilo se načíst emaily z databáze:', err);
+        return null;
       }
-      if (!r.ok || !j || !j.success) return null;
-      const normalized = (j.emails || []).map(e => {
-        const replyTo = e.replyTo || '';
-        const originalFrom = e.from || '';
-        const fallbackSender = e.sender || originalFrom || '';
-        const displaySender = replyTo || fallbackSender;
-        return {
-          id: e.id,                       // Gmail messageId
-          uid: null,
-          sender: displaySender,
-          replyTo: replyTo || displaySender,
-          originalFrom,
-          subject: e.subject,
-          snippet: e.snippet || '',
-          date: e.date,
-          _src: 'gmail',
-          _pending: false,
-          account: primaryEmail,
-          unread: e.unread === true,
-          status: normalizedStatus === 'spam' ? 'spam' : (e.status || e.folder || '')
-        };
-      });
-      return { src: 'gmail', total: j.total || normalized.length, emails: normalized };
     }
 
-    async function tryCustomPendingEmails(primaryEmail) {
-      if (!primaryEmail) return null;
-      const url = `${window.BACKEND}/api/custom-email/pending-replies?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}`;
-      const r = await fetch(url, { cache: 'no-store' });
-      let j = null;
-      try {
-        j = await r.json();
-      } catch (_) {
-        j = null;
-      }
-      if (!r.ok || !j || !j.success) {
-        return { src: 'custom', total: Array.isArray(j?.pending) ? j.pending.length : 0, emails: [] };
-      }
-
-      const normalized = (j.pending || []).map((item) => {
-        const createdAt = item.created_at || item.last_generated_at || item.sent_at;
-        let meta = {};
-        if (item.metadata) {
-          try {
-            meta = typeof item.metadata === 'object' ? item.metadata : JSON.parse(item.metadata);
-          } catch (_) {
-            meta = {};
-          }
-        }
-        const replyTo = meta.replyToHeader || meta.replyTo || item.sender || '';
-        const originalFrom = meta.fromHeader || meta.sender || item.sender || '';
-        const displaySender = replyTo || originalFrom || item.sender || '';
-        return {
-          id: item.message_id || String(item.id),
-          messageId: item.message_id || String(item.id),
-          pendingId: item.id,
-          sender: displaySender,
-          replyTo: replyTo || displaySender,
-          originalFrom,
-          subject: item.subject || 'Bez předmětu',
-          snippet: item.summary || item.snippet || '',
-          date: createdAt || new Date().toISOString(),
-          _src: 'custom',
-          _pending: true,
-          account: primaryEmail,
-          replyBody: item.reply_body || '',
-          originalBody: item.original_body || '',
-          summary: item.summary || '',
-          sentiment: item.sentiment || '',
-          status: item.status || 'pending'
-        };
-      });
-
-      return { src: 'custom', total: normalized.length, emails: normalized };
-    }
-
-
-
-
-
-    async function tryCustomEmails(primaryEmail, status = 'all', period = 'all', searchQuery = '', page = 1, limit = EMAILS_PER_PAGE) {
-      const numericPage = Number(page);
-      const numericLimit = Number(limit);
-      const safePage = Number.isFinite(numericPage) && numericPage > 0 ? numericPage : 1;
-      const safeLimit = Number.isFinite(numericLimit) && numericLimit > 0 ? numericLimit : EMAILS_PER_PAGE;
-      // ZMĚNA: Používáme sjednocený endpoint /api/gmail/emails, který umí i custom účty
-      // Důležité: parametr se jmenuje 'email', nikoliv 'emailAddress'
-      const url = `${window.BACKEND}/api/gmail/emails?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}&limit=${safeLimit}&page=${safePage}&status=${encodeURIComponent(status)}&period=${encodeURIComponent(period)}&searchQuery=${encodeURIComponent(searchQuery)}`;
-      const r = await fetch(url, { cache: 'no-store' });
-      let j = null;
-      try {
-        j = await r.json();
-      } catch (_) {
-        j = null;
-      }
-      if (!r.ok || !j || !j.success) return null;
-      const normalized = (j.emails || []).map(e => {
-        // backend vrací { id: "...", sender: "...", subject, date, ... }
-        const uid = e.uid ?? e.id; // podpora obou variant
-        const replyTo = e.replyTo || '';
-        const originalFrom = e.from || '';
-        const fallbackSender = e.sender || originalFrom || '';
-        const displaySender = replyTo || fallbackSender;
-        return {
-          id: String(uid),
-          uid: Number(uid),
-          sender: displaySender,
-          replyTo: replyTo || displaySender,
-          originalFrom,
-          subject: e.subject || '',
-          snippet: e.snippet || '',
-          date: e.date || e.internalDate || Date.now(),
-          _src: 'custom',
-          _pending: false,
-          account: primaryEmail,
-          unread: e.unread === true
-        };
-      });
-      return { src: 'custom', total: j.total ?? normalized.length, emails: normalized };
-    }
-
-
-
-    // ZMĚNA: Funkce nyní načítá emaily pro primární účet z localStorage
+    // ZMĚNA: Funkce nyní načítá emaily pro primární účet z localStorage a neblokuje přes innerHTML loading okno
     async function fetchEmails(options = {}) {
       const { resetPage = false, targetPage = null } = options || {};
       const primaryEmail = localStorage.getItem('primaryEmail');
@@ -6511,55 +6347,16 @@ S pozdravem
 
       const pageToRequest = currentEmailPage;
 
-      emailListContainer.innerHTML = `<div class="empty-state"><span>📧</span><p>Načítám emaily pro ${primaryEmail}…</p></div>`;
+      // DO NOT clear container to show loading if emails already exist, but if empty, show something minimal
+      if (emailListContainer.children.length === 0 || emailListContainer.querySelector('.empty-state')) {
+        emailListContainer.innerHTML = `<div class="email-row" style="opacity:0.5;justify-content:center;">Načítám emaily...</div>`;
+      }
 
       try {
-        const accountType = (prim?.type || '').toLowerCase();
-        const looksLikeGmail = /@(gmail|googlemail)\.com$/i.test(primaryEmail || '');
-
-        let isGmailAccount = accountType === 'gmail';
-        let isCustomAccount = accountType === 'custom';
-
-        if (!accountType) {
-          // Fallback heuristika: pokud není typ definován, rozliš podle domény
-          isGmailAccount = looksLikeGmail;
-          isCustomAccount = !looksLikeGmail;
-        }
-
-        // Bezpečný default: když nepoznáme typ, preferuj custom (neblokuje IMAP účty)
-        if (!isGmailAccount && !isCustomAccount) {
-          isCustomAccount = true;
-        }
-        let res = null;
-
-        if (status === 'approval') {
-          const [gmailPending, customPending] = await Promise.all([
-            isGmailAccount ? tryGmailEmails(primaryEmail, status, period, searchQuery, pageToRequest, EMAILS_PER_PAGE) : null,
-            isCustomAccount ? tryCustomPendingEmails(primaryEmail) : null
-          ]);
-
-          const sources = [gmailPending, customPending].filter(src => src && Array.isArray(src.emails));
-          const combinedEmails = sources.flatMap(src => src.emails);
-          combinedEmails.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-          const totalCount = sources.reduce((sum, src) => sum + (src?.total ?? (src?.emails?.length || 0)), 0);
-          res = { src: 'approval', total: totalCount || combinedEmails.length, emails: combinedEmails };
-        } else {
-          const [gmailResult, customResult] = await Promise.all([
-            isGmailAccount ? tryGmailEmails(primaryEmail, status, period, searchQuery, pageToRequest, EMAILS_PER_PAGE) : null,
-            isCustomAccount ? tryCustomEmails(primaryEmail, status, period, searchQuery, pageToRequest, EMAILS_PER_PAGE) : null
-          ]);
-
-          if (gmailResult && Array.isArray(gmailResult.emails)) {
-            res = gmailResult;
-          }
-
-          if ((!res || !Array.isArray(res.emails) || res.emails.length === 0) && customResult && Array.isArray(customResult.emails)) {
-            res = customResult;
-          }
-        }
+        let res = await fetchEmailsFromDb(primaryEmail, status, period, searchQuery, pageToRequest, EMAILS_PER_PAGE);
 
         if (!res || !Array.isArray(res.emails)) {
-          throw new Error('Nepodařilo se načíst emaily.');
+          throw new Error('Nepodařilo se načíst emaily z databáze.');
         }
 
         const normalizedStatus = String(status || 'all').toLowerCase();
@@ -6611,7 +6408,7 @@ S pozdravem
         }
 
         const totalPages = Math.max(1, Math.ceil(lastEmailTotal / EMAILS_PER_PAGE));
-        if (currentEmailPage > totalPages) {
+        if (currentEmailPage > totalPages && totalPages > 0) {
           currentEmailPage = totalPages;
           if (currentEmailPage !== pageToRequest) {
             return fetchEmails({ targetPage: currentEmailPage });
