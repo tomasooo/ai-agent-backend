@@ -7044,6 +7044,7 @@ S pozdravem
             `;
           }).join('');
           container.innerHTML = html;
+          container.addEventListener('click', window.handleEmailRowClick);
         } else {
           container.innerHTML = '<div style="padding:8px; color:#ef4444; font-size:0.9em;">Chyba při načítání vlákna.</div>';
         }
@@ -8087,7 +8088,7 @@ S pozdravem
       }
 
       if (emailListContainer) {
-        emailListContainer.addEventListener('click', async (event) => {
+        window.handleEmailRowClick = async (event) => {
           const quickAiButton = event.target.closest('.quick-ai-btn');
           if (quickAiButton) {
             event.preventDefault();
@@ -8399,7 +8400,13 @@ S pozdravem
             }
           }
 
-        });
+        };
+
+        emailListContainer.addEventListener('click', window.handleEmailRowClick);
+        const recContainer = document.getElementById('recent-emails-container');
+        if (recContainer) {
+          recContainer.addEventListener('click', window.handleEmailRowClick);
+        }
       }
 
       if (settingsForm) settingsForm.addEventListener('submit', saveSettings);
@@ -9519,7 +9526,7 @@ S pozdravem
               : '';
 
             return `
-              <div class="email-item" style="cursor: default;">
+              <div class="email-item" style="cursor: pointer;" data-id="${escapeHtml(e.id)}" data-message-id="${escapeHtml(e.id)}" data-src="${escapeHtml(e.provider || 'gmail')}" data-from="${escapeHtml(e.from)}" data-account="${escapeHtml(account)}">
                 <div class="email-status ${statusClass}"></div>
                 <div class="email-content">
                   <div class="email-sender">${senderHtml}</div>
