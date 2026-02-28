@@ -7025,19 +7025,19 @@ S pozdravem
           }
           const html = children.map(e => {
             const dateStr = new Date(e.date).toLocaleString('cs-CZ');
-            const summary = escapeHtml(e.snippet || '(bez zprávy)');
+            const summary = e.snippet ? escapeHtml(e.snippet) : '';
             const src = escapeHtml(parentItem.dataset.src || 'gmail');
             const unreadClass = e.unread ? 'unread' : 'processed';
             // Použijeme data-atributy, aby na to mohl uživatel kliknout a otevřel se mu detail
             return `
-              <div class="email-item nested-thread-item ${unreadClass}" data-id="${escapeHtml(e.id)}" data-message-id="${escapeHtml(e.messageId || e.id)}" data-src="${src}" data-from="${escapeHtml(e.sender)}" style="margin-bottom:6px; padding:10px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; display:flex; gap:12px; cursor:pointer;">
+              <div class="email-item nested-thread-item ${unreadClass}" data-id="${escapeHtml(e.id)}" data-message-id="${escapeHtml(e.messageId || e.id)}" data-src="${src}" data-from="${escapeHtml(e.sender)}" style="margin-bottom:6px; padding:10px 14px; border-radius:8px; display:flex; gap:12px; cursor:pointer; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05);">
                   <div class="email-status ${unreadClass}" style="transform: scale(0.8); margin-right:10px;"></div>
                   <div class="email-content" style="flex-grow:1;">
-                      <div class="email-sender" style="font-size:0.95em; color:#1e293b; font-weight:600;">${escapeHtml(e.sender)}</div>
-                      <div class="email-subject" style="font-size:0.90em; font-weight:600;">${escapeHtml(e.subject || '')}</div>
-                      <div class="email-preview" style="font-size:0.85em; margin-top:2px; color:#475569;">${summary}</div>
+                      <div class="email-sender" style="font-size:0.95em; font-weight:600; opacity: 0.95;">${escapeHtml(e.sender)}</div>
+                      <div class="email-subject" style="font-size:0.90em; font-weight:600; opacity: 0.85;">${escapeHtml(e.subject || '')}</div>
+                      ${summary ? `<div class="email-preview" style="font-size:0.85em; margin-top:2px; opacity: 0.7;">${summary}</div>` : ''}
                   </div>
-                  <div class="email-meta" style="flex-shrink:0; text-align:right; font-size:0.8em; color:#94a3b8;">
+                  <div class="email-meta" style="flex-shrink:0; text-align:right; font-size:0.8em; opacity: 0.6;">
                       <div>${dateStr}</div>
                   </div>
               </div>
