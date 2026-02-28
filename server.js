@@ -671,19 +671,26 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
 
     // Načtení přímo z tabulky synchronizovaných emailů
     const result = await db.query(`
-      WITH FilteredThreads AS (
-        SELECT DISTINCT ON (COALESCE(thread_id, id))
-          id, provider, subject, from_address as from, date, snippet, is_read as "isRead",
-          COALESCE(thread_id, id) as thread_group
+      WITH ThreadDates AS (
+        SELECT COALESCE(thread_id, id) as thread_group, MAX(date) as last_activity
         FROM synced_emails
         WHERE dashboard_user_email = $1 AND account_email = $2
-        ORDER BY COALESCE(thread_id, id), date DESC
+        GROUP BY COALESCE(thread_id, id)
+      ),
+      FilteredThreads AS (
+        SELECT DISTINCT ON (COALESCE(se.thread_id, se.id))
+          se.id, se.provider, se.subject, se.from_address as from, se.date, se.snippet, se.is_read as "isRead",
+          COALESCE(se.thread_id, se.id) as thread_group, t.last_activity
+        FROM synced_emails se
+        JOIN ThreadDates t ON COALESCE(se.thread_id, se.id) = t.thread_group
+        WHERE se.dashboard_user_email = $1 AND se.account_email = $2
+        ORDER BY COALESCE(se.thread_id, se.id), se.date ASC
       )
       SELECT 
         f.id, f.provider, f.subject, f.from, f.date, f.snippet, f."isRead", f.thread_group as thread_id,
         (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count
       FROM FilteredThreads f
-      ORDER BY f.date DESC
+      ORDER BY f.last_activity DESC
       LIMIT $3 OFFSET $4
     `, [dashboardUserEmail, email, Number(limit), Number(offset)]);
 
@@ -3443,19 +3450,27 @@ app.get('/api/gmail/emails', async (req, res) => {
     const offsetIdx = paramIndex++;
 
     const dataRes = await db.query(`
-      WITH FilteredThreads AS (
-        SELECT DISTINCT ON (COALESCE(thread_id, id))
-          id, subject, from_address as sender, snippet, date, is_read as "isRead",
-          COALESCE(thread_id, id) as thread_group
+      WITH ThreadDates AS (
+        SELECT COALESCE(thread_id, id) as thread_group, MAX(date) as last_activity
         FROM synced_emails
         ${whereString}
-        ORDER BY COALESCE(thread_id, id), date DESC
+        GROUP BY COALESCE(thread_id, id)
+      ),
+      FilteredThreads AS (
+        SELECT DISTINCT ON (COALESCE(se.thread_id, se.id))
+          se.id, se.subject, se.from_address as sender, se.snippet, se.date, se.is_read as "isRead",
+          COALESCE(se.thread_id, se.id) as thread_group,
+          t.last_activity
+        FROM synced_emails se
+        JOIN ThreadDates t ON COALESCE(se.thread_id, se.id) = t.thread_group
+        ${whereString.replace('WHERE ', 'WHERE se.')}
+        ORDER BY COALESCE(se.thread_id, se.id), se.date ASC
       )
       SELECT 
         f.id, f.subject, f.sender, f.snippet, f.date, f."isRead", f.thread_group as thread_id,
         (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count
       FROM FilteredThreads f
-      ORDER BY f.date DESC
+      ORDER BY f.last_activity DESC
       LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `, queryArgs);
 
