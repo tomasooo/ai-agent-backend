@@ -3566,6 +3566,7 @@ app.get('/api/gmail/message-body', async (req, res) => {
     };
 
     const body = getText(msg.data.payload) || '';
+    console.log(`[gmail/message-body] requested messageId: ${messageId}, returning body length: ${body.length}`);
     return res.json({ success: true, body });
   } catch (e) {
     console.error('[gmail/message-body] error:', e);
@@ -3826,6 +3827,7 @@ app.get('/api/custom-email/message-body', async (req, res) => {
     const parsed = await simpleParser(Buffer.concat(chunks));
     // preferuj text; když chybí, stripni html
     const bodyText = parsed.text || (parsed.html ? parsed.html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : '') || '';
+    console.log(`[custom-email/message-body] requested uid: ${uid}, returning body length: ${bodyText.length}`);
     return res.json({ success: true, body: bodyText });
   } catch (e) {
     console.error('[custom-email/message-body] error:', e);
