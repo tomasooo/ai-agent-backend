@@ -6292,7 +6292,7 @@ S pozdravem
 
         const normalized = (j.emails || []).map(e => {
           if (status === 'approval') {
-            return { ...e, _src: 'db', _pending: true, account: primaryEmail, isPending: true };
+            return { ...e, _src: e.provider || 'gmail', _pending: true, account: primaryEmail, isPending: true };
           }
           return {
             ...e,
