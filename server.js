@@ -3381,7 +3381,7 @@ app.get('/api/gmail/emails', async (req, res) => {
     // --- 1. Pending Replies (approval) ---
     if (status === 'approval') {
       const pendingRes = await db.query(`
-        SELECT id, message_id, subject, sender, snippet, metadata, last_generated_at, reply_body, summary, sentiment
+        SELECT id, message_id, subject, sender, snippet, metadata, last_generated_at, reply_body, summary, sentiment, provider
           FROM pending_replies
          WHERE dashboard_user_email = $1
            AND connected_email = $2
@@ -3407,7 +3407,8 @@ app.get('/api/gmail/emails', async (req, res) => {
           isPending: true,
           replyBody: row.reply_body || '',
           summary: row.summary || '',
-          sentiment: row.sentiment || ''
+          sentiment: row.sentiment || '',
+          provider: row.provider || 'gmail'
         };
       });
       return res.json({ success: true, emails: pendingEmails, total: pendingEmails.length });
