@@ -3480,6 +3480,44 @@ app.get('/api/gmail/emails', async (req, res) => {
 });
 
 
+app.get('/api/gmail/thread/:threadId', async (req, res) => {
+  const { dashboardUserEmail, email } = req.query;
+  const { threadId } = req.params;
+
+  if (!dashboardUserEmail || !email || !threadId) {
+    return res.status(400).json({ success: false, message: "Chybí parametry." });
+  }
+
+  let db;
+  try {
+    db = await pool.connect();
+    // Vytáhne všechny maily daného vlákna, seřazené od nejstaršího po nejnovější (jako konverzace)
+    const result = await db.query(`
+      SELECT id, subject, from_address as sender, snippet, date, is_read as "isRead"
+      FROM synced_emails
+      WHERE dashboard_user_email = $1 AND account_email = $2 AND COALESCE(thread_id, id) = $3
+      ORDER BY date ASC
+    `, [dashboardUserEmail, email, threadId]);
+
+    const emails = result.rows.map(row => ({
+      id: row.id,
+      snippet: row.snippet || '',
+      sender: row.sender || '',
+      subject: row.subject || '(Bez předmětu)',
+      date: row.date,
+      unread: !row.isRead
+    }));
+
+    res.json({ success: true, emails });
+  } catch (err) {
+    console.error("Chyba při načítání vlákna z DB:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  } finally {
+    if (db) db.release();
+  }
+});
+
+
 app.get('/api/gmail/message-body', async (req, res) => {
   try {
     const { dashboardUserEmail, email, messageId } = req.query || {};
