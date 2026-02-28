@@ -6898,8 +6898,9 @@ S pozdravem
         const isUnread = email.unread === true && !email._pending;
         if (isUnread) datasetParts.push('data-unread="1"');
 
+        const threadIdToUse = email.threadId || email.id || '';
         const threadBadge = threadCount > 1
-          ? `<div class="thread-badge" data-thread-id="${escapeHtml(email.id || '')}" onclick="window.toggleThreadExpansion(event, this)" style="display:inline-flex; align-items:center; gap:4px; font-size:0.8em; color:#3b82f6; background:#eff6ff; border:1px solid #bfdbfe; padding:2px 8px; border-radius:4px; margin-top:4px; cursor:pointer;" title="Kliknutím rozbalíte vlákno">
+          ? `<div class="thread-badge" data-thread-id="${escapeHtml(threadIdToUse)}" onclick="window.toggleThreadExpansion(event, this)" style="display:inline-flex; align-items:center; gap:4px; font-size:0.8em; color:#3b82f6; background:#eff6ff; border:1px solid #bfdbfe; padding:2px 8px; border-radius:4px; margin-top:4px; cursor:pointer;" title="Kliknutím rozbalíte vlákno">
                <span style="font-size:1.1em;">💬</span> ${threadCount} ${threadCount >= 5 ? 'odpovědí' : (threadCount >= 2 && threadCount <= 4 ? 'odpovědi' : 'odpověď')} ⌄
              </div>`
           : '';
@@ -9497,9 +9498,10 @@ S pozdravem
 
             const threadCount = Number(e.thread_count) || 1;
             const senderHtml = escapeHtml(e.from);
+            const threadIdToUse = e.thread_id || e.id || '';
 
             const threadBadge = threadCount > 1
-              ? `<div class="thread-badge" data-thread-id="${escapeHtml(e.id || '')}" onclick="window.toggleThreadExpansion(event, this)" style="display:inline-flex; align-items:center; gap:4px; font-size:0.8em; color:#3b82f6; background:#eff6ff; border:1px solid #bfdbfe; padding:2px 8px; border-radius:4px; margin-top:4px; cursor:pointer;" title="Kliknutím rozbalíte vlákno">
+              ? `<div class="thread-badge" data-thread-id="${escapeHtml(threadIdToUse)}" onclick="window.toggleThreadExpansion(event, this)" style="display:inline-flex; align-items:center; gap:4px; font-size:0.8em; color:#3b82f6; background:#eff6ff; border:1px solid #bfdbfe; padding:2px 8px; border-radius:4px; margin-top:4px; cursor:pointer;" title="Kliknutím rozbalíte vlákno">
                    <span style="font-size:1.1em;">💬</span> ${threadCount} ${threadCount >= 5 ? 'odpovědí' : (threadCount >= 2 && threadCount <= 4 ? 'odpovědi' : 'odpověď')} ⌄
                  </div>`
               : '';
