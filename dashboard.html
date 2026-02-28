@@ -7030,10 +7030,11 @@ S pozdravem
             const unreadClass = e.unread ? 'unread' : 'processed';
             // Použijeme data-atributy, aby na to mohl uživatel kliknout a otevřel se mu detail
             return `
-              <div class="email-item nested-thread-item ${unreadClass}" data-id="${escapeHtml(e.id)}" data-src="${src}" data-from="${escapeHtml(e.sender)}" style="margin-bottom:6px; padding:10px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; cursor:pointer;" onclick="const cloneEvt = new MouseEvent('click', { bubbles: true }); this.dispatchEvent(cloneEvt); event.stopPropagation();">
+              <div class="email-item nested-thread-item ${unreadClass}" data-id="${escapeHtml(e.id)}" data-message-id="${escapeHtml(e.id)}" data-src="${src}" data-from="${escapeHtml(e.sender)}" style="margin-bottom:6px; padding:10px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; display:flex; gap:12px; cursor:pointer;" onclick="const cloneEvt = new MouseEvent('click', { bubbles: true }); this.dispatchEvent(cloneEvt); event.stopPropagation();">
                   <div class="email-status ${unreadClass}" style="transform: scale(0.8); margin-right:10px;"></div>
                   <div class="email-content" style="flex-grow:1;">
                       <div class="email-sender" style="font-size:0.95em; color:#1e293b; font-weight:600;">${escapeHtml(e.sender)}</div>
+                      <div class="email-subject" style="font-size:0.90em; font-weight:600;">${escapeHtml(e.subject || '')}</div>
                       <div class="email-preview" style="font-size:0.85em; margin-top:2px; color:#475569;">${summary}</div>
                   </div>
                   <div class="email-meta" style="flex-shrink:0; text-align:right; font-size:0.8em; color:#94a3b8;">
@@ -8324,7 +8325,18 @@ S pozdravem
             const dateTxt = ctx?.date || item.querySelector('.email-meta > div')?.textContent?.trim() || '';
             const pendingId = ctx?.pendingId || item.dataset.pendingId || '';
 
-            const emailEntry = findEmailEntryById(id, pendingId);
+            let emailEntry = findEmailEntryById(id, pendingId);
+            if (!emailEntry && item.classList.contains('nested-thread-item')) {
+              // Pro nově stažená vlákna si sestavíme záložní záznam
+              emailEntry = {
+                id: id,
+                messageId: item.dataset.messageId || id,
+                sender: from,
+                subject: subject,
+                date: dateTxt,
+                _src: src
+              };
+            }
 
             // otevři modal + loading
             const modal = document.getElementById('emailDetailModal');
@@ -8364,7 +8376,7 @@ S pozdravem
               const primaryEmail = localStorage.getItem('primaryEmail');
               const isCustom = (src === 'custom');
 
-              const requestId = ctx?.id || id;
+              const requestId = emailEntry?.messageId || ctx?.id || id;
 
               const shouldFetchBody = !(emailEntry && emailEntry._pending && emailEntry.originalBody);
 
