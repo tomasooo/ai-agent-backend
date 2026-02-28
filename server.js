@@ -671,10 +671,19 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
 
     // Načtení přímo z tabulky synchronizovaných emailů
     const result = await db.query(`
-      SELECT id, provider, subject, from_address as from, date, snippet, is_read as "isRead"
-      FROM synced_emails
-      WHERE dashboard_user_email = $1 AND account_email = $2
-      ORDER BY date DESC
+      WITH FilteredThreads AS (
+        SELECT DISTINCT ON (COALESCE(thread_id, id))
+          id, provider, subject, from_address as from, date, snippet, is_read as "isRead",
+          COALESCE(thread_id, id) as thread_group
+        FROM synced_emails
+        WHERE dashboard_user_email = $1 AND account_email = $2
+        ORDER BY COALESCE(thread_id, id), date DESC
+      )
+      SELECT 
+        f.id, f.provider, f.subject, f.from, f.date, f.snippet, f."isRead",
+        (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count
+      FROM FilteredThreads f
+      ORDER BY f.date DESC
       LIMIT $3 OFFSET $4
     `, [dashboardUserEmail, email, Number(limit), Number(offset)]);
 
@@ -943,9 +952,12 @@ async function setupDatabase() {
                 snippet TEXT,
                 is_read BOOLEAN DEFAULT false,
                 date TIMESTAMPTZ,
+                thread_id VARCHAR(255),
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (dashboard_user_email, account_email, provider, id)
-            );`
+            );`,
+      `ALTER TABLE synced_emails ADD COLUMN IF NOT EXISTS thread_id VARCHAR(255);`,
+      `ALTER TABLE pending_replies ADD COLUMN IF NOT EXISTS thread_id VARCHAR(255);`
     ];
 
     for (const statement of setupStatements) {
@@ -3421,7 +3433,7 @@ app.get('/api/gmail/emails', async (req, res) => {
     const whereString = "WHERE " + whereClauses.join(" AND ");
 
     // Get Total Count
-    const countRes = await db.query(`SELECT COUNT(*) as exact_count FROM synced_emails ${whereString}`, queryArgs);
+    const countRes = await db.query(`SELECT COUNT(DISTINCT COALESCE(thread_id, id)) as exact_count FROM synced_emails ${whereString}`, queryArgs);
     const totalCount = parseInt(countRes.rows[0].exact_count, 10);
 
     // Get Page Data
@@ -3431,10 +3443,19 @@ app.get('/api/gmail/emails', async (req, res) => {
     const offsetIdx = paramIndex++;
 
     const dataRes = await db.query(`
-      SELECT id, subject, from_address as sender, snippet, date, is_read as "isRead"
-      FROM synced_emails
-      ${whereString}
-      ORDER BY date DESC
+      WITH FilteredThreads AS (
+        SELECT DISTINCT ON (COALESCE(thread_id, id))
+          id, subject, from_address as sender, snippet, date, is_read as "isRead",
+          COALESCE(thread_id, id) as thread_group
+        FROM synced_emails
+        ${whereString}
+        ORDER BY COALESCE(thread_id, id), date DESC
+      )
+      SELECT 
+        f.id, f.subject, f.sender, f.snippet, f.date, f."isRead",
+        (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count
+      FROM FilteredThreads f
+      ORDER BY f.date DESC
       LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `, queryArgs);
 
@@ -3444,7 +3465,8 @@ app.get('/api/gmail/emails', async (req, res) => {
       sender: row.sender || '',
       subject: row.subject || '(Bez předmětu)',
       date: row.date,
-      unread: !row.isRead
+      unread: !row.isRead,
+      threadCount: Number(row.thread_count) || 1
     }));
 
     res.json({ success: true, emails, total: totalCount });
@@ -6113,16 +6135,21 @@ async function syncRecentEmails() {
             const date = msg.internalDate;
             const snippet = ''; // Pro IMAP by se muselo stahovat celé tělo, to uděláme jen jednoduše
 
+            // Jednoduché pseudo-vlákno pro IMAP: spojíme všechny zprávy se stejným (očištěným) předmětem
+            const cleanSubject = subject.replace(/^(re|fwd|fw|odp|aw|odpověď):\s*/ig, '').trim().toLowerCase();
+            const threadId = 'custom_' + crypto.createHash('md5').update(acc.dashboard_user_email + '|' + acc.email_address + '|' + cleanSubject).digest('hex');
+
             await dbClient.query(`
-              INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date)
-              VALUES ($1, $2, $3, 'custom', $4, $5, $6, $7, $8)
+              INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date, thread_id)
+              VALUES ($1, $2, $3, 'custom', $4, $5, $6, $7, $8, $9)
               ON CONFLICT (dashboard_user_email, account_email, provider, id)
               DO UPDATE SET
                 subject = EXCLUDED.subject,
                 from_address = EXCLUDED.from_address,
                 is_read = EXCLUDED.is_read,
-                date = EXCLUDED.date
-            `, [String(msg.uid), acc.dashboard_user_email, acc.email_address, subject, from, snippet, isRead, date]);
+                date = EXCLUDED.date,
+                thread_id = EXCLUDED.thread_id
+            `, [String(msg.uid), acc.dashboard_user_email, acc.email_address, subject, from, snippet, isRead, date, threadId]);
           }
         }
       } catch (err) {
@@ -6160,18 +6187,20 @@ async function syncRecentEmails() {
           const isRead = !labelIds.includes('UNREAD');
           const dateStr = detail.data.internalDate;
           const date = dateStr ? new Date(Number(dateStr)) : new Date();
+          const threadId = detail.data.threadId || m.id;
 
           await dbClient.query(`
-            INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date)
-            VALUES ($1, $2, $3, 'gmail', $4, $5, $6, $7, $8)
+            INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date, thread_id)
+            VALUES ($1, $2, $3, 'gmail', $4, $5, $6, $7, $8, $9)
             ON CONFLICT (dashboard_user_email, account_email, provider, id)
             DO UPDATE SET
               subject = EXCLUDED.subject,
               from_address = EXCLUDED.from_address,
               snippet = EXCLUDED.snippet,
               is_read = EXCLUDED.is_read,
-              date = EXCLUDED.date
-          `, [m.id, acc.dashboard_user_email, acc.email_address, subject, from, snippet, isRead, date]);
+              date = EXCLUDED.date,
+              thread_id = EXCLUDED.thread_id
+          `, [m.id, acc.dashboard_user_email, acc.email_address, subject, from, snippet, isRead, date, threadId]);
         }
       } catch (err) {
         console.error(`Chyba při synchronizaci Gmailu (${acc.email_address}):`, err.message);
