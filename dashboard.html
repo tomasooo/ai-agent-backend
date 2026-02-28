@@ -6854,7 +6854,7 @@ S pozdravem
       pageEmails.forEach(email => {
         const sender = (email.sender || '').split('<')[0].trim().replace(/"/g, '') || email.sender;
         const threadCount = Number(email.threadCount) || 1;
-        const senderHtml = escapeHtml(sender) + (threadCount > 1 ? ` <span style="font-size:0.85em; color:#64748b; font-weight:600;">(${threadCount})</span>` : '');
+        const senderHtml = escapeHtml(sender);
         const pendingIdValue = email.pendingId ?? null;
         const pendingIdAttr = pendingIdValue !== null && pendingIdValue !== undefined ? escapeHtml(String(pendingIdValue)) : '';
         const srcAttr = escapeHtml(email._src || 'gmail');
@@ -6898,12 +6898,19 @@ S pozdravem
         const isUnread = email.unread === true && !email._pending;
         if (isUnread) datasetParts.push('data-unread="1"');
 
+        const threadBadge = threadCount > 1
+          ? `<div class="thread-badge" data-thread-id="${escapeHtml(email.id || '')}" onclick="window.toggleThreadExpansion(event, this)" style="display:inline-flex; align-items:center; gap:4px; font-size:0.8em; color:#3b82f6; background:#eff6ff; border:1px solid #bfdbfe; padding:2px 8px; border-radius:4px; margin-top:4px; cursor:pointer;" title="Kliknutím rozbalíte vlákno">
+               <span style="font-size:1.1em;">💬</span> ${threadCount} ${threadCount >= 5 ? 'odpovědí' : (threadCount >= 2 && threadCount <= 4 ? 'odpovědi' : 'odpověď')} ⌄
+             </div>`
+          : '';
+
         const emailHTML = `
               <div class="email-item ${isUnread ? 'unread' : ''}" ${datasetParts.join(' ')}>
                   <div class="email-content" style="flex-grow: 1;">
                       ${badge}
                       <div class="email-sender">${senderHtml}</div>
                       <div class="email-subject">${escapeHtml(email.subject || '(bez předmětu)')}</div>
+                      ${threadBadge}
                       ${preview}
                   </div>
                   <div class="email-meta" style="text-align: right; flex-shrink: 0;">
@@ -6969,6 +6976,79 @@ S pozdravem
         window.scrollTo(0, 0);
       }
     });
+
+    window.toggleThreadExpansion = async function (event, btn) {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      if (!btn) return;
+      const threadId = btn.dataset.threadId;
+      if (!threadId) return;
+
+      const parentItem = btn.closest('.email-item');
+      if (!parentItem) return;
+
+      // Pokud už je rozbaleno, sbalit
+      let container = parentItem.nextElementSibling;
+      if (container && container.classList.contains('thread-expanded-container')) {
+        container.remove();
+        btn.innerHTML = btn.innerHTML.replace('⌃', '⌄'); // arrow mapping
+        return;
+      }
+
+      btn.innerHTML = btn.innerHTML.replace('⌄', '⌃');
+
+      container = document.createElement('div');
+      container.className = 'thread-expanded-container';
+      container.style.marginLeft = '20px';
+      container.style.paddingLeft = '10px';
+      container.style.borderLeft = '2px solid #cbd5e1';
+      container.style.marginTop = '4px';
+      container.style.marginBottom = '12px';
+      container.innerHTML = '<div style="padding:8px; color:#64748b; font-size:0.9em;">Načítám zprávy z vlákna... <span class="loading-spinner"></span></div>';
+      parentItem.after(container);
+
+      try {
+        const dashboardUserEmail = localStorage.getItem('userEmail');
+        const primaryEmail = localStorage.getItem('primaryEmail');
+        const r = await fetch(`${window.BACKEND}/api/gmail/thread/${encodeURIComponent(threadId)}?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}`);
+        const j = await r.json();
+
+        if (j.success && j.emails) {
+          // Vynecháme první (což je ten parent, má stejné ID). Thunderbird ukazuje ty navazující.
+          const children = j.emails.filter(e => e.id !== parentItem.dataset.id);
+          if (children.length === 0) {
+            container.innerHTML = '<div style="padding:8px; color:#64748b; font-size:0.9em;">Zprávy byly skryty nebo smazány.</div>';
+            return;
+          }
+          const html = children.map(e => {
+            const dateStr = new Date(e.date).toLocaleString('cs-CZ');
+            const summary = escapeHtml(e.snippet || '(bez zprávy)');
+            const src = escapeHtml(parentItem.dataset.src || 'gmail');
+            const unreadClass = e.unread ? 'unread' : 'processed';
+            // Použijeme data-atributy, aby na to mohl uživatel kliknout a otevřel se mu detail
+            return `
+              <div class="email-item nested-thread-item ${unreadClass}" data-id="${escapeHtml(e.id)}" data-src="${src}" data-from="${escapeHtml(e.sender)}" style="margin-bottom:6px; padding:10px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; cursor:pointer;" onclick="const cloneEvt = new MouseEvent('click', { bubbles: true }); this.dispatchEvent(cloneEvt); event.stopPropagation();">
+                  <div class="email-status ${unreadClass}" style="transform: scale(0.8); margin-right:10px;"></div>
+                  <div class="email-content" style="flex-grow:1;">
+                      <div class="email-sender" style="font-size:0.95em; color:#1e293b; font-weight:600;">${escapeHtml(e.sender)}</div>
+                      <div class="email-preview" style="font-size:0.85em; margin-top:2px; color:#475569;">${summary}</div>
+                  </div>
+                  <div class="email-meta" style="flex-shrink:0; text-align:right; font-size:0.8em; color:#94a3b8;">
+                      <div>${dateStr}</div>
+                  </div>
+              </div>
+            `;
+          }).join('');
+          container.innerHTML = html;
+        } else {
+          container.innerHTML = '<div style="padding:8px; color:#ef4444; font-size:0.9em;">Chyba při načítání vlákna.</div>';
+        }
+      } catch (err) {
+        container.innerHTML = '<div style="padding:8px; color:#ef4444; font-size:0.9em;">Nelze se spojit se serverem.</div>';
+      }
+    };
 
     function renderPendingPreview(entry) {
       const card = document.getElementById('ed-ai-card');
@@ -9416,7 +9496,13 @@ S pozdravem
             if (e.isRead === false) { statusClass = 'unread'; statusText = 'Nový'; }
 
             const threadCount = Number(e.thread_count) || 1;
-            const senderHtml = escapeHtml(e.from) + (threadCount > 1 ? ` <span style="font-size:0.85em; color:#64748b; font-weight:600;">(${threadCount})</span>` : '');
+            const senderHtml = escapeHtml(e.from);
+
+            const threadBadge = threadCount > 1
+              ? `<div class="thread-badge" data-thread-id="${escapeHtml(e.id || '')}" onclick="window.toggleThreadExpansion(event, this)" style="display:inline-flex; align-items:center; gap:4px; font-size:0.8em; color:#3b82f6; background:#eff6ff; border:1px solid #bfdbfe; padding:2px 8px; border-radius:4px; margin-top:4px; cursor:pointer;" title="Kliknutím rozbalíte vlákno">
+                   <span style="font-size:1.1em;">💬</span> ${threadCount} ${threadCount >= 5 ? 'odpovědí' : (threadCount >= 2 && threadCount <= 4 ? 'odpovědi' : 'odpověď')} ⌄
+                 </div>`
+              : '';
 
             return `
               <div class="email-item" style="cursor: default;">
@@ -9424,6 +9510,7 @@ S pozdravem
                 <div class="email-content">
                   <div class="email-sender">${senderHtml}</div>
                   <div class="email-subject">${escapeHtml(e.subject)}</div>
+                  ${threadBadge}
                   <div class="email-preview">${escapeHtml(e.snippet || '')}</div>
                 </div>
                 <div class="email-meta">
