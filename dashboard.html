@@ -9549,7 +9549,10 @@ S pozdravem
       }
     }
 
-    async function loadDashboardRecentEmails() {
+    let recentEmailsOffset = 0;
+    const RECENT_EMAILS_LIMIT = 10;
+
+    async function loadDashboardRecentEmails(isLoadMore = false) {
       const list = document.getElementById('dashboard-recent-emails');
       if (!list) return;
 
@@ -9560,36 +9563,54 @@ S pozdravem
         return;
       }
 
-      list.innerHTML = '<div style="padding:1rem; text-align:center; color:#94a3b8;">Načítám poslední emaily...</div>';
+      if (!isLoadMore) {
+        recentEmailsOffset = 0;
+        list.innerHTML = `
+          <div class="email-list-header">
+            <h3>Poslední emaily</h3>
+          </div>
+          <div id="recent-emails-container">
+            <div style="padding:1rem; text-align:center; color:#94a3b8;">Načítám poslední emaily...</div>
+          </div>
+        `;
+      } else {
+        const btn = document.getElementById('load-more-emails-btn');
+        if (btn) btn.innerHTML = 'Načítám...';
+      }
 
       try {
         const url = new URL(`${window.BACKEND}/api/dashboard/recent-emails`);
         url.searchParams.set('dashboardUserEmail', dashboardUserEmail);
         url.searchParams.set('email', account);
+        url.searchParams.set('limit', RECENT_EMAILS_LIMIT);
+        url.searchParams.set('offset', recentEmailsOffset);
 
         const r = await fetch(url);
         const j = await r.json();
 
+        const container = document.getElementById('recent-emails-container');
+        if (!container) return;
+
         if (j.success && j.emails) {
           const emails = j.emails;
-          if (!emails.length) {
-            list.innerHTML = '<div style="padding:1rem; text-align:center; color:#94a3b8;">Žádné nedávné emaily.</div>';
+
+          if (!isLoadMore && emails.length === 0) {
+            container.innerHTML = '<div style="padding:1rem; text-align:center; color:#94a3b8;">Žádné nedávné emaily.</div>';
             return;
           }
 
+          if (isLoadMore && emails.length === 0) {
+            const btn = document.getElementById('load-more-emails-btn');
+            if (btn) btn.outerHTML = '<div style="padding:1rem; text-align:center; color:#94a3b8;">Již nejsou žádné další emaily.</div>';
+            return;
+          }
 
-          // Filter out emails sent by me (assuming 'from' contains my email)
           const filteredEmails = emails.filter(e => {
             if (!account) return true;
             return !e.from.toLowerCase().includes(account.toLowerCase());
           });
 
-          if (!filteredEmails.length) {
-            list.innerHTML = '<div style="padding:1rem; text-align:center; color:#94a3b8;">Žádné příchozí emaily.</div>';
-            return;
-          }
-
-          const rows = filteredEmails.slice(0, 3).map(e => {
+          const rows = filteredEmails.map(e => {
             const time = new Date(e.date).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
             let statusClass = 'processed';
             let statusText = 'Zpracováno';
@@ -9611,19 +9632,35 @@ S pozdravem
             `;
           }).join('');
 
-          list.innerHTML = `
-            <div class="email-list-header">
-              <h3>Poslední emaily</h3>
-            </div>
-            ${rows}
-          `;
+          if (!isLoadMore) {
+            container.innerHTML = rows;
+          } else {
+            container.insertAdjacentHTML('beforeend', rows);
+          }
+
+          const oldBtn = document.getElementById('load-more-emails-btn');
+          if (oldBtn) oldBtn.remove();
+
+          if (emails.length === RECENT_EMAILS_LIMIT) {
+            recentEmailsOffset += RECENT_EMAILS_LIMIT;
+            container.insertAdjacentHTML('beforeend', `
+               <button id="load-more-emails-btn" onclick="loadDashboardRecentEmails(true)" style="width:100%; margin-top:1rem; padding: 0.75rem; border-radius:10px; border:1px solid #dbe3f3; background:#f8fafc; color:#475569; font-weight:600; cursor:pointer;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f8fafc'">
+                 Další stránka
+               </button>
+             `);
+          }
 
         } else {
-          list.innerHTML = '<div style="padding:1rem; text-align:center; color:#ef4444;">Chyba načítání.</div>';
+          if (!isLoadMore) container.innerHTML = '<div style="padding:1rem; text-align:center; color:#ef4444;">Chyba načítání.</div>';
+          else {
+            const btn = document.getElementById('load-more-emails-btn');
+            if (btn) btn.innerHTML = 'Chyba, zkuste to znovu';
+          }
         }
       } catch (e) {
         console.error(e);
-        list.innerHTML = '<div style="padding:1rem; text-align:center; color:#dc2626;">Chyba načítání emailů.</div>';
+        const container = document.getElementById('recent-emails-container');
+        if (container && !isLoadMore) container.innerHTML = '<div style="padding:1rem; text-align:center; color:#dc2626;">Chyba načítání emailů.</div>';
       }
     }
 
