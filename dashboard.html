@@ -6853,6 +6853,8 @@ S pozdravem
 
       pageEmails.forEach(email => {
         const sender = (email.sender || '').split('<')[0].trim().replace(/"/g, '') || email.sender;
+        const threadCount = Number(email.threadCount) || 1;
+        const senderHtml = escapeHtml(sender) + (threadCount > 1 ? ` <span style="font-size:0.85em; color:#64748b; font-weight:600;">(${threadCount})</span>` : '');
         const pendingIdValue = email.pendingId ?? null;
         const pendingIdAttr = pendingIdValue !== null && pendingIdValue !== undefined ? escapeHtml(String(pendingIdValue)) : '';
         const srcAttr = escapeHtml(email._src || 'gmail');
@@ -6900,7 +6902,7 @@ S pozdravem
               <div class="email-item ${isUnread ? 'unread' : ''}" ${datasetParts.join(' ')}>
                   <div class="email-content" style="flex-grow: 1;">
                       ${badge}
-                      <div class="email-sender">${escapeHtml(sender)}</div>
+                      <div class="email-sender">${senderHtml}</div>
                       <div class="email-subject">${escapeHtml(email.subject || '(bez předmětu)')}</div>
                       ${preview}
                   </div>
@@ -9413,11 +9415,14 @@ S pozdravem
             let statusText = 'Zpracováno';
             if (e.isRead === false) { statusClass = 'unread'; statusText = 'Nový'; }
 
+            const threadCount = Number(e.thread_count) || 1;
+            const senderHtml = escapeHtml(e.from) + (threadCount > 1 ? ` <span style="font-size:0.85em; color:#64748b; font-weight:600;">(${threadCount})</span>` : '');
+
             return `
               <div class="email-item" style="cursor: default;">
                 <div class="email-status ${statusClass}"></div>
                 <div class="email-content">
-                  <div class="email-sender">${escapeHtml(e.from)}</div>
+                  <div class="email-sender">${senderHtml}</div>
                   <div class="email-subject">${escapeHtml(e.subject)}</div>
                   <div class="email-preview">${escapeHtml(e.snippet || '')}</div>
                 </div>
