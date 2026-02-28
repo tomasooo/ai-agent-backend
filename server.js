@@ -661,7 +661,7 @@ app.get('/api/analytics/complaints', async (req, res) => {
 
 // === RECENT EMAILS (DASHBOARD) (Relocated) ===
 app.get('/api/dashboard/recent-emails', async (req, res) => {
-  const { dashboardUserEmail, email } = req.query;
+  const { dashboardUserEmail, email, limit = 10, offset = 0 } = req.query;
   if (!dashboardUserEmail || !email) {
     return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo email.' });
   }
@@ -669,97 +669,17 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
   try {
     const db = await pool.connect();
 
-    // 1. Check custom_accounts
-    const rCustom = await db.query(
-      `SELECT * FROM custom_accounts WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true`,
-      [dashboardUserEmail, email]
-    );
-
-    let emails = [];
-
-    if (rCustom.rowCount > 0) {
-      const acc = rCustom.rows[0];
-      const user = decSecret(acc.enc_username);
-      const pass = decSecret(acc.enc_password);
-
-      let imap;
-      try {
-        imap = createImapClient({
-          host: acc.imap_host,
-          port: Number(acc.imap_port),
-          secure: !!acc.imap_secure,
-          auth: { user, pass }
-        });
-
-        await imap.connect();
-        await imap.mailboxOpen('INBOX');
-
-        const status = await imap.status('INBOX', { messages: true });
-        const total = status.messages;
-
-        if (total > 0) {
-          const start = Math.max(1, total - 2);
-          const fetchQuery = { seq: `${start}:${total}` };
-
-          for await (const msg of imap.fetch(fetchQuery, { envelope: true, internalDate: true, uid: true, flags: true })) {
-            emails.push({
-              id: msg.uid,
-              provider: 'custom',
-              subject: decodeHeader(msg.envelope.subject),
-              from: msg.envelope.from?.[0]?.name || msg.envelope.from?.[0]?.address,
-              date: msg.internalDate,
-              snippet: '(Načítání...)',
-              isRead: msg.flags && msg.flags.has('\\Seen')
-            });
-          }
-          emails.reverse();
-        }
-      } finally {
-        if (imap) {
-          try { await imap.logout(); } catch (e) { console.warn('Logout failed in recent-emails', e.message); }
-        }
-      }
-
-    } else {
-      // Check Gmail
-      const rGmail = await db.query(
-        `SELECT refresh_token FROM connected_accounts WHERE dashboard_user_email=$1 AND email=$2`,
-        [dashboardUserEmail, email]
-      );
-
-      if (rGmail.rowCount > 0) {
-        const auth = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
-        auth.setCredentials({ refresh_token: rGmail.rows[0].refresh_token });
-        const gmail = google.gmail({ version: 'v1', auth });
-
-        const resp = await gmail.users.messages.list({ userId: 'me', maxResults: 3 });
-        const messages = resp.data.messages || [];
-
-        for (const m of messages) {
-          const detail = await gmail.users.messages.get({ userId: 'me', id: m.id });
-          const headers = detail.data.payload.headers;
-          const subject = headers.find(h => h.name === 'Subject')?.value || '(Bez předmětu)';
-          const from = headers.find(h => h.name === 'From')?.value || '';
-          const snippet = detail.data.snippet;
-          const labelIds = detail.data.labelIds || [];
-          const isRead = !labelIds.includes('UNREAD');
-
-          emails.push({
-            id: m.id,
-            provider: 'gmail',
-            subject,
-            from,
-            date: new Date(Number(detail.data.internalDate)),
-            snippet,
-            isRead
-          });
-        }
-      }
-    }
+    // Načtení přímo z tabulky synchronizovaných emailů
+    const result = await db.query(`
+      SELECT id, provider, subject, from_address as from, date, snippet, is_read as "isRead"
+      FROM synced_emails
+      WHERE dashboard_user_email = $1 AND account_email = $2
+      ORDER BY date DESC
+      LIMIT $3 OFFSET $4
+    `, [dashboardUserEmail, email, Number(limit), Number(offset)]);
 
     db.release();
-    res.json({ success: true, emails });
-
+    res.json({ success: true, emails: result.rows });
   } catch (e) {
     console.error('Recent emails error:', e);
     res.status(500).json({ success: false, message: 'Chyba při načítání emailů: ' + e.message });
@@ -1012,6 +932,19 @@ async function setupDatabase() {
                 status VARCHAR(50) NOT NULL,
                 details JSONB,
                 created_at TIMESTAMPTZ DEFAULT NOW()
+            );`,
+      `CREATE TABLE IF NOT EXISTS synced_emails (
+                id VARCHAR(255),
+                dashboard_user_email VARCHAR(255) NOT NULL,
+                account_email VARCHAR(255) NOT NULL,
+                provider VARCHAR(50) NOT NULL,
+                subject TEXT,
+                from_address TEXT,
+                snippet TEXT,
+                is_read BOOLEAN DEFAULT false,
+                date TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (dashboard_user_email, account_email, provider, id)
             );`
     ];
 
@@ -6300,6 +6233,122 @@ async function runEmailWorker() {
   }
 }
 
+// === NEW: BACKGROUND SYNC FOR RECENT EMAILS (PAGINATION) ===
+async function syncRecentEmails() {
+  console.log('🔄 Spouštím synchronizaci nedávných emailů pro dashboard...');
+  let dbClient;
+  try {
+    dbClient = await pool.connect();
+
+    // 1. Synchronizace Custom účtů
+    const { rows: customAccounts } = await dbClient.query(`
+      SELECT dashboard_user_email, email_address, imap_host, imap_port, imap_secure, enc_username, enc_password
+      FROM custom_accounts
+      WHERE active = true
+    `);
+
+    for (const acc of customAccounts) {
+      const user = decSecret(acc.enc_username);
+      const pass = decSecret(acc.enc_password);
+
+      let imap;
+      try {
+        imap = createImapClient({
+          host: acc.imap_host,
+          port: Number(acc.imap_port || 993),
+          secure: !!acc.imap_secure,
+          auth: { user, pass }
+        });
+        await imap.connect();
+        await imap.mailboxOpen('INBOX');
+
+        const status = await imap.status('INBOX', { messages: true });
+        const total = status.messages;
+
+        if (total > 0) {
+          const start = Math.max(1, total - 49); // Posledních max 50 emailů pro rychlost 
+          const fetchQuery = { seq: `${start}:${total}` };
+
+          for await (const msg of imap.fetch(fetchQuery, { envelope: true, internalDate: true, uid: true, flags: true })) {
+            const isRead = msg.flags && msg.flags.has('\\Seen');
+            const subject = decodeHeader(msg.envelope.subject) || '(Bez předmětu)';
+            const from = msg.envelope.from?.[0]?.name || msg.envelope.from?.[0]?.address || '';
+            const date = msg.internalDate;
+            const snippet = '(Načteno na pozadí)'; // Pro IMAP by se muselo stahovat celé tělo, to uděláme jen jednoduše
+
+            await dbClient.query(`
+              INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date)
+              VALUES ($1, $2, $3, 'custom', $4, $5, $6, $7, $8)
+              ON CONFLICT (dashboard_user_email, account_email, provider, id)
+              DO UPDATE SET
+                subject = EXCLUDED.subject,
+                from_address = EXCLUDED.from_address,
+                is_read = EXCLUDED.is_read,
+                date = EXCLUDED.date
+            `, [String(msg.uid), acc.dashboard_user_email, acc.email_address, subject, from, snippet, isRead, date]);
+          }
+        }
+      } catch (err) {
+        console.error(`Chyba při synchronizaci IMAP (${acc.email_address}):`, err.message);
+      } finally {
+        if (imap) {
+          try { await imap.logout(); } catch (e) { }
+        }
+      }
+    }
+
+    // 2. Synchronizace Gmail účtů
+    const { rows: gmailAccounts } = await dbClient.query(`
+      SELECT dashboard_user_email, email as email_address, refresh_token
+      FROM connected_accounts
+      WHERE active = true
+    `);
+
+    for (const acc of gmailAccounts) {
+      try {
+        const auth = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+        auth.setCredentials({ refresh_token: acc.refresh_token });
+        const gmail = google.gmail({ version: 'v1', auth });
+
+        const resp = await gmail.users.messages.list({ userId: 'me', maxResults: 50, labelIds: ['INBOX'] });
+        const messages = resp.data.messages || [];
+
+        for (const m of messages) {
+          const detail = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'metadata', metadataHeaders: ['Subject', 'From'] });
+          const headers = detail.data.payload?.headers || [];
+          const subject = headers.find(h => h.name.toLowerCase() === 'subject')?.value || '(Bez předmětu)';
+          const from = headers.find(h => h.name.toLowerCase() === 'from')?.value || '';
+          const snippet = detail.data.snippet || '';
+          const labelIds = detail.data.labelIds || [];
+          const isRead = !labelIds.includes('UNREAD');
+          const dateStr = detail.data.internalDate;
+          const date = dateStr ? new Date(Number(dateStr)) : new Date();
+
+          await dbClient.query(`
+            INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date)
+            VALUES ($1, $2, $3, 'gmail', $4, $5, $6, $7, $8)
+            ON CONFLICT (dashboard_user_email, account_email, provider, id)
+            DO UPDATE SET
+              subject = EXCLUDED.subject,
+              from_address = EXCLUDED.from_address,
+              snippet = EXCLUDED.snippet,
+              is_read = EXCLUDED.is_read,
+              date = EXCLUDED.date
+          `, [m.id, acc.dashboard_user_email, acc.email_address, subject, from, snippet, isRead, date]);
+        }
+      } catch (err) {
+        console.error(`Chyba při synchronizaci Gmailu (${acc.email_address}):`, err.message);
+      }
+    }
+
+  } catch (err) {
+    console.error('Došlo k chybě v syncRecentEmails:', err);
+  } finally {
+    if (dbClient) dbClient.release();
+    console.log('✅ Synchronizace nedávných emailů dokončena.');
+  }
+}
+
 // Endpoint, který lze stále volat ručně pro testování (např. přes UptimeRobot)
 app.get('/api/trigger-worker', (req, res) => {
   if (req.query.secret !== CRON_SECRET) {
@@ -6315,6 +6364,7 @@ app.get('/api/trigger-worker', (req, res) => {
 cron.schedule('*/5 * * * *', () => {
   runEmailWorker();
   runImapWorker();
+  syncRecentEmails();
 });
 
 
