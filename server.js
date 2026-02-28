@@ -3494,7 +3494,7 @@ app.get('/api/gmail/thread/:threadId', async (req, res) => {
     db = await pool.connect();
     // Vytáhne všechny maily daného vlákna, seřazené od nejstaršího po nejnovější (jako konverzace)
     const result = await db.query(`
-      SELECT id, subject, from_address as sender, snippet, date, is_read as "isRead"
+      SELECT id, message_id, subject, from_address as sender, snippet, date, is_read as "isRead"
       FROM synced_emails
       WHERE dashboard_user_email = $1 AND account_email = $2 AND COALESCE(thread_id, id) = $3
       ORDER BY date ASC
@@ -3502,6 +3502,7 @@ app.get('/api/gmail/thread/:threadId', async (req, res) => {
 
     const emails = result.rows.map(row => ({
       id: row.id,
+      messageId: row.message_id || row.id,
       snippet: row.snippet || '',
       sender: row.sender || '',
       subject: row.subject || '(Bez předmětu)',
