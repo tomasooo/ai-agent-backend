@@ -6111,7 +6111,7 @@ async function syncRecentEmails() {
             const subject = decodeHeader(msg.envelope.subject) || '(Bez předmětu)';
             const from = msg.envelope.from?.[0]?.name || msg.envelope.from?.[0]?.address || '';
             const date = msg.internalDate;
-            const snippet = '(Načteno na pozadí)'; // Pro IMAP by se muselo stahovat celé tělo, to uděláme jen jednoduše
+            const snippet = ''; // Pro IMAP by se muselo stahovat celé tělo, to uděláme jen jednoduše
 
             await dbClient.query(`
               INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date)
