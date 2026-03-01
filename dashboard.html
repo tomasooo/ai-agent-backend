@@ -6976,26 +6976,26 @@ S pozdravem
       }
 
       const safeTotal = Math.max(totalRecords || 0, endIndex);
-      const infoText = `Zobrazeno ${startIndex} -${endIndex} z ${safeTotal} emailů`;
+      const infoText = `Zobrazeno ${startIndex}-${endIndex} z ${safeTotal} emailů`;
       const prevPage = currentEmailPage > 1 ? currentEmailPage - 1 : 1;
       const nextPage = currentEmailPage < totalPages ? currentEmailPage + 1 : totalPages;
 
       let buttons = `
-          < button class="pagination-button${currentEmailPage === 1 ? ' disabled' : ''}" data - page="${prevPage}" ${currentEmailPage === 1 ? 'disabled' : ''}>‹</button >
-            `;
+    <button class="pagination-button${currentEmailPage === 1 ? ' disabled' : ''}" data-page="${prevPage}" ${currentEmailPage === 1 ? 'disabled' : ''}>‹</button>
+  `;
 
       for (let i = 1; i <= totalPages; i++) {
-        buttons += `< button class="pagination-button${i === currentEmailPage ? ' active' : ''}" data - page="${i}" > ${i}</button > `;
+        buttons += `<button class="pagination-button${i === currentEmailPage ? ' active' : ''}" data-page="${i}">${i}</button>`;
       }
 
       buttons += `
-          < button class="pagination-button${currentEmailPage === totalPages ? ' disabled' : ''}" data - page="${nextPage}" ${currentEmailPage === totalPages ? 'disabled' : ''}>›</button >
-            `;
+    <button class="pagination-button${currentEmailPage === totalPages ? ' disabled' : ''}" data-page="${nextPage}" ${currentEmailPage === totalPages ? 'disabled' : ''}>›</button>
+  `;
 
       paginationContainer.innerHTML = `
-            < div class="pagination-info" > ${infoText}</div >
-              <div class="pagination-buttons">${buttons}</div>
-        `;
+    <div class="pagination-info">${infoText}</div>
+    <div class="pagination-buttons">${buttons}</div>
+  `;
       paginationContainer.style.display = '';
     }
 
@@ -7054,7 +7054,7 @@ S pozdravem
       try {
         const dashboardUserEmail = localStorage.getItem('userEmail');
         const primaryEmail = localStorage.getItem('primaryEmail');
-        const r = await fetch(`${window.BACKEND} /api/gmail / thread / ${encodeURIComponent(threadId)}?dashboardUserEmail = ${encodeURIComponent(dashboardUserEmail)}& email=${encodeURIComponent(primaryEmail)} `);
+        const r = await fetch(`${window.BACKEND}/api/gmail/thread/${encodeURIComponent(threadId)}?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}`);
         const j = await r.json();
 
         if (j.success && j.emails) {
@@ -7071,7 +7071,7 @@ S pozdravem
             const unreadClass = e.unread ? 'unread' : 'processed';
             // Použijeme data-atributy, aby na to mohl uživatel kliknout a otevřel se mu detail
             return `
-          < div class="email-item nested-thread-item ${unreadClass}" data - id="${escapeHtml(e.id)}" data - message - id="${escapeHtml(e.messageId || e.id)}" data - src="${src}" data - from="${escapeHtml(e.sender)}" style = "margin-bottom:6px; padding:10px 14px; border-radius:8px; display:flex; gap:12px; cursor:pointer; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05);" >
+          <div class="email-item nested-thread-item ${unreadClass}" data-id="${escapeHtml(e.id)}" data-message-id="${escapeHtml(e.messageId || e.id)}" data-src="${src}" data-from="${escapeHtml(e.sender)}" style="margin-bottom:6px; padding:10px 14px; border-radius:8px; display:flex; gap:12px; cursor:pointer; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05);">
                   <div class="email-status ${unreadClass}" style="transform: scale(0.8); margin-right:10px;"></div>
                   <div class="email-content" style="flex-grow:1;">
                       <div class="email-sender" style="font-size:0.95em; font-weight:600; opacity: 0.95;">${escapeHtml(e.sender)}</div>
@@ -7081,7 +7081,7 @@ S pozdravem
                   <div class="email-meta" style="flex-shrink:0; text-align:right; font-size:0.8em; opacity: 0.6;">
                       <div>${dateStr}</div>
                   </div>
-              </div >
+              </div>
           `;
           }).join('');
           container.innerHTML = html;
