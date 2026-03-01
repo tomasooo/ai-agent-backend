@@ -5672,6 +5672,9 @@ ${String(bodyText).slice(0, 3000)}
               sender: senderHeader
             };
 
+            const cleanSubjectForThread = subject.replace(/^(re|fwd|fw|odp|aw|odpověď):\s*/ig, '').trim().toLowerCase();
+            const threadId = 'custom_' + crypto.createHash('md5').update(acc.dashboard_user_email + '|' + acc.email_address + '|' + replyToAddress + '|' + cleanSubjectForThread).digest('hex');
+
             await dbClient.query(`
             INSERT INTO pending_replies (
               dashboard_user_email,
@@ -5691,10 +5694,11 @@ ${String(bodyText).slice(0, 3000)}
               category,
               metadata
             ) VALUES (
-              $1,$2,'custom',$3,NULL,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+              $1,$2,'custom',$3,$15,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
             )
             ON CONFLICT (dashboard_user_email, connected_email, provider, message_id)
             DO UPDATE SET
+              thread_id = EXCLUDED.thread_id,
               reply_body = EXCLUDED.reply_body,
               summary = EXCLUDED.summary,
               sentiment = EXCLUDED.sentiment,
@@ -5718,7 +5722,8 @@ ${String(bodyText).slice(0, 3000)}
               analysis?.summary ? String(analysis.summary).trim() : null,
               analysis?.sentiment ? String(analysis.sentiment).trim() : null,
               analysis?.category ? String(analysis.category).trim() : null,
-              JSON.stringify(metadata)
+              JSON.stringify(metadata),
+              threadId
             ]);
 
             await runWithRetry(() => actionImap.messageFlagsAdd(msg.uid, ['\\Flagged'], { uid: true })).catch(() => { });
@@ -6251,12 +6256,13 @@ async function syncRecentEmails() {
             const isRead = msg.flags && msg.flags.has('\\Seen');
             const subject = decodeHeader(msg.envelope.subject) || '(Bez předmětu)';
             const from = msg.envelope.from?.[0]?.name || msg.envelope.from?.[0]?.address || '';
+            const replyTo = msg.envelope.replyTo?.[0]?.address || msg.envelope.from?.[0]?.address || '';
             const date = msg.internalDate;
             const snippet = ''; // Pro IMAP by se muselo stahovat celé tělo, to uděláme jen jednoduše
 
             // Jednoduché pseudo-vlákno pro IMAP: spojíme všechny zprávy se stejným (očištěným) předmětem od stejného odesílatele
             const cleanSubject = subject.replace(/^(re|fwd|fw|odp|aw|odpověď):\s*/ig, '').trim().toLowerCase();
-            const threadId = 'custom_' + crypto.createHash('md5').update(acc.dashboard_user_email + '|' + acc.email_address + '|' + from + '|' + cleanSubject).digest('hex');
+            const threadId = 'custom_' + crypto.createHash('md5').update(acc.dashboard_user_email + '|' + acc.email_address + '|' + replyTo + '|' + cleanSubject).digest('hex');
 
             await dbClient.query(`
               INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date, thread_id)
