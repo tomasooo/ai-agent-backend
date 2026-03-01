@@ -9700,6 +9700,16 @@ S pozdravem
             let statusText = 'Zpracováno';
             if (e.isRead === false) { statusClass = 'unread'; statusText = 'Nový'; }
 
+            // AI stavový badge
+            let aiBadge = '';
+            if (e.emailStatus === 'pending') {
+              aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;">⏳ Čeká na schválení</div>`;
+            } else if (e.emailStatus === 'auto_replied') {
+              aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#dcfce7;color:#166534;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;">✅ Automaticky zodpovězeno</div>`;
+            } else if (e.emailStatus === 'rejected') {
+              aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;">❌ Zamítnuto</div>`;
+            }
+
             const threadCount = Number(e.thread_count) || 1;
             const senderHtml = escapeHtml(e.from);
             const threadIdToUse = e.thread_id || e.id || '';
@@ -9716,6 +9726,7 @@ S pozdravem
                 <div class="email-content">
                   <div class="email-sender">${senderHtml}</div>
                   <div class="email-subject">${escapeHtml(e.subject)}</div>
+                  ${aiBadge}
                   ${threadBadge}
                   <div class="email-preview">${escapeHtml(e.snippet || '')}</div>
                 </div>
