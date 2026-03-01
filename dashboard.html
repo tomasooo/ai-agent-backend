@@ -7210,7 +7210,7 @@ S pozdravem
 
         const endpoint = approveBtn ? 'approve' : 'reject';
         const url = src === 'custom'
-          ? `${window.BACKEND} /api/custom - email / pending - replies / ${encodeURIComponent(pendingId)}/${endpoint}`
+          ? `${window.BACKEND}/api/custom-email/pending-replies/${encodeURIComponent(pendingId)}/${endpoint}`
           : `${window.BACKEND}/api/gmail/pending-replies/${encodeURIComponent(pendingId)}/${endpoint}`;
 
         // Podpora ruční upravené zprávy
