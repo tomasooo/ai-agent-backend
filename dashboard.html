@@ -3705,7 +3705,7 @@
               <span class="nav-text">Emaily</span>
             </a>
           </li>
-          <li class="nav-item">
+          <li class="nav-item" style="display: none;">
             <a href="#" class="nav-link" data-page="templates">
               <span class="nav-icon">
                 <svg viewBox="0 0 24 24">
@@ -3717,6 +3717,19 @@
                 </svg>
               </span>
               <span class="nav-text">Šablony</span>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#" class="nav-link" data-page="faq">
+              <span class="nav-icon">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+              </span>
+              <span class="nav-text">FAQ</span>
             </a>
           </li>
           <li class="nav-item">
@@ -4162,6 +4175,34 @@
 
         </div>
 
+        <!-- FAQ Page -->
+        <div class="page-content" id="faq">
+          <div class="form-section">
+            <h3>FAQ pro účet</h3>
+
+            <div class="form-group">
+              <label class="form-label">Aktivní účet</label>
+              <!-- ukáže aktuální primaryEmail jen pro informaci -->
+              <div id="faq-current-account" class="muted"
+                style="padding:.35rem .5rem;background:rgba(255, 255, 255, 0.1);border-radius:.5rem; color: #e2e8f0;">
+              </div>
+            </div>
+
+            <div class="form-group" style="display:flex; gap:.5rem; flex-wrap:wrap;">
+              <button id="faq-add-btn" class="btn btn-primary"><span>➕</span> Přidat FAQ položku</button>
+              <button id="faq-save-all-btn" class="btn"><span>💾</span> Uložit změny</button>
+            </div>
+
+            <div id="faq-list" style="display:grid; gap:.5rem;">
+              <!-- dynamicky se sem vykreslí jednotlivé položky FAQ -->
+            </div>
+
+            <div class="muted" style="margin-top:.75rem;">
+              Tip: FAQ se ukládá **per účet**. Přepni primární účet vpravo nahoře.
+            </div>
+          </div>
+        </div>
+
         <!-- Settings Page -->
 
         <div class="page-content" id="settings">
@@ -4171,7 +4212,7 @@
             <div class="settings-tab" data-tab="plan">Plán</div>
             <div class="settings-tab" data-tab="notifications">Notifikace</div>
             <div class="settings-tab" data-tab="security">Zabezpečení</div>
-            <div class="settings-tab" data-tab="faq">FAQ</div>
+            <!-- <div class="settings-tab" data-tab="faq">FAQ</div> -->
           </div>
 
           <div class="settings-content" id="ai-settings">
@@ -4477,34 +4518,12 @@
             </div>
           </div>
 
-          <!-- FAQ Tab -->
+          <!-- FAQ Tab (Moved to main menu) -->
+          <!-- 
           <div class="settings-content" id="faq-settings" style="display:none;">
-            <div class="form-section">
-              <h3>FAQ pro účet</h3>
-
-              <div class="form-group">
-                <label class="form-label">Aktivní účet</label>
-                <!-- ukáže aktuální primaryEmail jen pro informaci -->
-                <div id="faq-current-account" class="muted"
-                  style="padding:.35rem .5rem;background:rgba(255, 255, 255, 0.1);border-radius:.5rem; color: #e2e8f0;">
-                </div>
-              </div>
-
-              <div class="form-group" style="display:flex; gap:.5rem; flex-wrap:wrap;">
-                <button id="faq-add-btn" class="btn btn-primary"><span>➕</span> Přidat FAQ položku</button>
-                <button id="faq-save-all-btn" class="btn"><span>💾</span> Uložit změny</button>
-              </div>
-
-              <div id="faq-list" style="display:grid; gap:.5rem;">
-                <!-- dynamicky se sem vykreslí jednotlivé položky FAQ -->
-              </div>
-
-              <div class="muted" style="margin-top:.75rem;">
-                Tip: FAQ se ukládá **per účet**. Přepni primární účet vpravo nahoře (pokud to u tebe máš), nebo dle
-                toho, jak dnes vybíráš aktivní schránku.
-              </div>
-            </div>
-          </div>
+          ... (obsah přesunut výše jako page-content #faq) ...
+          </div> 
+          -->
 
 
         </div>
@@ -8010,7 +8029,7 @@ S pozdravem
           }
 
           if (pageTitle) {
-            const titles = { 'dashboard': 'Dashboard', 'emails': 'Správa emailů', 'templates': 'Šablony', 'settings': 'Nastavení', 'analytics': 'Analytika', 'integrations': 'Integrace', 'admin': 'Admin' };
+            const titles = { 'dashboard': 'Dashboard', 'emails': 'Správa emailů', 'templates': 'Šablony', 'settings': 'Nastavení', 'analytics': 'Analytika', 'integrations': 'Integrace', 'admin': 'Admin', 'faq': 'FAQ' };
             pageTitle.textContent = titles[targetPageId] || 'Dashboard';
           }
 
@@ -8028,6 +8047,7 @@ S pozdravem
           if (targetPageId === 'emails') fetchEmails();
           if (targetPageId === 'settings') loadSettings();
           if (targetPageId === 'analytics') loadAnalytics(7);
+          if (targetPageId === 'faq') loadFaqs();
           if (targetPageId === 'admin') {
             loadAdminUsers();
             loadActivityLog();
@@ -8066,11 +8086,10 @@ S pozdravem
             if (targetContent) {
               targetContent.style.display = 'block';
 
-              // pokud je to FAQ tab, načti FAQ
-              if (tab.getAttribute('data-tab') === 'faq') {
-                loadFaqs();
-                // wireFaqButtons() se nyní volá jen jednou v DOMContentLoaded, takže ho odsud odebereme
-              }
+              // pokud je to FAQ tab, načti FAQ (již není v settings)
+              // if (tab.getAttribute('data-tab') === 'faq') {
+              //   loadFaqs();
+              // }
 
               if (tab.getAttribute('data-tab') === 'email') {
                 renderConnectedAccounts();
