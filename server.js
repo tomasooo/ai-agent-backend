@@ -3280,6 +3280,14 @@ app.post('/api/gmail/send-reply', async (req, res) => {
       'SELECT refresh_token FROM connected_accounts WHERE email = $1 AND dashboard_user_email = $2',
       [email, dashboardUserEmail]
     );
+
+    // Update read status to immediate UI reflection
+    try {
+      await db.query(`UPDATE synced_emails SET is_read = true WHERE id = $1`, [messageId]);
+    } catch (err) {
+      console.error('[gmail send-reply] error updating is_read:', err);
+    }
+
     db.release();
 
     const refreshToken = r.rows[0]?.refresh_token;
@@ -4047,6 +4055,15 @@ async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending })
     requestBody: { removeLabelIds, addLabelIds: [] }
   });
 
+  const db = await pool.connect();
+  try {
+    await db.query(`UPDATE synced_emails SET is_read = true WHERE id = $1`, [pending.message_id]);
+  } catch (err) {
+    console.error('[pending-replies] update synced_emails is_read error:', err);
+  } finally {
+    db.release();
+  }
+
   await logActivity(dashboardUserEmail, 'Odeslání odpovědi (schváleno)', 'success', { account: email, to: targetRecipient });
 }
 
@@ -4285,6 +4302,18 @@ async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pe
     console.warn('[custom pending] IMAP update selhala:', imapErr?.message || imapErr);
   } finally {
     try { if (imapClient.connected) await imapClient.logout(); } catch { }
+  }
+
+  const updateDb = await pool.connect();
+  try {
+    const msgId = pending.message_id || metadata.uid || metadata.messageUid;
+    if (msgId) {
+      await updateDb.query(`UPDATE synced_emails SET is_read = true WHERE id = $1`, [String(msgId)]);
+    }
+  } catch (err) {
+    console.error('[custom pending] update synced_emails error:', err);
+  } finally {
+    updateDb.release();
   }
 
   await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Custom schváleno)', 'success', { account: emailAddress, to: toAddress });
@@ -5595,6 +5624,13 @@ ${String(bodyText).slice(0, 3000)}
                     'success',
                     { account: acc.email_address, to: targetRecipient }
                   );
+
+                  try {
+                    await dbClient.query(`UPDATE synced_emails SET is_read = true WHERE id = $1`, [String(msg.uid)]);
+                  } catch (dbErr) {
+                    console.error('[IMAP worker] failed to update is_read for auto-reply:', dbErr);
+                  }
+
                   // Hotovo, jdeme na další
                   continue;
                 } catch (sendErr) {
@@ -6025,6 +6061,13 @@ ${String(bodyText).slice(0, 3000)}
           'success',
           { account: acc.connected_email, to: targetRecipient }
         );
+
+        try {
+          await dbClient.query(`UPDATE synced_emails SET is_read = true WHERE id = $1`, [msg.id]);
+        } catch (dbErr) {
+          console.error('         Failed to update is_read in synced_emails:', dbErr);
+        }
+
         continue;
       } catch (sendErr) {
         console.error('         Auto-odpověď se nepodařila odeslat:', sendErr?.message || sendErr);
