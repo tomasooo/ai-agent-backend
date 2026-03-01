@@ -4069,7 +4069,7 @@ async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending })
 
 app.post('/api/gmail/pending-replies/:id/approve', async (req, res) => {
   const id = Number(req.params.id);
-  const { dashboardUserEmail, email } = req.body || {};
+  const { dashboardUserEmail, email, customReplyBody } = req.body || {};
   if (!id || !dashboardUserEmail || !email) {
     return res.status(400).json({ success: false, message: 'Chybí povinná data.' });
   }
@@ -4089,6 +4089,11 @@ app.post('/api/gmail/pending-replies/:id/approve', async (req, res) => {
     const pending = rows[0];
     if (pending.status !== 'pending') {
       return res.status(400).json({ success: false, message: 'Tento návrh už byl zpracován.' });
+    }
+
+    if (customReplyBody) {
+      pending.reply_body = customReplyBody;
+      await client.query(`UPDATE pending_replies SET reply_body=$1 WHERE id=$2`, [customReplyBody, id]);
     }
 
     await sendGmailReplyFromPending({ dashboardUserEmail, email, pending });
@@ -4323,7 +4328,7 @@ async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pe
 
 app.post('/api/custom-email/pending-replies/:id/approve', async (req, res) => {
   const id = Number(req.params.id);
-  const { dashboardUserEmail, emailAddress } = req.body || {};
+  const { dashboardUserEmail, emailAddress, customReplyBody } = req.body || {};
   if (!id || !dashboardUserEmail || !emailAddress) {
     return res.status(400).json({ success: false, message: 'Chybí povinná data.' });
   }
@@ -4344,6 +4349,11 @@ app.post('/api/custom-email/pending-replies/:id/approve', async (req, res) => {
     const pending = rows[0];
     if (pending.status !== 'pending') {
       return res.status(400).json({ success: false, message: 'Tento návrh už byl zpracován.' });
+    }
+
+    if (customReplyBody) {
+      pending.reply_body = customReplyBody;
+      await client.query(`UPDATE pending_replies SET reply_body=$1 WHERE id=$2`, [customReplyBody, id]);
     }
 
     await sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pending });
