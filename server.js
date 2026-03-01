@@ -688,14 +688,26 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
       )
       SELECT 
         f.id, f.provider, f.subject, f.from, f.date, f.snippet, f."isRead", f.thread_group as thread_id,
-        (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count
+        (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count,
+        pr.status as pending_status
       FROM FilteredThreads f
+      LEFT JOIN pending_replies pr
+        ON pr.message_id = f.id
+        AND pr.dashboard_user_email = $1
+        AND pr.connected_email = $2
       ORDER BY f.last_activity DESC
       LIMIT $3 OFFSET $4
     `, [dashboardUserEmail, email, Number(limit), Number(offset)]);
 
     db.release();
-    res.json({ success: true, emails: result.rows });
+    const emails = result.rows.map(row => {
+      let emailStatus = null;
+      if (row.pending_status === 'pending') emailStatus = 'pending';
+      else if (row.pending_status === 'sent') emailStatus = 'auto_replied';
+      else if (row.pending_status === 'rejected') emailStatus = 'rejected';
+      return { ...row, emailStatus };
+    });
+    res.json({ success: true, emails });
   } catch (e) {
     console.error('Recent emails error:', e);
     res.status(500).json({ success: false, message: 'Chyba při načítání emailů: ' + e.message });
