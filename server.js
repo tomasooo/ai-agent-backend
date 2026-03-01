@@ -3485,22 +3485,38 @@ app.get('/api/gmail/emails', async (req, res) => {
       )
       SELECT 
         f.id, f.subject, f.sender, f.snippet, f.date, f."isRead", f.thread_group as thread_id,
-        (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count
+        (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count,
+        pr.status as pending_status,
+        pr.id as pending_id
       FROM FilteredThreads f
+      LEFT JOIN pending_replies pr
+        ON pr.message_id = f.id
+        AND pr.dashboard_user_email = $1
+        AND pr.connected_email = $2
       ORDER BY f.last_activity DESC
       LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `, queryArgs);
 
-    const emails = dataRes.rows.map(row => ({
-      id: row.id,
-      snippet: row.snippet || '',
-      sender: row.sender || '',
-      subject: row.subject || '(Bez předmětu)',
-      date: row.date,
-      unread: !row.isRead,
-      threadCount: Number(row.thread_count) || 1,
-      threadId: row.thread_id
-    }));
+    const emails = dataRes.rows.map(row => {
+      // Determine display status
+      let emailStatus = null;
+      if (row.pending_status === 'pending') emailStatus = 'pending';
+      else if (row.pending_status === 'sent') emailStatus = 'auto_replied';
+      else if (row.pending_status === 'rejected') emailStatus = 'rejected';
+
+      return {
+        id: row.id,
+        snippet: row.snippet || '',
+        sender: row.sender || '',
+        subject: row.subject || '(Bez předmětu)',
+        date: row.date,
+        unread: !row.isRead,
+        threadCount: Number(row.thread_count) || 1,
+        threadId: row.thread_id,
+        emailStatus,
+        pendingId: row.pending_id || null
+      };
+    });
 
     res.json({ success: true, emails, total: totalCount });
 
