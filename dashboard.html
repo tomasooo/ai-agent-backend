@@ -8532,13 +8532,31 @@ S pozdravem
               const dashboardUserEmail = localStorage.getItem('userEmail');
               const primaryEmail = localStorage.getItem('primaryEmail');
               const isCustom = (src === 'custom');
+              const isPendingEmail = !!(emailEntry && emailEntry._pending && (emailEntry.pendingId || pendingId));
+              const effectivePendingId = isPendingEmail ? (emailEntry?.pendingId || pendingId || '') : '';
 
+              // === Případ 1: Pending email – načti tělo přímo z DB přes pendingId ===
+              if (isPendingEmail && effectivePendingId) {
+                const dbUrl = `${window.BACKEND}/api/pending-reply/body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&pendingId=${encodeURIComponent(effectivePendingId)}`;
+                const r = await fetch(dbUrl);
+                const j = await r.json();
+                if (r.ok && j.success && j.body) {
+                  edBody.textContent = j.body;
+                } else if (emailEntry.originalBody) {
+                  // Fallback na data z cache pokud DB endpoint selhal
+                  edBody.textContent = emailEntry.originalBody;
+                } else {
+                  edBody.textContent = '(tělo zprávy není k dispozici)';
+                }
+                return; // Hotovo, nepotřebujeme IMAP/Gmail fetch
+              }
+
+              // === Případ 2: Normální email (ne pending) – fetch přes IMAP/Gmail API ===
               const requestId = emailEntry?.messageId || ctx?.id || id;
-
               const shouldFetchBody = !(emailEntry && emailEntry._pending && emailEntry.originalBody);
 
               if (shouldFetchBody) {
-                // Volání lehkého backend endpointu pro tělo zprávy (viz změny v serveru níže)
+                // Volání lehkého backend endpointu pro tělo zprávy
                 let url;
                 if (isCustom) {
                   url = `${window.BACKEND}/api/custom-email/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&uid=${encodeURIComponent(requestId)}`;
