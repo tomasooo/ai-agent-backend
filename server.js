@@ -3571,7 +3571,7 @@ app.get('/api/gmail/message-body', async (req, res) => {
     const msg = await gmail.users.messages.get({ userId: 'me', id: messageId });
     // vytáhnout text/plain nebo převést html na text
     const getText = (payload) => {
-      const b64 = (d) => Buffer.from(d, 'base64').toString('utf8');
+      const b64 = (d) => Buffer.from(d.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
       const strip = (html) => html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
       if (payload.mimeType === 'text/plain' && payload.body?.data) return b64(payload.body.data);
       if (payload.parts && Array.isArray(payload.parts)) {
@@ -6250,9 +6250,9 @@ async function syncRecentEmails() {
             const date = msg.internalDate;
             const snippet = ''; // Pro IMAP by se muselo stahovat celé tělo, to uděláme jen jednoduše
 
-            // Jednoduché pseudo-vlákno pro IMAP: spojíme všechny zprávy se stejným (očištěným) předmětem
+            // Jednoduché pseudo-vlákno pro IMAP: spojíme všechny zprávy se stejným (očištěným) předmětem od stejného odesílatele
             const cleanSubject = subject.replace(/^(re|fwd|fw|odp|aw|odpověď):\s*/ig, '').trim().toLowerCase();
-            const threadId = 'custom_' + crypto.createHash('md5').update(acc.dashboard_user_email + '|' + acc.email_address + '|' + cleanSubject).digest('hex');
+            const threadId = 'custom_' + crypto.createHash('md5').update(acc.dashboard_user_email + '|' + acc.email_address + '|' + from + '|' + cleanSubject).digest('hex');
 
             await dbClient.query(`
               INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date, thread_id)
