@@ -3820,6 +3820,29 @@ app.get('/api/custom-email/analyze-email', handleCustomAnalyzeEmail);
 app.post('/api/custom-email/analyze', handleCustomAnalyzeEmail);
 app.get('/api/custom-email/analyze', handleCustomAnalyzeEmail);
 
+// Jednoduchý endpoint pro načtení original_body pending zprávy z DB (bez IMAP)
+app.get('/api/pending-reply/body', async (req, res) => {
+  const { dashboardUserEmail, pendingId } = req.query || {};
+  if (!dashboardUserEmail || !pendingId) {
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo pendingId.' });
+  }
+  let client;
+  try {
+    client = await pool.connect();
+    const { rows } = await client.query(
+      `SELECT original_body FROM pending_replies WHERE id=$1 AND dashboard_user_email=$2 LIMIT 1`,
+      [Number(pendingId), dashboardUserEmail]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Zpráva nenalezena.' });
+    return res.json({ success: true, body: rows[0].original_body || '' });
+  } catch (e) {
+    console.error('[pending-reply/body]', e);
+    return res.status(500).json({ success: false, message: 'Chyba při načítání těla zprávy.' });
+  } finally {
+    if (client) client.release();
+  }
+});
+
 app.get('/api/custom-email/message-body', async (req, res) => {
   try {
     const { dashboardUserEmail, emailAddress, uid } = req.query || {};
