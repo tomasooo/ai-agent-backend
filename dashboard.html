@@ -4092,6 +4092,12 @@
               <!-- Footer -->
               <div class="pro-modal__footer">
                 <button class="btn btn-secondary" id="closeEmailDetailBottom">Zavřít</button>
+                <button class="btn btn-success" id="ed-approve-bottom"
+                  style="display:none; background-color: #10b981; border-color: #10b981; color: white;">✅
+                  Schválit</button>
+                <button class="btn btn-danger" id="ed-reject-bottom"
+                  style="display:none; background-color: #ef4444; border-color: #ef4444; color: white;">❌
+                  Zamítnout</button>
                 <button class="btn btn-primary" id="ed-reply-bottom">Odpovědět</button>
               </div>
             </div>
@@ -6878,12 +6884,9 @@ S pozdravem
         const pendingIdAttr = pendingIdValue !== null && pendingIdValue !== undefined ? escapeHtml(String(pendingIdValue)) : '';
         const srcAttr = escapeHtml(email._src || 'gmail');
 
-        // Dynamické přidání schvalovacích tlačítek
+        // Dynamické přidání schvalovacích tlačítek (schováno z listu, přesunuto do detailu)
         const actionButtons = isApprovalView
-          ? `<div class="approval-actions" style="margin-top: 8px; display: flex; gap: 8px;">
-                <button class="btn btn-success btn-sm approve-btn" data-pending-id="${pendingIdAttr}" data-src="${srcAttr}">✅ Schválit</button>
-                <button class="btn btn-danger btn-sm reject-btn" data-pending-id="${pendingIdAttr}" data-src="${srcAttr}">❌ Zamítnout</button>
-              </div>`
+          ? ``
           : `<div class="list-action-group">
              <button class="btn btn-primary analyze-btn" data-message-id="${email.id}" type="button">Analyzovat 🤖</button>
              <button class="btn quick-ai-btn" data-message-id="${email.id}" type="button">AI odpověď ✨</button>
@@ -7098,9 +7101,9 @@ S pozdravem
 
 
     // --- Akce schválení/odmítnutí pro maily v režimu "Čekající" ---
-    document.getElementById('email-list-container')?.addEventListener('click', async (e) => {
-      const approveBtn = e.target.closest('.approve-btn');
-      const rejectBtn = e.target.closest('.reject-btn');
+    document.addEventListener('click', async (e) => {
+      const approveBtn = e.target.closest('#ed-approve-bottom') || e.target.closest('.approve-btn');
+      const rejectBtn = e.target.closest('#ed-reject-bottom') || e.target.closest('.reject-btn');
       if (!approveBtn && !rejectBtn) return;
 
       const row = e.target.closest('.email-item');
@@ -7153,6 +7156,11 @@ S pozdravem
         if (!r.ok || !j.success) throw new Error(j.message || 'Akce selhala.');
 
         showToast(j.message || (approveBtn ? 'Odpověď byla odeslána.' : 'Návrh byl zamítnut.'), 'success');
+        const modal = document.getElementById('emailDetailModal');
+        if (modal) {
+          hideEmailDetailModal(modal);
+          document.body.style.overflow = '';
+        }
         await fetchEmails();
       } catch (err) {
         showToast(err.message || 'Chyba akce.', 'error');
@@ -8387,6 +8395,25 @@ S pozdravem
               edBody.textContent = 'Načítám obsah zprávy…';
             }
             renderPendingPreview(emailEntry);
+
+            // Tlačítka Approve / Reject jen pokud je to pending
+            const edApproveBtn = document.getElementById('ed-approve-bottom');
+            const edRejectBtn = document.getElementById('ed-reject-bottom');
+            const edReplyBtn = document.getElementById('ed-reply-bottom');
+            const edReplyOpen = document.getElementById('ed-reply-open');
+
+            if (emailEntry && emailEntry._pending) {
+              if (edApproveBtn) { edApproveBtn.style.display = 'inline-block'; edApproveBtn.dataset.pendingId = emailEntry.pendingId || pendingId; edApproveBtn.dataset.src = src; }
+              if (edRejectBtn) { edRejectBtn.style.display = 'inline-block'; edRejectBtn.dataset.pendingId = emailEntry.pendingId || pendingId; edRejectBtn.dataset.src = src; }
+              if (edReplyBtn) edReplyBtn.style.display = 'none';
+              if (edReplyOpen) edReplyOpen.style.display = 'none';
+            } else {
+              if (edApproveBtn) edApproveBtn.style.display = 'none';
+              if (edRejectBtn) edRejectBtn.style.display = 'none';
+              if (edReplyBtn) edReplyBtn.style.display = 'inline-block';
+              if (edReplyOpen) edReplyOpen.style.display = 'inline-block';
+            }
+
             syncProMeta();
 
             showEmailDetailModal(modal);
