@@ -829,7 +829,7 @@
     <header class="header">
         <div class="container">
             <div class="header-content">
-                <a href="index.html" class="logo">
+                <a href="#" class="logo">
                     <div class="logo-img-wrapper">
                         <img src="logo-Agent.png" alt="AI Agent Logo">
                     </div>
@@ -1014,7 +1014,7 @@
     <script>
         // === GOOGLE SIGN-IN ===
         window.onload = function () {
-            // Check for verification success
+            // Check for verification success or login mode
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('verified') === 'success') {
                 enterLoginMode();
@@ -1031,6 +1031,8 @@
                 // Vložíme za nadpis "Přihlášení do účtu"
                 const header = document.querySelector('.form-header');
                 if (header) header.insertAdjacentElement('afterend', msg);
+            } else if (urlParams.get('mode') === 'login' || window.location.hash === '#login') {
+                enterLoginMode();
             }
 
             google.accounts.id.initialize({
@@ -1214,4 +1216,3 @@
 </body>
 
 </html>
-
