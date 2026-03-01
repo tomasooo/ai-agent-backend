@@ -4080,6 +4080,8 @@
                         <div><strong>Sentiment:</strong> <span id="ed-ai-sentiment">—</span></div>
                       </div>
                       <div id="ed-ai-reply" style="white-space: pre-wrap; line-height:1.55; color:#f1f5f9;"></div>
+                      <textarea id="ed-ai-reply-editor"
+                        style="display:none; width: 100%; min-height: 150px; margin-top: 10px; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: #f1f5f9; font-family: inherit; resize: vertical; line-height: 1.55;"></textarea>
                     </div>
                   </div>
 
@@ -4092,6 +4094,12 @@
               <!-- Footer -->
               <div class="pro-modal__footer">
                 <button class="btn btn-secondary" id="closeEmailDetailBottom">Zavřít</button>
+                <button class="btn btn-secondary" id="ed-edit-manual-bottom" style="display:none;">✏️ Upravit</button>
+                <button class="btn btn-primary" id="ed-edit-ai-bottom" style="display:none;">AI odpověď ✨</button>
+                <button class="btn btn-success" id="ed-save-edit-bottom" style="display:none;">💾 Schválit
+                  upravené</button>
+                <button class="btn btn-secondary" id="ed-cancel-edit-bottom" style="display:none;">✖ Zrušit
+                  úpravy</button>
                 <button class="btn btn-success" id="ed-approve-bottom"
                   style="display:none; background-color: #10b981; border-color: #10b981; color: white;">✅
                   Schválit</button>
@@ -7102,8 +7110,12 @@ S pozdravem
 
     // --- Akce schválení/odmítnutí pro maily v režimu "Čekající" ---
     document.addEventListener('click', async (e) => {
-      const approveBtn = e.target.closest('#ed-approve-bottom') || e.target.closest('.approve-btn');
+      let approveBtn = e.target.closest('#ed-approve-bottom') || e.target.closest('.approve-btn');
+      const saveEditBtn = e.target.closest('#ed-save-edit-bottom');
       const rejectBtn = e.target.closest('#ed-reject-bottom') || e.target.closest('.reject-btn');
+
+      if (saveEditBtn) approveBtn = saveEditBtn; // Považujme i uložení editovaného za approve request
+
       if (!approveBtn && !rejectBtn) return;
 
       const row = e.target.closest('.email-item');
@@ -7136,16 +7148,27 @@ S pozdravem
         if (!dashboardUserEmail || !accountEmail) throw new Error('Chybí kontext účtu.');
         if (!['gmail', 'custom'].includes(src)) throw new Error('Nepodporovaný typ účtu.');
 
-        if (triggerBtn) triggerBtn.disabled = true;
+        if (triggerBtn) {
+          triggerBtn.disabled = true;
+          triggerBtn.dataset.originalText = triggerBtn.innerHTML;
+          triggerBtn.innerHTML = 'Zpracovávám...';
+        }
 
         const endpoint = approveBtn ? 'approve' : 'reject';
         const url = src === 'custom'
           ? `${window.BACKEND}/api/custom-email/pending-replies/${encodeURIComponent(pendingId)}/${endpoint}`
           : `${window.BACKEND}/api/gmail/pending-replies/${encodeURIComponent(pendingId)}/${endpoint}`;
 
+        // Podpora ruční upravené zprávy
+        let customReplyBody = undefined;
+        if (approveBtn && approveBtn.id === 'ed-save-edit-bottom') {
+          const editor = document.getElementById('ed-ai-reply-editor');
+          if (editor) customReplyBody = editor.value.trim();
+        }
+
         const payload = src === 'custom'
-          ? { dashboardUserEmail, emailAddress: accountEmail }
-          : { dashboardUserEmail, email: accountEmail };
+          ? { dashboardUserEmail, emailAddress: accountEmail, customReplyBody }
+          : { dashboardUserEmail, email: accountEmail, customReplyBody };
 
         const r = await fetch(url, {
           method: 'POST',
@@ -7165,7 +7188,69 @@ S pozdravem
       } catch (err) {
         showToast(err.message || 'Chyba akce.', 'error');
       } finally {
-        if (triggerBtn) triggerBtn.disabled = false;
+        if (triggerBtn) {
+          triggerBtn.disabled = false;
+          triggerBtn.innerHTML = triggerBtn.dataset.originalText || triggerBtn.innerHTML;
+        }
+      }
+    });
+
+    // Handle Edit Controls
+    document.addEventListener('click', (e) => {
+      const editManualBtn = e.target.closest('#ed-edit-manual-bottom');
+      const cancelEditBtn = e.target.closest('#ed-cancel-edit-bottom');
+      const saveEditBtn = e.target.closest('#ed-save-edit-bottom');
+      const editAIBtn = e.target.closest('#ed-edit-ai-bottom');
+
+      if (editManualBtn) {
+        const textDisplay = document.getElementById('ed-ai-reply');
+        const textEditor = document.getElementById('ed-ai-reply-editor');
+        if (textDisplay && textEditor) {
+          textEditor.value = textDisplay.textContent || '';
+          textDisplay.style.display = 'none';
+          textEditor.style.display = 'block';
+          textEditor.focus();
+        }
+        document.getElementById('ed-approve-bottom').style.display = 'none';
+        document.getElementById('ed-reject-bottom').style.display = 'none';
+        document.getElementById('ed-edit-manual-bottom').style.display = 'none';
+        document.getElementById('ed-edit-ai-bottom').style.display = 'none';
+
+        document.getElementById('ed-save-edit-bottom').style.display = 'inline-block';
+        document.getElementById('ed-cancel-edit-bottom').style.display = 'inline-block';
+      }
+
+      if (cancelEditBtn) {
+        document.getElementById('ed-ai-reply').style.display = 'block';
+        document.getElementById('ed-ai-reply-editor').style.display = 'none';
+
+        document.getElementById('ed-approve-bottom').style.display = 'inline-block';
+        document.getElementById('ed-reject-bottom').style.display = 'inline-block';
+        document.getElementById('ed-edit-manual-bottom').style.display = 'inline-block';
+        document.getElementById('ed-edit-ai-bottom').style.display = 'inline-block';
+
+        document.getElementById('ed-save-edit-bottom').style.display = 'none';
+        document.getElementById('ed-cancel-edit-bottom').style.display = 'none';
+      }
+
+      // Pro "ed-save-edit-bottom" zavoláme approve jako u normálního approveBtn (delegováno v listeneru nahoře)
+
+      if (editAIBtn) {
+        // Chování jako "AI odpověď ✨"
+        const ctx = window.__currentEmailCtx;
+        if (!ctx || !ctx.id) {
+          showToast('Nejprve otevřete detail konkrétního e-mailu.', 'warning');
+          return;
+        }
+        const detailModal = document.getElementById('emailDetailModal');
+        if (detailModal) hideEmailDetailModal(detailModal);
+        document.body.style.overflow = '';
+
+        const currentReply = document.getElementById('ed-ai-reply')?.textContent || '';
+        window.aiComposer?.open(ctx, {
+          instructions: currentReply,
+          focusInstructions: false
+        });
       }
     });
 
@@ -8396,20 +8481,44 @@ S pozdravem
             }
             renderPendingPreview(emailEntry);
 
-            // Tlačítka Approve / Reject jen pokud je to pending
             const edApproveBtn = document.getElementById('ed-approve-bottom');
             const edRejectBtn = document.getElementById('ed-reject-bottom');
             const edReplyBtn = document.getElementById('ed-reply-bottom');
             const edReplyOpen = document.getElementById('ed-reply-open');
+            const edEditManualBtn = document.getElementById('ed-edit-manual-bottom');
+            const edEditAIBtn = document.getElementById('ed-edit-ai-bottom');
+            const edSaveEditBtn = document.getElementById('ed-save-edit-bottom');
+            const edCancelEditBtn = document.getElementById('ed-cancel-edit-bottom');
 
             if (emailEntry && emailEntry._pending) {
               if (edApproveBtn) { edApproveBtn.style.display = 'inline-block'; edApproveBtn.dataset.pendingId = emailEntry.pendingId || pendingId; edApproveBtn.dataset.src = src; }
               if (edRejectBtn) { edRejectBtn.style.display = 'inline-block'; edRejectBtn.dataset.pendingId = emailEntry.pendingId || pendingId; edRejectBtn.dataset.src = src; }
+              if (edEditManualBtn) edEditManualBtn.style.display = 'inline-block';
+              if (edEditAIBtn) edEditAIBtn.style.display = 'inline-block';
+
+              // Ensure clean state if previously edited
+              if (edSaveEditBtn) { edSaveEditBtn.style.display = 'none'; edSaveEditBtn.dataset.pendingId = emailEntry.pendingId || pendingId; edSaveEditBtn.dataset.src = src; }
+              if (edCancelEditBtn) edCancelEditBtn.style.display = 'none';
+              const replyDisplay = document.getElementById('ed-ai-reply');
+              const replyEditor = document.getElementById('ed-ai-reply-editor');
+              if (replyDisplay) replyDisplay.style.display = 'block';
+              if (replyEditor) { replyEditor.style.display = 'none'; replyEditor.value = ''; }
+
               if (edReplyBtn) edReplyBtn.style.display = 'none';
               if (edReplyOpen) edReplyOpen.style.display = 'none';
             } else {
               if (edApproveBtn) edApproveBtn.style.display = 'none';
               if (edRejectBtn) edRejectBtn.style.display = 'none';
+              if (edEditManualBtn) edEditManualBtn.style.display = 'none';
+              if (edEditAIBtn) edEditAIBtn.style.display = 'none';
+              if (edSaveEditBtn) edSaveEditBtn.style.display = 'none';
+              if (edCancelEditBtn) edCancelEditBtn.style.display = 'none';
+
+              const replyEditor = document.getElementById('ed-ai-reply-editor');
+              if (replyEditor) { replyEditor.style.display = 'none'; }
+              const replyDisplay = document.getElementById('ed-ai-reply');
+              if (replyDisplay) replyDisplay.style.display = 'block';
+
               if (edReplyBtn) edReplyBtn.style.display = 'inline-block';
               if (edReplyOpen) edReplyOpen.style.display = 'inline-block';
             }
