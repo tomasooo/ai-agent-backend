@@ -987,32 +987,35 @@ await setupDatabase();
 // ---------- Helpers pro čtení Gmail zpráv ----------
 function b64urlDecode(data = '') {
   if (!data) return '';
-  const n = data.replace(/-/g, '+').replace(/_/g, '/');
+  let n = data.replace(/-/g, '+').replace(/_/g, '/');
+  while (n.length % 4) n += '=';
   return Buffer.from(n, 'base64').toString('utf-8');
 }
 
 function extractPlainText(payload) {
   if (!payload) return '';
+  let text = '';
   // 1) přednostně text/plain
   if (payload.mimeType === 'text/plain' && payload.body?.data) {
-    return b64urlDecode(payload.body.data);
+    text += b64urlDecode(payload.body.data) + '\n';
   }
-  // 2) multipart? projdi části
+  // 2) multipart? projdi všechny části
   if (payload.parts && Array.isArray(payload.parts)) {
-    // zkus najít nejdřív text/plain
     for (const p of payload.parts) {
       const t = extractPlainText(p);
-      if (t) return t;
+      if (t) text += t + '\n';
     }
   }
-  // 3) fallback: text/html -> ořež tagy
-  if (payload.mimeType === 'text/html' && payload.body?.data) {
+  // 3) fallback: text/html -> ořež tagy (pokud zatím nemáme text)
+  if (!text && payload.mimeType === 'text/html' && payload.body?.data) {
     const html = b64urlDecode(payload.body.data);
-    return html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+    text += html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() + '\n';
   }
   // 4) fallback na body.data bez ohledu na typ
-  if (payload.body?.data) return b64urlDecode(payload.body.data);
-  return '';
+  if (!text && payload.body?.data) {
+    text += b64urlDecode(payload.body.data) + '\n';
+  }
+  return text.trim();
 }
 
 
@@ -3389,7 +3392,7 @@ app.get('/api/gmail/emails', async (req, res) => {
     // --- 1. Pending Replies (approval) ---
     if (status === 'approval') {
       const pendingRes = await db.query(`
-        SELECT id, message_id, subject, sender, snippet, metadata, last_generated_at, reply_body, summary, sentiment, provider
+        SELECT id, message_id, subject, sender, snippet, original_body, metadata, last_generated_at, reply_body, summary, sentiment, provider
           FROM pending_replies
          WHERE dashboard_user_email = $1
            AND connected_email = $2
@@ -3413,6 +3416,7 @@ app.get('/api/gmail/emails', async (req, res) => {
           date: meta.internalDate || row.last_generated_at || new Date().toISOString(),
           unread: true,
           isPending: true,
+          originalBody: row.original_body || '',
           replyBody: row.reply_body || '',
           summary: row.summary || '',
           sentiment: row.sentiment || '',
