@@ -3881,44 +3881,8 @@
 
               </div>
             </div>
-
-            <!-- Status přehled -->
-            <div
-              style="display:grid; grid-template-columns: repeat(4,1fr); gap:1rem; margin-top:1rem; margin-bottom:1.5rem;">
-              <div
-                style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:1rem 1.2rem;display:flex;align-items:center;gap:0.8rem;">
-                <span style="font-size:1.4rem;">⏳</span>
-                <div>
-                  <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px;">Čeká na schválení</div>
-                  <div id="dash-status-pending" style="font-size:1.4rem;font-weight:700;color:#fbbf24;">—</div>
-                </div>
-              </div>
-              <div
-                style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:1rem 1.2rem;display:flex;align-items:center;gap:0.8rem;">
-                <span style="font-size:1.4rem;">✅</span>
-                <div>
-                  <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px;">Automaticky zodpovězeno</div>
-                  <div id="dash-status-replied" style="font-size:1.4rem;font-weight:700;color:#4ade80;">—</div>
-                </div>
-              </div>
-              <div
-                style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:1rem 1.2rem;display:flex;align-items:center;gap:0.8rem;">
-                <span style="font-size:1.4rem;">❌</span>
-                <div>
-                  <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px;">Zamítnuto</div>
-                  <div id="dash-status-rejected" style="font-size:1.4rem;font-weight:700;color:#f87171;">—</div>
-                </div>
-              </div>
-              <div
-                style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:1rem 1.2rem;display:flex;align-items:center;gap:0.8rem;">
-                <span style="font-size:1.4rem;">🚫</span>
-                <div>
-                  <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px;">Spam</div>
-                  <div id="dash-status-spam" style="font-size:1.4rem;font-weight:700;color:#c084fc;">—</div>
-                </div>
-              </div>
-            </div>
           </div>
+
 
           <div class="email-list" id="dashboard-recent-emails">
             <div class="email-list-header">
@@ -9879,6 +9843,8 @@ S pozdravem
               aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#dcfce7;color:#166534;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;">✅ Automaticky zodpovězeno</div>`;
             } else if (e.emailStatus === 'rejected') {
               aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;">❌ Zamítnuto</div>`;
+            } else if (e.emailStatus === 'spam') {
+              aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#fdf4ff;color:#7e22ce;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;">🚫 Spam</div>`;
             }
 
             const threadCount = Number(e.thread_count) || 1;
