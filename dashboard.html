@@ -3881,6 +3881,43 @@
 
               </div>
             </div>
+
+            <!-- Status přehled -->
+            <div
+              style="display:grid; grid-template-columns: repeat(4,1fr); gap:1rem; margin-top:1rem; margin-bottom:1.5rem;">
+              <div
+                style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:1rem 1.2rem;display:flex;align-items:center;gap:0.8rem;">
+                <span style="font-size:1.4rem;">⏳</span>
+                <div>
+                  <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px;">Čeká na schválení</div>
+                  <div id="dash-status-pending" style="font-size:1.4rem;font-weight:700;color:#fbbf24;">—</div>
+                </div>
+              </div>
+              <div
+                style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:1rem 1.2rem;display:flex;align-items:center;gap:0.8rem;">
+                <span style="font-size:1.4rem;">✅</span>
+                <div>
+                  <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px;">Automaticky zodpovězeno</div>
+                  <div id="dash-status-replied" style="font-size:1.4rem;font-weight:700;color:#4ade80;">—</div>
+                </div>
+              </div>
+              <div
+                style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:1rem 1.2rem;display:flex;align-items:center;gap:0.8rem;">
+                <span style="font-size:1.4rem;">❌</span>
+                <div>
+                  <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px;">Zamítnuto</div>
+                  <div id="dash-status-rejected" style="font-size:1.4rem;font-weight:700;color:#f87171;">—</div>
+                </div>
+              </div>
+              <div
+                style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:1rem 1.2rem;display:flex;align-items:center;gap:0.8rem;">
+                <span style="font-size:1.4rem;">🚫</span>
+                <div>
+                  <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:2px;">Spam</div>
+                  <div id="dash-status-spam" style="font-size:1.4rem;font-weight:700;color:#c084fc;">—</div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="email-list" id="dashboard-recent-emails">
@@ -9260,6 +9297,23 @@ S pozdravem
       // Spustit automaticky jednou po načtení (odložit o 2s, aby se nejdřív načetly emaily)
       setTimeout(window.backfillSpam, 2000);
 
+      // Načtení počtů statusů pro dashboard
+      async function loadStatusCounts() {
+        const due = localStorage.getItem('userEmail');
+        if (!due) return;
+        try {
+          const r = await fetch(`${window.BACKEND}/api/emails/status-counts?dashboardUserEmail=${encodeURIComponent(due)}`);
+          const j = await r.json();
+          if (!j.success) return;
+          const c = j.counts;
+          const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+          set('dash-status-pending', c.pending ?? 0);
+          set('dash-status-replied', c.sent ?? 0);
+          set('dash-status-rejected', c.rejected ?? 0);
+          set('dash-status-spam', c.spam ?? 0);
+        } catch (e) { /* tichá chyba */ }
+      }
+      loadStatusCounts();
 
       setInterval(() => {
         const emailsPage = document.getElementById('emails');
