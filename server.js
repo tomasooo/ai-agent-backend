@@ -5198,8 +5198,28 @@ app.post('/api/settings', async (req, res) => {
   }
 });
 
-
-
+// === STATUS COUNTS pro dashboard ===
+app.get('/api/emails/status-counts', async (req, res) => {
+  const { dashboardUserEmail } = req.query;
+  if (!dashboardUserEmail) return res.status(400).json({ success: false });
+  let client;
+  try {
+    client = await pool.connect();
+    const r = await client.query(`
+      SELECT status, COUNT(*)::INT AS cnt
+      FROM pending_replies
+      WHERE dashboard_user_email = $1
+      GROUP BY status
+    `, [dashboardUserEmail]);
+    const counts = { pending: 0, sent: 0, rejected: 0, spam: 0 };
+    for (const row of r.rows) counts[row.status] = row.cnt;
+    return res.json({ success: true, counts });
+  } catch (e) {
+    return res.status(500).json({ success: false });
+  } finally {
+    if (client) client.release();
+  }
+});
 
 // === SPAM BACKFILL: retroaktivně doplní stará spam data z activity_log ===
 app.post('/api/emails/backfill-spam', async (req, res) => {
