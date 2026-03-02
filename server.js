@@ -3515,6 +3515,7 @@ app.get('/api/gmail/emails', async (req, res) => {
       if (row.pending_status === 'pending') emailStatus = 'pending';
       else if (row.pending_status === 'sent') emailStatus = 'auto_replied';
       else if (row.pending_status === 'rejected') emailStatus = 'rejected';
+      else if (row.pending_status === 'spam') emailStatus = 'spam';
 
       return {
         id: row.id,
@@ -5499,6 +5500,27 @@ ${String(bodyText).slice(0, 3000)}
                   subject: subject,
                   action: 'marked_seen'
                 });
+
+                // Ulož spam do synced_emails a pending_replies, aby se zobrazil s badge 'Spam'
+                try {
+                  const spamUid = String(msg.uid);
+                  const spamDate = msg.internalDate || new Date();
+                  await dbClient.query(`
+                    INSERT INTO synced_emails
+                      (id, dashboard_user_email, account_email, subject, from_address, snippet, date, is_read)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+                    ON CONFLICT (id) DO NOTHING
+                  `, [spamUid, acc.dashboard_user_email, acc.email_address, subject || null, fromAddr || null, subject || null, spamDate]);
+
+                  await dbClient.query(`
+                    INSERT INTO pending_replies
+                      (dashboard_user_email, connected_email, provider, message_id, subject, sender, snippet, reply_body, status)
+                    VALUES ($1, $2, 'custom', $3, $4, $5, $6, '', 'spam')
+                    ON CONFLICT (dashboard_user_email, connected_email, provider, message_id) DO NOTHING
+                  `, [acc.dashboard_user_email, acc.email_address, spamUid, subject || null, fromAddr || null, subject || null]);
+                } catch (spamSaveErr) {
+                  console.warn('[IMAP Worker] Nepodařilo se uložit spam záznam:', spamSaveErr?.message || spamSaveErr);
+                }
               }
               continue;
             }
@@ -5537,6 +5559,27 @@ ${String(bodyText).slice(0, 3000)}
                     subject: subject,
                     action: 'marked_seen'
                   });
+
+                  // Ulož spam do synced_emails a pending_replies, aby se zobrazil s badge 'Spam'
+                  try {
+                    const spamUid = String(msg.uid);
+                    const spamDate = msg.internalDate || new Date();
+                    await dbClient.query(`
+                      INSERT INTO synced_emails
+                        (id, dashboard_user_email, account_email, subject, from_address, snippet, date, is_read)
+                      VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+                      ON CONFLICT (id) DO NOTHING
+                    `, [spamUid, acc.dashboard_user_email, acc.email_address, subject || null, fromAddr || null, subject || null, spamDate]);
+
+                    await dbClient.query(`
+                      INSERT INTO pending_replies
+                        (dashboard_user_email, connected_email, provider, message_id, subject, sender, snippet, reply_body, status)
+                      VALUES ($1, $2, 'custom', $3, $4, $5, $6, '', 'spam')
+                      ON CONFLICT (dashboard_user_email, connected_email, provider, message_id) DO NOTHING
+                    `, [acc.dashboard_user_email, acc.email_address, spamUid, subject || null, fromAddr || null, subject || null]);
+                  } catch (spamSaveErr) {
+                    console.warn('[IMAP Worker] Nepodařilo se uložit spam záznam (obsah):', spamSaveErr?.message || spamSaveErr);
+                  }
                 }
                 continue;
               }
