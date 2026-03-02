@@ -5201,7 +5201,82 @@ app.post('/api/settings', async (req, res) => {
 
 
 
+// === SPAM BACKFILL: retroaktivně doplní stará spam data z activity_log ===
+app.post('/api/emails/backfill-spam', async (req, res) => {
+  const { dashboardUserEmail } = req.body || {};
+  if (!dashboardUserEmail) {
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail.' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+
+    // Načteme záznamy z activity_log pro spam detekce
+    const logRes = await client.query(`
+      SELECT dashboard_user_email, details, created_at
+      FROM activity_log
+      WHERE dashboard_user_email = $1
+        AND action IN ('Spam Detekce (Hlavičky)', 'Spam Detekce (Obsah)')
+        AND status = 'success'
+      ORDER BY created_at DESC
+      LIMIT 500
+    `, [dashboardUserEmail]);
+
+    let inserted = 0;
+    for (const row of logRes.rows) {
+      const details = row.details || {};
+      const account = details.account || '';
+      const subject = details.subject || '(bez předmětu)';
+      const createdAt = row.created_at || new Date();
+
+      if (!account) continue;
+
+      // Vytvoříme syntetické ID z hashe (bez skutečného UID)
+      const syntheticId = 'spam_' + crypto.createHash('md5')
+        .update(`${dashboardUserEmail}|${account}|${subject}|${createdAt.toISOString()}`)
+        .digest('hex').slice(0, 16);
+
+      try {
+        // Uložit do synced_emails
+        await client.query(`
+          INSERT INTO synced_emails
+            (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, date, is_read)
+          VALUES ($1, $2, $3, 'custom', $4, $5, $6, $7, true)
+          ON CONFLICT (dashboard_user_email, account_email, provider, id) DO NOTHING
+        `, [syntheticId, dashboardUserEmail, account, subject, account, subject, createdAt]);
+
+        // Uložit do pending_replies se statusem 'spam'
+        const pr = await client.query(`
+          INSERT INTO pending_replies
+            (dashboard_user_email, connected_email, provider, message_id, subject, sender, snippet, reply_body, status)
+          VALUES ($1, $2, 'custom', $3, $4, $5, $6, '', 'spam')
+          ON CONFLICT (dashboard_user_email, connected_email, provider, message_id) DO NOTHING
+        `, [dashboardUserEmail, account, syntheticId, subject, account, subject]);
+
+        if (pr.rowCount > 0) inserted++;
+      } catch (rowErr) {
+        console.warn('[backfill-spam] row error:', rowErr?.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Doplněno ${inserted} historických spam emailů.`,
+      total: logRes.rows.length,
+      inserted
+    });
+  } catch (e) {
+    console.error('[backfill-spam] error:', e);
+    return res.status(500).json({ success: false, message: 'Backfill selhal.' });
+  } finally {
+    if (client) client.release();
+  }
+});
+
+
 // === BLACKLIST / SPAM LIST API ===
+
 
 app.get('/api/spamlist', async (req, res) => {
   const email = req.query.dashboardUserEmail;
@@ -5507,9 +5582,9 @@ ${String(bodyText).slice(0, 3000)}
                   const spamDate = msg.internalDate || new Date();
                   await dbClient.query(`
                     INSERT INTO synced_emails
-                      (id, dashboard_user_email, account_email, subject, from_address, snippet, date, is_read)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, true)
-                    ON CONFLICT (id) DO NOTHING
+                      (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, date, is_read)
+                    VALUES ($1, $2, $3, 'custom', $4, $5, $6, $7, true)
+                    ON CONFLICT (dashboard_user_email, account_email, provider, id) DO NOTHING
                   `, [spamUid, acc.dashboard_user_email, acc.email_address, subject || null, fromAddr || null, subject || null, spamDate]);
 
                   await dbClient.query(`
@@ -5566,9 +5641,9 @@ ${String(bodyText).slice(0, 3000)}
                     const spamDate = msg.internalDate || new Date();
                     await dbClient.query(`
                       INSERT INTO synced_emails
-                        (id, dashboard_user_email, account_email, subject, from_address, snippet, date, is_read)
-                      VALUES ($1, $2, $3, $4, $5, $6, $7, true)
-                      ON CONFLICT (id) DO NOTHING
+                        (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, date, is_read)
+                      VALUES ($1, $2, $3, 'custom', $4, $5, $6, $7, true)
+                      ON CONFLICT (dashboard_user_email, account_email, provider, id) DO NOTHING
                     `, [spamUid, acc.dashboard_user_email, acc.email_address, subject || null, fromAddr || null, subject || null, spamDate]);
 
                     await dbClient.query(`
