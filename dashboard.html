@@ -6992,19 +6992,19 @@ S pozdravem
         }
 
         const emailHTML = `
-              <div class="email-item ${isUnread ? 'unread' : ''}" ${datasetParts.join(' ')} style="padding: 10px 16px; min-height: 48px; display: flex; align-items: center; border-bottom: 1px solid #e2e8f0; cursor: pointer; transition: background 0.15s ease;">
-                  <div class="email-content" style="flex-grow: 1; display: grid; grid-template-columns: 160px 180px minmax(0, 1fr); align-items: center; gap: 16px;">
+              <div class="email-item ${isUnread ? 'unread' : ''}" ${datasetParts.join(' ')} style="padding: 10px 16px; min-height: 48px; display: flex; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); cursor: pointer; transition: background 0.15s ease; color: #e2e8f0;">
+                  <div class="email-content" style="flex-grow: 1; display: grid; grid-template-columns: 200px 150px minmax(0, 1fr); align-items: center; gap: 16px;">
                       <div class="email-status-col" style="display: flex; align-items: center;">${badge}</div>
-                      <div class="email-sender" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: ${isUnread ? '700' : '500'}; color: #1e293b; font-size: 0.95rem;">${senderHtml}</div>
-                      <div class="email-subject" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px;">
-                          <span style="font-weight: ${isUnread ? '700' : '500'}; color: #0f172a; font-size: 0.95rem;">${escapeHtml(email.subject || '(bez předmětu)')}</span>
-                          <span style="color: #64748b; font-weight: 400; font-size: 0.95rem; margin-left: 6px;">- ${preview}</span>
+                      <div class="email-sender" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: ${isUnread ? '600' : '400'}; color: #cbd5e1; font-size: 0.9rem;">${senderHtml}</div>
+                      <div class="email-subject" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px; display: flex; align-items: center;">
+                          <span style="font-weight: ${isUnread ? '600' : '400'}; color: #f8fafc; font-size: 0.9rem;">${escapeHtml(email.subject || '(bez předmětu)')}</span>
+                          <span style="color: #64748b; font-weight: 400; font-size: 0.9rem; margin-left: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px; display: inline-block;">- ${preview}</span>
                           ${threadBadge}
                       </div>
                   </div>
                   <div class="email-meta" style="flex-shrink: 0; display: flex; align-items: center; gap: 16px; min-width: 140px; justify-content: flex-end;">
-                      ${actionButtons ? `<div style="transform: scale(0.9); transform-origin: right center;">${actionButtons}</div>` : ''}
-                      <div style="font-size: 0.85rem; color: ${isUnread ? '#0f172a' : '#64748b'}; font-weight: ${isUnread ? '700' : '500'}; text-align: right; width: 75px;">${new Date(email.date).toLocaleDateString('cs-CZ')}</div>
+                      ${actionButtons ? `<div style="transform: scale(0.85); transform-origin: right center;">${actionButtons}</div>` : ''}
+                      <div style="font-size: 0.8rem; color: #64748b; font-weight: 400; text-align: right; width: 75px;">${new Date(email.date).toLocaleDateString('cs-CZ')}</div>
                   </div>
               </div>`;
         emailListContainer.insertAdjacentHTML('beforeend', emailHTML);
