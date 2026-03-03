@@ -3973,6 +3973,8 @@
                     d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zM7 6.5C7 7.328 6.552 8 6 8s-1-.672-1-1.5S5.448 5 6 5s1 .672 1 1.5zM4.285 9.567a.5.5 0 0 1 .683.183A3.498 3.498 0 0 0 8 11.5a3.498 3.498 0 0 0 3.032-1.75.5.5 0 1 1 .866.5A4.498 4.498 0 0 1 8 12.5a4.498 4.498 0 0 1-3.898-2.25.5.5 0 0 1 .183-.683zM10 8c-.552 0-1-.672-1-1.5S9.448 5 10 5s1 .672 1 1.5S10.552 8 10 8z" />
                 </svg>
                 Čekající
+                <span id="pending-count-badge"
+                  style="display:none; background:#ef4444; color:white; border-radius:999px; padding:2px 6px; font-size:0.7rem; font-weight:bold; margin-left:4px;">0</span>
               </button>
             </div>
           </div>
@@ -6387,6 +6389,23 @@ S pozdravem
       }
     }
 
+    // Pomocná asynchronní funkce pro badge "Čekající"
+    async function updatePendingBadgeAsync(primaryEmail) {
+      if (!primaryEmail) return;
+      const url = `${window.BACKEND}/api/gmail/emails?email=${encodeURIComponent(primaryEmail)}&dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&status=approval&period=all&searchQuery=&page=1&limit=1`;
+      try {
+        const r = await fetch(url, { cache: 'no-store' });
+        const j = await r.json();
+        if (j && j.success) {
+          const badge = document.getElementById('pending-count-badge');
+          if (badge) {
+            badge.textContent = j.total || 0;
+            badge.style.display = j.total > 0 ? 'inline-block' : 'none';
+          }
+        }
+      } catch (err) { }
+    }
+
     // ZMĚNA: Funkce nyní načítá emaily pro primární účet z localStorage a neblokuje přes innerHTML loading okno
     async function fetchEmails(options = {}) {
       const { resetPage = false, targetPage = null } = options || {};
@@ -6478,8 +6497,16 @@ S pozdravem
           const countStr = total > 0 ? ` (${total})` : '';
           if (status === 'approval') {
             emailCountHeader.textContent = `Čekající odpovědi pro: ${primaryEmail}${countStr}`;
+            // Aktualizuj badge z celkového počtu, pokud jsme přímo na taby "Čekající"
+            const badge = document.getElementById('pending-count-badge');
+            if (badge) {
+              badge.textContent = total;
+              badge.style.display = total > 0 ? 'inline-block' : 'none';
+            }
           } else {
             emailCountHeader.textContent = `Emaily pro: ${primaryEmail}${countStr}`;
+            // Pokud jsme na jiném tabu, zkus si vyžádat počet jen pro odznáček asynchronně, aby uživatel věděl, co má v "Čekající"
+            updatePendingBadgeAsync(primaryEmail);
           }
         }
 
