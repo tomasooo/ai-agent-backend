@@ -6978,30 +6978,32 @@ S pozdravem
         // Stavový badge – čekající / automaticky zodpovězeno / zamítnuto
         let badge = '';
         if (email._pending) {
-          badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fef3c7;color:#92400e;font-weight:600;padding:2px 8px;border-radius:999px;margin-bottom:6px;font-size:0.8rem;">⏳ Čeká na schválení</div>`;
+          badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fef3c7;color:#92400e;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;">⏳ Čeká na schválení</div>`;
         } else if (!isApprovalView && email.emailStatus) {
           if (email.emailStatus === 'pending') {
-            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fef3c7;color:#92400e;font-weight:600;padding:2px 8px;border-radius:999px;margin-bottom:4px;font-size:0.75rem;">⏳ Čeká na schválení</div>`;
+            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fef3c7;color:#92400e;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;">⏳ Čeká na schválení</div>`;
           } else if (email.emailStatus === 'auto_replied') {
-            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#dcfce7;color:#166534;font-weight:600;padding:2px 8px;border-radius:999px;margin-bottom:4px;font-size:0.75rem;">✅ Automaticky zodpovězeno</div>`;
+            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#dcfce7;color:#166534;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;">✅ Automaticky zodpovězeno</div>`;
           } else if (email.emailStatus === 'rejected') {
-            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fee2e2;color:#991b1b;font-weight:600;padding:2px 8px;border-radius:999px;margin-bottom:4px;font-size:0.75rem;">❌ Zamítnuto</div>`;
+            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fee2e2;color:#991b1b;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;">❌ Zamítnuto</div>`;
           } else if (email.emailStatus === 'spam') {
-            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fdf4ff;color:#7e22ce;font-weight:600;padding:2px 8px;border-radius:999px;margin-bottom:4px;font-size:0.75rem;">🚫 Spam</div>`;
+            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fdf4ff;color:#7e22ce;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;">🚫 Spam</div>`;
           }
         }
 
         const emailHTML = `
               <div class="email-item ${isUnread ? 'unread' : ''}" ${datasetParts.join(' ')}>
-                  <div class="email-content" style="flex-grow: 1;">
-                      ${badge}
-                      <div class="email-sender">${senderHtml}</div>
-                      <div class="email-subject">${escapeHtml(email.subject || '(bez předmětu)')}</div>
-                      ${threadBadge}
-                      ${preview}
+                  <div class="email-content" style="flex-grow: 1; display: grid; grid-template-columns: 200px 200px minmax(0, 1fr); align-items: center; gap: 15px;">
+                      <div class="email-status-col">${badge}</div>
+                      <div class="email-sender" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600;">${senderHtml}</div>
+                      <div class="email-subject">
+                          <span style="font-weight: 500;">${escapeHtml(email.subject || '(bez předmětu)')}</span>
+                          <span style="color: #64748b; font-weight: 400; font-size: 0.9em; margin-left: 8px;">${preview}</span>
+                          ${threadBadge}
+                      </div>
                   </div>
-                  <div class="email-meta" style="text-align: right; flex-shrink: 0;">
-                      <div>${new Date(email.date).toLocaleDateString('cs-CZ')}</div>
+                  <div class="email-meta" style="text-align: right; flex-shrink: 0; display: flex; flex-direction: column; justify-content: center;">
+                      <div style="font-size: 0.85rem; color: #64748b; margin-bottom: ${actionButtons ? '6px' : '0'};">${new Date(email.date).toLocaleDateString('cs-CZ')}</div>
                       ${actionButtons}
                   </div>
               </div>`;
