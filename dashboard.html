@@ -6450,9 +6450,9 @@ S pozdravem
         });
 
         let filteredEmails = mappedEmails;
-        if (normalizedStatus !== 'spam') {
-          filteredEmails = filteredEmails.filter(email => !isSpamEmail(email));
-        }
+        // Odkomentováno: if (normalizedStatus !== 'spam') {
+        //   filteredEmails = filteredEmails.filter(email => !isSpamEmail(email));
+        // }
 
         if (normalizedStatus === 'unread') {
           filteredEmails = filteredEmails.filter(email => email.unread === true);
