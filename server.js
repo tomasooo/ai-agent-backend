@@ -3401,7 +3401,7 @@ app.get('/api/gmail/emails', async (req, res) => {
     db = await pool.connect();
 
     // pagination
-    const safeLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 15, 100));
     const safePage = Math.max(1, Number(page) || 1);
     const offset = (safePage - 1) * safeLimit;
 
