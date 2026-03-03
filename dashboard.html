@@ -6877,10 +6877,11 @@ S pozdravem
 
     function isSpamEmail(email = {}) {
       const status = String(email.status || '').toLowerCase();
+      const emailStatusDB = String(email.emailStatus || '').toLowerCase();
       const folder = String(email.folder || email.label || email._folder || '').toLowerCase();
       const labels = Array.isArray(email.labels) ? email.labels : Array.isArray(email.labelIds) ? email.labelIds : [];
       const labelsContainSpam = labels.some(l => String(l).toLowerCase().includes('spam'));
-      return status === 'spam' || folder === 'spam' || email.isSpam === true || labelsContainSpam;
+      return status === 'spam' || emailStatusDB === 'spam' || folder === 'spam' || email.isSpam === true || labelsContainSpam;
     }
 
 
@@ -6992,7 +6993,7 @@ S pozdravem
 
         const emailHTML = `
               <div class="email-item ${isUnread ? 'unread' : ''}" ${datasetParts.join(' ')} style="padding: 10px 16px; min-height: 48px; display: flex; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); cursor: pointer; transition: background 0.15s ease; color: #e2e8f0;">
-                  <div class="email-content" style="flex-grow: 1; display: grid; grid-template-columns: 200px 150px minmax(0, 1fr); align-items: center; gap: 16px;">
+                  <div class="email-content" style="flex-grow: 1; display: grid; grid-template-columns: 180px 180px minmax(0, 1fr); align-items: center; gap: 16px;">
                       <div class="email-status-col" style="display: flex; align-items: center;">${badge}</div>
                       <div class="email-sender" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: ${isUnread ? '600' : '400'}; color: #cbd5e1; font-size: 0.9rem;">${senderHtml}</div>
                       <div class="email-subject" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px; display: flex; align-items: center;">
