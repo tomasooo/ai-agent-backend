@@ -661,7 +661,7 @@ app.get('/api/analytics/complaints', async (req, res) => {
 
 // === RECENT EMAILS (DASHBOARD) (Relocated) ===
 app.get('/api/dashboard/recent-emails', async (req, res) => {
-  const { dashboardUserEmail, email, limit = 10, offset = 0 } = req.query;
+  const { dashboardUserEmail, email, limit = 15, offset = 0 } = req.query;
   if (!dashboardUserEmail || !email) {
     return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo email.' });
   }
