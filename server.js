@@ -705,6 +705,7 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
       if (row.pending_status === 'pending') emailStatus = 'pending';
       else if (row.pending_status === 'sent') emailStatus = 'auto_replied';
       else if (row.pending_status === 'rejected') emailStatus = 'rejected';
+      else if (row.pending_status === 'spam') emailStatus = 'spam';
       return { ...row, emailStatus };
     });
     res.json({ success: true, emails });
@@ -5611,7 +5612,8 @@ ${String(bodyText).slice(0, 3000)}
                     INSERT INTO pending_replies
                       (dashboard_user_email, connected_email, provider, message_id, subject, sender, snippet, reply_body, status)
                     VALUES ($1, $2, 'custom', $3, $4, $5, $6, '', 'spam')
-                    ON CONFLICT (dashboard_user_email, connected_email, provider, message_id) DO NOTHING
+                    ON CONFLICT (dashboard_user_email, connected_email, provider, message_id)
+                    DO UPDATE SET status = 'spam'
                   `, [acc.dashboard_user_email, acc.email_address, spamUid, subject || null, fromAddr || null, subject || null]);
                 } catch (spamSaveErr) {
                   console.warn('[IMAP Worker] Nepodařilo se uložit spam záznam:', spamSaveErr?.message || spamSaveErr);
@@ -5670,7 +5672,8 @@ ${String(bodyText).slice(0, 3000)}
                       INSERT INTO pending_replies
                         (dashboard_user_email, connected_email, provider, message_id, subject, sender, snippet, reply_body, status)
                       VALUES ($1, $2, 'custom', $3, $4, $5, $6, '', 'spam')
-                      ON CONFLICT (dashboard_user_email, connected_email, provider, message_id) DO NOTHING
+                      ON CONFLICT (dashboard_user_email, connected_email, provider, message_id)
+                      DO UPDATE SET status = 'spam'
                     `, [acc.dashboard_user_email, acc.email_address, spamUid, subject || null, fromAddr || null, subject || null]);
                   } catch (spamSaveErr) {
                     console.warn('[IMAP Worker] Nepodařilo se uložit spam záznam (obsah):', spamSaveErr?.message || spamSaveErr);
@@ -5783,6 +5786,10 @@ ${String(bodyText).slice(0, 3000)}
 
             console.log(`[IMAP Worker] UID: ${msg.uid} - AI Action: "${action}"`);
 
+            // Předpočítáme threadId (potřebujeme i pro auto-reply status)
+            const cleanSubjectForThread = subject.replace(/^(re|fwd|fw|odp|aw|odpověď):\s*/ig, '').trim().toLowerCase();
+            const threadId = 'custom_' + crypto.createHash('md5').update(acc.dashboard_user_email + '|' + acc.email_address + '|' + replyToAddress + '|' + cleanSubjectForThread).digest('hex');
+
             // 1. IGNORE
             if (action === 'ignore') {
               console.log(`[IMAP Worker] AI rozhodla IGNOROVAT (spam/reklama/nezajímavé).`);
@@ -5834,6 +5841,28 @@ ${String(bodyText).slice(0, 3000)}
                     console.error('[IMAP worker] failed to update is_read for auto-reply:', dbErr);
                   }
 
+                  // Uložit záznam do pending_replies se status='sent', aby se zobrazil badge "Automaticky zodpovězeno"
+                  try {
+                    await dbClient.query(`
+                      INSERT INTO pending_replies
+                        (dashboard_user_email, connected_email, provider, message_id, thread_id, subject, sender, snippet, reply_body, status, sent_at)
+                      VALUES ($1, $2, 'custom', $3, $4, $5, $6, $7, $8, 'sent', NOW())
+                      ON CONFLICT (dashboard_user_email, connected_email, provider, message_id)
+                      DO UPDATE SET status = 'sent', sent_at = NOW()
+                    `, [
+                      acc.dashboard_user_email,
+                      acc.email_address,
+                      pendingKey,
+                      threadId,
+                      subject || null,
+                      senderHeader || null,
+                      firstLineSnippet(bodyText, 280),
+                      replyBody
+                    ]);
+                  } catch (dbErr) {
+                    console.error('[IMAP worker] Nepodařilo se uložit auto-reply status:', dbErr);
+                  }
+
                   // Hotovo, jdeme na další
                   continue;
                 } catch (sendErr) {
@@ -5860,9 +5889,6 @@ ${String(bodyText).slice(0, 3000)}
               replyTo: replyToAddress,
               sender: senderHeader
             };
-
-            const cleanSubjectForThread = subject.replace(/^(re|fwd|fw|odp|aw|odpověď):\s*/ig, '').trim().toLowerCase();
-            const threadId = 'custom_' + crypto.createHash('md5').update(acc.dashboard_user_email + '|' + acc.email_address + '|' + replyToAddress + '|' + cleanSubjectForThread).digest('hex');
 
             await dbClient.query(`
             INSERT INTO pending_replies (
