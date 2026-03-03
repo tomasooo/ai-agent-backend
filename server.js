@@ -3445,27 +3445,27 @@ app.get('/api/gmail/emails', async (req, res) => {
     // --- 2. Normal synced emails ---
     let queryArgs = [dashboardUserEmail, email];
     let whereClauses = [
-      "dashboard_user_email = $1",
-      "account_email = $2"
+      "se.dashboard_user_email = $1",
+      "se.account_email = $2"
     ];
     let paramIndex = 3;
 
     if (status === 'unread') {
-      whereClauses.push("is_read = false");
+      whereClauses.push("se.is_read = false");
     } else if (status === 'processed') {
-      whereClauses.push("is_read = true");
+      whereClauses.push("se.is_read = true");
     }
 
     if (period === 'today') {
-      whereClauses.push(`date >= current_date`);
+      whereClauses.push(`se.date >= current_date`);
     } else if (period === 'week') {
-      whereClauses.push(`date >= current_date - interval '7 days'`);
+      whereClauses.push(`se.date >= current_date - interval '7 days'`);
     } else if (period === 'month') {
-      whereClauses.push(`date >= current_date - interval '30 days'`);
+      whereClauses.push(`se.date >= current_date - interval '30 days'`);
     }
 
     if (searchQuery && searchQuery.trim() !== '') {
-      whereClauses.push(`(subject ILIKE $${paramIndex} OR from_address ILIKE $${paramIndex})`);
+      whereClauses.push(`(se.subject ILIKE $${paramIndex} OR se.from_address ILIKE $${paramIndex})`);
       queryArgs.push(`%${searchQuery.trim()}%`);
       paramIndex++;
     }
@@ -3473,7 +3473,7 @@ app.get('/api/gmail/emails', async (req, res) => {
     const whereString = "WHERE " + whereClauses.join(" AND ");
 
     // Get Total Count
-    const countRes = await db.query(`SELECT COUNT(DISTINCT COALESCE(thread_id, id)) as exact_count FROM synced_emails ${whereString}`, queryArgs);
+    const countRes = await db.query(`SELECT COUNT(DISTINCT COALESCE(se.thread_id, se.id)) as exact_count FROM synced_emails se ${whereString}`, queryArgs);
     const totalCount = parseInt(countRes.rows[0].exact_count, 10);
 
     // Get Page Data
@@ -3484,10 +3484,10 @@ app.get('/api/gmail/emails', async (req, res) => {
 
     const dataRes = await db.query(`
       WITH ThreadDates AS (
-        SELECT COALESCE(thread_id, id) as thread_group, MAX(date) as last_activity
-        FROM synced_emails
+        SELECT COALESCE(se.thread_id, se.id) as thread_group, MAX(se.date) as last_activity
+        FROM synced_emails se
         ${whereString}
-        GROUP BY COALESCE(thread_id, id)
+        GROUP BY COALESCE(se.thread_id, se.id)
       ),
       FilteredThreads AS (
         SELECT DISTINCT ON (COALESCE(se.thread_id, se.id))
@@ -3496,7 +3496,7 @@ app.get('/api/gmail/emails', async (req, res) => {
           t.last_activity
         FROM synced_emails se
         JOIN ThreadDates t ON COALESCE(se.thread_id, se.id) = t.thread_group
-        ${whereString.replace('WHERE ', 'WHERE se.')}
+        ${whereString}
         ORDER BY COALESCE(se.thread_id, se.id), se.date ASC
       )
       SELECT 
