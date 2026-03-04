@@ -6404,8 +6404,9 @@ S pozdravem
           return {
             ...e,
             uid: e.id,
-            _src: 'db',
-            _pending: false,
+            _src: e.provider || 'db',
+            _pending: e.emailStatus === 'pending' || e.pending_status === 'pending',
+            isPending: e.emailStatus === 'pending' || e.pending_status === 'pending',
             account: primaryEmail,
             unread: e.unread === true,
             status: status === 'spam' ? 'spam' : (e.status || '')
@@ -8563,6 +8564,23 @@ S pozdravem
                 subject: subject,
                 date: dateTxt,
                 _src: src
+              };
+            }
+            // Záložní záznam pro pending emaily v Čekající tab (pokud findEmailEntryById nenašlo shodu)
+            if (!emailEntry && (item.dataset.pending === '1' || pendingId)) {
+              emailEntry = {
+                id: id,
+                messageId: item.dataset.messageId || id,
+                sender: from,
+                subject: subject,
+                date: dateTxt,
+                _src: src,
+                _pending: true,
+                pendingId: pendingId || item.dataset.pendingId || '',
+                account: item.dataset.account || localStorage.getItem('primaryEmail') || '',
+                replyBody: '',
+                summary: '',
+                sentiment: ''
               };
             }
 
