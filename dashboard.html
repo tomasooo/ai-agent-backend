@@ -5787,6 +5787,18 @@
           }
           if (footerStatusLabel) footerStatusLabel.textContent = 'Odpověď byla odeslána.';
 
+          // Pokud byl email z fronty "Čekající", označ ho jako odeslaný (bez opětovného posílání)
+          const pendingId = lastGeneratedContext.pendingId;
+          if (pendingId) {
+            try {
+              await fetch(`${window.BACKEND}/api/pending-replies/${encodeURIComponent(pendingId)}/mark-sent`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dashboardUserEmail })
+              }).catch(() => { });
+            } catch (e) { /* tichá chyba – hlavní odeslání proběhlo */ }
+          }
+
           resetGeneratedData();
           closeComposer();
 
