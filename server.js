@@ -3603,14 +3603,34 @@ app.get('/api/gmail/message-body', async (req, res) => {
     }
 
     const db = await pool.connect();
+
+    // === Cache-first: zkus načíst tělo z DB ===
+    try {
+      const cached = await db.query(
+        `SELECT body_text FROM synced_emails
+          WHERE dashboard_user_email=$1 AND account_email=$2 AND id=$3 AND body_text IS NOT NULL`,
+        [dashboardUserEmail, email, messageId]
+      );
+      if (cached.rowCount > 0 && cached.rows[0].body_text) {
+        db.release();
+        console.log(`[gmail/message-body] Cache HIT pro ${messageId}`);
+        return res.json({ success: true, body: cached.rows[0].body_text });
+      }
+    } catch (cacheErr) {
+      console.warn('[gmail/message-body] Cache check selhal:', cacheErr.message);
+    }
+
+    // === Cache miss: stáhni z Gmail API ===
     const rTok = await db.query(
       'SELECT refresh_token FROM connected_accounts WHERE email=$1 AND dashboard_user_email=$2',
       [email, dashboardUserEmail]
     );
-    db.release();
 
     const refreshToken = rTok.rows[0]?.refresh_token;
-    if (!refreshToken) return res.status(404).json({ success: false, message: 'Token nenalezen.' });
+    if (!refreshToken) {
+      db.release();
+      return res.status(404).json({ success: false, message: 'Token nenalezen.' });
+    }
 
     oauth2Client.setCredentials({ refresh_token: refreshToken });
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
@@ -3641,7 +3661,22 @@ app.get('/api/gmail/message-body', async (req, res) => {
     };
 
     const body = getText(msg.data.payload) || '';
-    console.log(`[gmail/message-body] requested messageId: ${messageId}, returning body length: ${body.length}`);
+    console.log(`[gmail/message-body] Cache MISS, fetched from API, messageId: ${messageId}, délka: ${body.length}`);
+
+    // === Uložit do cache pro příště ===
+    if (body) {
+      try {
+        await db.query(
+          `UPDATE synced_emails SET body_text=$1
+            WHERE dashboard_user_email=$2 AND account_email=$3 AND id=$4`,
+          [body, dashboardUserEmail, email, messageId]
+        );
+      } catch (saveErr) {
+        console.warn('[gmail/message-body] Nepodařilo se uložit body do cache:', saveErr.message);
+      }
+    }
+
+    db.release();
     return res.json({ success: true, body });
   } catch (e) {
     console.error('[gmail/message-body] error:', e);
@@ -3894,16 +3929,39 @@ app.get('/api/custom-email/message-body', async (req, res) => {
     }
 
     const db = await pool.connect();
+
+    // === Cache-first: zkus načíst tělo z DB ===
+    try {
+      const cached = await db.query(
+        `SELECT body_text FROM synced_emails
+          WHERE dashboard_user_email=$1 AND account_email=$2 AND id=$3 AND body_text IS NOT NULL`,
+        [dashboardUserEmail, emailAddress, String(uid)]
+      );
+      if (cached.rowCount > 0 && cached.rows[0].body_text) {
+        db.release();
+        console.log(`[custom-email/message-body] Cache HIT pro uid ${uid}`);
+        return res.json({ success: true, body: cached.rows[0].body_text });
+      }
+    } catch (cacheErr) {
+      console.warn('[custom-email/message-body] Cache check selhal:', cacheErr.message);
+    }
+
+    // === Cache miss: stáhni z IMAP ===
     const rAcc = await db.query(`
       SELECT imap_host, imap_port, imap_secure, enc_username, enc_password, active
       FROM custom_accounts
       WHERE dashboard_user_email=$1 AND email_address=$2
       LIMIT 1
     `, [dashboardUserEmail, emailAddress]);
-    db.release();
 
-    if (!rAcc.rowCount) return res.status(404).json({ success: false, message: 'Custom účet nenalezen.' });
-    if (rAcc.rows[0].active === false) return res.status(403).json({ success: false, message: 'Tento účet je neaktivní.' });
+    if (!rAcc.rowCount) {
+      db.release();
+      return res.status(404).json({ success: false, message: 'Custom účet nenalezen.' });
+    }
+    if (rAcc.rows[0].active === false) {
+      db.release();
+      return res.status(403).json({ success: false, message: 'Tento účet je neaktivní.' });
+    }
 
     const user = decSecret(rAcc.rows[0].enc_username);
     const pass = decSecret(rAcc.rows[0].enc_password);
@@ -3925,7 +3983,22 @@ app.get('/api/custom-email/message-body', async (req, res) => {
     const parsed = await simpleParser(Buffer.concat(chunks));
     // preferuj text; když chybí, stripni html
     const bodyText = parsed.text || (parsed.html ? parsed.html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : '') || '';
-    console.log(`[custom-email/message-body] requested uid: ${uid}, returning body length: ${bodyText.length}`);
+    console.log(`[custom-email/message-body] Cache MISS, fetched from IMAP, uid: ${uid}, délka: ${bodyText.length}`);
+
+    // === Uložit do cache pro příště ===
+    if (bodyText) {
+      try {
+        await db.query(
+          `UPDATE synced_emails SET body_text=$1
+            WHERE dashboard_user_email=$2 AND account_email=$3 AND id=$4`,
+          [bodyText, dashboardUserEmail, emailAddress, String(uid)]
+        );
+      } catch (saveErr) {
+        console.warn('[custom-email/message-body] Nepodařilo se uložit body do cache:', saveErr.message);
+      }
+    }
+
+    db.release();
     return res.json({ success: true, body: bodyText });
   } catch (e) {
     console.error('[custom-email/message-body] error:', e);
@@ -6833,6 +6906,19 @@ const __dirname = path.dirname(__filename);
 app.use((req, res, next) => {
   res.status(404).sendFile(path.join(__dirname, '404.html'));
 });
+
+// Migrace: přidej sloupec body_text do synced_emails (pokud ještě neexistuje)
+(async () => {
+  const client = await pool.connect();
+  try {
+    await client.query(`ALTER TABLE synced_emails ADD COLUMN IF NOT EXISTS body_text TEXT`);
+    console.log('✅ Migrace synced_emails.body_text dokončena.');
+  } catch (e) {
+    console.error('Migrace synced_emails.body_text selhala:', e.message);
+  } finally {
+    client.release();
+  }
+})();
 
 // Spuštění serveru
 app.listen(PORT, () => {
