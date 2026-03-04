@@ -4183,6 +4183,34 @@ app.post('/api/gmail/pending-replies/:id/approve', async (req, res) => {
   }
 });
 
+// Endpoint pro označení pending_replies záznamu jako odeslaného (bez opětovného posílání e-mailu)
+// Používá ho aiComposer po úspěšném odeslání vlastní odpovědi
+app.post('/api/pending-replies/:id/mark-sent', async (req, res) => {
+  const id = Number(req.params.id);
+  const { dashboardUserEmail } = req.body || {};
+  if (!id || !dashboardUserEmail) {
+    return res.status(400).json({ success: false, message: 'Chybí povinná data.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const result = await client.query(`
+      UPDATE pending_replies
+         SET status='sent', sent_at=NOW()
+       WHERE id=$1
+         AND dashboard_user_email=$2
+         AND status='pending'
+    `, [id, dashboardUserEmail]);
+
+    return res.json({ success: true, updated: result.rowCount > 0 });
+  } catch (e) {
+    console.error('[mark-sent] error:', e);
+    return res.status(500).json({ success: false, message: 'Chyba při aktualizaci statusu.' });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/gmail/pending-replies/:id/reject', async (req, res) => {
   const id = Number(req.params.id);
   const { dashboardUserEmail, email } = req.body || {};
