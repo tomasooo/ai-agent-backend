@@ -8672,8 +8672,16 @@ S pozdravem
                 const dbUrl = `${window.BACKEND}/api/pending-reply/body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&pendingId=${encodeURIComponent(effectivePendingId)}`;
                 const r = await fetch(dbUrl);
                 const j = await r.json();
-                if (r.ok && j.success && j.body) {
-                  edBody.textContent = j.body;
+                if (r.ok && j.success) {
+                  // Tělo zprávy
+                  edBody.textContent = j.body || emailEntry.originalBody || '(tělo zprávy není k dispozici)';
+                  // AI karta – aktualizuj pokud jsou data v odpovědi
+                  const summaryEl = document.getElementById('ed-ai-summary');
+                  const sentimentEl = document.getElementById('ed-ai-sentiment');
+                  const replyEl = document.getElementById('ed-ai-reply');
+                  if (summaryEl && j.summary) summaryEl.textContent = j.summary;
+                  if (sentimentEl && j.sentiment) sentimentEl.textContent = j.sentiment;
+                  if (replyEl && j.replyBody) replyEl.textContent = j.replyBody;
                 } else if (emailEntry.originalBody) {
                   // Fallback na data z cache pokud DB endpoint selhal
                   edBody.textContent = emailEntry.originalBody;
