@@ -5809,6 +5809,35 @@ ${String(bodyText).slice(0, 3000)}
               // Označíme jako přečtené, aby to už neotravovalo
               await runWithRetry(() => actionImap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true })).catch(() => { });
 
+              // Uložit spam záznam do pending_replies aby se zobrazil badge "Spam" v dashboardu
+              try {
+                await dbClient.query(`
+                  INSERT INTO pending_replies
+                    (dashboard_user_email, connected_email, provider, message_id, thread_id, subject, sender, snippet, reply_body, status)
+                  VALUES ($1, $2, 'custom', $3, $4, $5, $6, $7, '', 'spam')
+                  ON CONFLICT (dashboard_user_email, connected_email, provider, message_id)
+                  DO UPDATE SET status = 'spam'
+                `, [
+                  acc.dashboard_user_email,
+                  acc.email_address,
+                  pendingKey,
+                  threadId,
+                  subject || null,
+                  senderHeader || fromHeaderText || null,
+                  firstLineSnippet(bodyText, 280)
+                ]);
+
+                // Taky ulož do synced_emails aby se email zobrazil v seznamu
+                await dbClient.query(`
+                  INSERT INTO synced_emails
+                    (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, date, is_read)
+                  VALUES ($1, $2, $3, 'custom', $4, $5, $6, $7, true)
+                  ON CONFLICT (dashboard_user_email, account_email, provider, id) DO NOTHING
+                `, [pendingKey, acc.dashboard_user_email, acc.email_address, subject || null, fromAddr || null, firstLineSnippet(bodyText, 280), msg.internalDate || new Date()]);
+              } catch (spamSaveErr) {
+                console.warn('[IMAP Worker] Nepodařilo se uložit AI spam záznam:', spamSaveErr?.message || spamSaveErr);
+              }
+
               await logActivity(acc.dashboard_user_email, 'AI Ignorovalo', 'success', {
                 account: acc.email_address,
                 subject: subject,
