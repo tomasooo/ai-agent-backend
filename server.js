@@ -4210,6 +4210,39 @@ async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending })
   await logActivity(dashboardUserEmail, 'Odeslání odpovědi (schváleno)', 'success', { account: email, to: targetRecipient });
 }
 
+// GET /api/pending-reply/body – vrátí tělo (original_body), AI odpověď (reply_body), summary a sentiment
+app.get('/api/pending-reply/body', async (req, res) => {
+  const { dashboardUserEmail, pendingId } = req.query || {};
+  if (!dashboardUserEmail || !pendingId) {
+    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo pendingId.' });
+  }
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(`
+      SELECT original_body, reply_body, summary, sentiment
+        FROM pending_replies
+       WHERE id=$1 AND dashboard_user_email=$2
+       LIMIT 1
+    `, [Number(pendingId), dashboardUserEmail]);
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: 'Záznam nenalezen.' });
+    }
+    const r = rows[0];
+    return res.json({
+      success: true,
+      body: r.original_body || '',
+      replyBody: r.reply_body || '',
+      summary: r.summary || '',
+      sentiment: r.sentiment || ''
+    });
+  } catch (e) {
+    console.error('[pending-reply/body] error:', e);
+    return res.status(500).json({ success: false, message: 'Chyba při načítání dat.' });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/gmail/pending-replies/:id/approve', async (req, res) => {
   const id = Number(req.params.id);
   const { dashboardUserEmail, email, customReplyBody } = req.body || {};
