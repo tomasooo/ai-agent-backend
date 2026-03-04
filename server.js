@@ -3510,6 +3510,30 @@ app.get('/api/gmail/emails', async (req, res) => {
            AND pr2.connected_email = $2
          ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC LIMIT 1
         ) as pending_status,
+        (SELECT pr2.reply_body 
+         FROM pending_replies pr2 
+         LEFT JOIN synced_emails s3 ON s3.id = pr2.message_id
+         WHERE COALESCE(s3.thread_id, s3.id) = f.thread_group
+           AND pr2.dashboard_user_email = $1
+           AND pr2.connected_email = $2
+         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC LIMIT 1
+        ) as pending_reply_body,
+        (SELECT pr2.summary 
+         FROM pending_replies pr2 
+         LEFT JOIN synced_emails s3 ON s3.id = pr2.message_id
+         WHERE COALESCE(s3.thread_id, s3.id) = f.thread_group
+           AND pr2.dashboard_user_email = $1
+           AND pr2.connected_email = $2
+         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC LIMIT 1
+        ) as pending_summary,
+        (SELECT pr2.sentiment 
+         FROM pending_replies pr2 
+         LEFT JOIN synced_emails s3 ON s3.id = pr2.message_id
+         WHERE COALESCE(s3.thread_id, s3.id) = f.thread_group
+           AND pr2.dashboard_user_email = $1
+           AND pr2.connected_email = $2
+         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC LIMIT 1
+        ) as pending_sentiment,
         (SELECT pr2.id 
          FROM pending_replies pr2 
          LEFT JOIN synced_emails s3 ON s3.id = pr2.message_id
@@ -3541,7 +3565,10 @@ app.get('/api/gmail/emails', async (req, res) => {
         threadCount: Number(row.thread_count) || 1,
         threadId: row.thread_id,
         emailStatus,
-        pendingId: row.pending_id || null
+        pendingId: row.pending_id || null,
+        replyBody: row.pending_reply_body || '',
+        summary: row.pending_summary || '',
+        sentiment: row.pending_sentiment || ''
       };
     });
 
