@@ -3307,6 +3307,17 @@ app.post('/api/gmail/send-reply', async (req, res) => {
       console.error('[gmail send-reply] error updating is_read:', err);
     }
 
+    // Aktualizuj pending_replies na 'sent' aby se zobrazil badge v doručené poště
+    try {
+      await db.query(
+        `UPDATE pending_replies SET status='sent', sent_at=NOW()
+         WHERE message_id=$1 AND dashboard_user_email=$2 AND status='pending'`,
+        [messageId, dashboardUserEmail]
+      );
+    } catch (err) {
+      console.error('[gmail send-reply] error updating pending_replies status:', err);
+    }
+
     db.release();
 
     const refreshToken = r.rows[0]?.refresh_token;
@@ -4806,6 +4817,20 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
       origReferences,
       replyToUid
     });
+
+    // Aktualizuj pending_replies na 'sent' aby se zobrazil badge v doručené poště
+    const db2 = await pool.connect();
+    try {
+      await db2.query(
+        `UPDATE pending_replies SET status='sent', sent_at=NOW()
+         WHERE message_id=$1::text AND dashboard_user_email=$2 AND status='pending'`,
+        [String(replyToUid), dashboardUserEmail]
+      );
+    } catch (err) {
+      console.error('[custom send-reply] error updating pending_replies status:', err);
+    } finally {
+      db2.release();
+    }
 
     return res.json({ success: true, message: 'Odpověď byla úspěšně odeslána a uložena.' });
 
