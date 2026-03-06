@@ -5545,7 +5545,7 @@
       const kpis = statsData?.kpis || {
         totalProcessed: activity.reduce((s, a) => s + (a.count || 0), 0),
         openEmails: Math.floor(activity.reduce((s, a) => s + (a.count || 0), 0) * 0.89),
-        timeSavedHours: Math.floor(activity.reduce((s, a) => s + (a.count || 0), 0) * 3 / 60),
+        timeSavedHours: Math.floor(activity.reduce((s, a) => s + (a.count || 0), 0) * 5 / 60),
         automationRate: sentiment ? ((sentiment.total - Math.floor(sentiment.total * sentiment.negative / 100)) / sentiment.total * 100).toFixed(1) : '94.2',
       };
 
