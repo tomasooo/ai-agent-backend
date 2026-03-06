@@ -1896,6 +1896,126 @@ async function ensureStyleTables() {
 }
 ensureStyleTables().catch(console.error);
 
+// === ANALYTICS: ADVANCED (NEW DASHBOARD) ===
+app.get('/api/analytics/advanced', async (req, res) => {
+  const { dashboardUserEmail, email } = req.query || {};
+  if (!dashboardUserEmail || !email) {
+    return res.status(400).json({ success: false, message: 'Chybí parametry.' });
+  }
+
+  const db = await pool.connect();
+  try {
+    // 1. Získání aktivity (posledních 90 dní) z pending_replies pro 'processed'
+    const actQ = await db.query(`
+      WITH date_series AS (
+        SELECT generate_series(
+                 (CURRENT_DATE - INTERVAL '89 days')::date,
+                 CURRENT_DATE::date,
+                 '1 day'::interval
+               )::date AS day
+      )
+      SELECT to_char(d.day, 'DD Mon') AS date_label,
+             d.day,
+             COUNT(p.id)::int AS count
+        FROM date_series d
+        LEFT JOIN pending_replies p ON (p.created_at AT TIME ZONE 'Europe/Prague')::date = d.day
+                                   AND p.dashboard_user_email = $1
+                                   AND p.connected_email = $2
+                                   AND p.status IN ('sent', 'rejected')
+       GROUP BY d.day, date_label
+       ORDER BY d.day ASC
+    `, [dashboardUserEmail, email]);
+
+    // Transform month names to Czech
+    const monthsCz = { 'Jan': 'Led', 'Feb': 'Úno', 'Mar': 'Bře', 'Apr': 'Dub', 'May': 'Kvě', 'Jun': 'Čvn', 'Jul': 'Čvc', 'Aug': 'Srp', 'Sep': 'Zář', 'Oct': 'Říj', 'Nov': 'Lis', 'Dec': 'Pro' };
+    const activity = actQ.rows.map(r => {
+      let [dd, mon] = r.date_label.split(' ');
+      return { date: `${dd} ${monthsCz[mon] || mon}`, count: r.count };
+    });
+
+    // 2. Sentiment za celou dobu
+    const sentQ = await db.query(`
+      SELECT LOWER(sentiment) as sent, COUNT(*)::int as cnt
+        FROM pending_replies
+       WHERE dashboard_user_email = $1
+         AND connected_email = $2
+         AND status IN ('sent', 'rejected')
+       GROUP BY LOWER(sentiment)
+    `, [dashboardUserEmail, email]);
+
+    let sentiment = { positive: 0, neutral: 0, negative: 0, total: 0 };
+    sentQ.rows.forEach(r => {
+      sentiment.total += r.cnt;
+      if (r.sent && r.sent.includes('pozitivn')) sentiment.positive += r.cnt;
+      else if (r.sent && r.sent.includes('negativn')) sentiment.negative += r.cnt;
+      else if (r.sent) sentiment.neutral += r.cnt;
+    });
+
+    // 3. Kategorie ze summary/subject za celou dobu (heuristika)
+    const catQ = await db.query(`
+      SELECT subject, summary
+        FROM pending_replies
+       WHERE dashboard_user_email = $1
+         AND connected_email = $2
+         AND status IN ('sent', 'rejected')
+    `, [dashboardUserEmail, email]);
+
+    let cats = { 'Technická podpora': 0, 'Dotaz na produkt': 0, 'Fakturace': 0, 'Zpětná vazba': 0, 'Ostatní': 0 };
+    catQ.rows.forEach(r => {
+      const text = ((r.subject || '') + ' ' + (r.summary || '')).toLowerCase();
+      if (text.match(/heslo|přihl|nefunguje|chyba|nejde|app/)) cats['Technická podpora']++;
+      else if (text.match(/kolik|cena|produkt|koupit|dostupnos/)) cats['Dotaz na produkt']++;
+      else if (text.match(/faktura|platba|karta|účtenka|vrátit/)) cats['Fakturace']++;
+      else if (text.match(/děkuji|super|skvělé|nápad|doporuč/)) cats['Zpětná vazba']++;
+      else cats['Ostatní']++;
+    });
+
+    const categories = Object.keys(cats).map(k => ({ label: k, count: cats[k] })).sort((a, b) => b.count - a.count);
+
+    // 4. KPIs
+    const totalPQ = await db.query(`
+      SELECT COUNT(*)::int as cnt FROM pending_replies 
+       WHERE dashboard_user_email = $1 AND connected_email = $2 AND status IN ('sent', 'rejected')
+    `, [dashboardUserEmail, email]);
+    const totalProcessed = totalPQ.rows[0].cnt;
+
+    const autoRQ = await db.query(`
+      SELECT status, COUNT(*)::int as cnt FROM pending_replies 
+       WHERE dashboard_user_email = $1 AND connected_email = $2 AND status IN ('sent', 'rejected')
+       GROUP BY status
+    `, [dashboardUserEmail, email]);
+    let sentCount = 0;
+    autoRQ.rows.forEach(r => { if (r.status === 'sent') sentCount += r.cnt; });
+    const automationRate = totalProcessed > 0 ? ((sentCount / totalProcessed) * 100).toFixed(1) : "0.0";
+
+    const timeSavedHours = Math.floor(totalProcessed * 3 / 60);
+
+    const openEQ = await db.query(`
+      SELECT COUNT(*)::int as cnt FROM pending_replies 
+       WHERE dashboard_user_email = $1 AND connected_email = $2 AND status = 'pending'
+    `, [dashboardUserEmail, email]);
+    const openEmails = openEQ.rows[0].cnt;
+
+    res.json({
+      success: true,
+      activity,
+      sentiment,
+      categories,
+      kpis: {
+        totalProcessed,
+        openEmails,
+        timeSavedHours,
+        automationRate
+      }
+    });
+  } catch (e) {
+    console.error('Advanced analytics error:', e);
+    res.status(500).json({ success: false, message: 'Analytics: advanced failed.' });
+  } finally {
+    db.release();
+  }
+});
+
 // === ANALYTICS: denní aktivita z tabulky style_examples ===
 app.get('/api/analytics/activity', async (req, res) => {
   const { dashboardUserEmail, email, days = '7' } = req.query || {};
