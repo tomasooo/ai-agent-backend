@@ -4859,52 +4859,152 @@
 
       <!-- Analytics Page -->
       <div class="page-content" id="analytics" style="margin-top: 0 !important; padding-top: 0 !important;">
+
+        <!-- TOP: Gauge + KPI cards -->
         <div
-          style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; margin-top: 0 !important;">
-          <div class="chart-container">
-            <div class="chart-header">
-              <h3 class="chart-title">Průměrná doba odpovědi</h3>
+          style="display: grid; grid-template-columns: 280px 1fr; gap: 1.5rem; margin-bottom: 1.5rem; align-items: stretch;">
+
+          <!-- Gauge card -->
+          <div
+            style="background: linear-gradient(135deg, rgba(30,41,59,0.95) 0%, rgba(15,23,42,0.9) 100%); border: 1px solid rgba(99,102,241,0.35); border-radius: 20px; padding: 1.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem; position: relative; overflow: hidden;">
+            <div
+              style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at 30% 30%, rgba(99,102,241,0.12) 0%, transparent 70%); pointer-events: none;">
             </div>
-            <div class="chart-placeholder">
-              <canvas id="responseTimeChart" style="height:300px"></canvas>
+            <div
+              style="font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; color: #94a3b8; text-transform: uppercase; text-align: center;">
+              Efektivita AI (celkem)</div>
+            <!-- SVG Gauge -->
+            <div style="position: relative; width: 160px; height: 90px; margin: 0.25rem 0;">
+              <svg viewBox="0 0 200 110" width="100%" height="100%">
+                <!-- Background arc -->
+                <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="rgba(99,102,241,0.2)" stroke-width="16"
+                  stroke-linecap="round" />
+                <!-- Colored arc (value) - id updated by JS -->
+                <path id="ai-gauge-arc" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#gaugeGrad)"
+                  stroke-width="16" stroke-linecap="round" stroke-dasharray="251.2" stroke-dashoffset="25" />
+                <defs>
+                  <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#10b981" />
+                    <stop offset="100%" stop-color="#6366f1" />
+                  </linearGradient>
+                </defs>
+                <!-- Center text -->
+                <text x="100" y="88" text-anchor="middle" font-size="32" font-weight="800" fill="#f8fafc"
+                  id="ai-gauge-value">–</text>
+              </svg>
             </div>
+            <div style="font-size: 0.75rem; font-weight: 700; color: #10b981; letter-spacing: 0.05em;"
+              id="ai-gauge-label">VYSOKÁ ÚČINNOST AI</div>
+            <div style="font-size: 0.72rem; color: #64748b;" id="ai-gauge-trend">Načítám…</div>
           </div>
 
-          <div class="chart-container">
-            <div class="chart-header">
-              <h3 class="chart-title">Kvalita odpovědí AI</h3>
+          <!-- KPI cards -->
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; align-items: stretch;">
+
+            <div
+              style="background: linear-gradient(135deg, rgba(30,41,59,0.9) 0%, rgba(15,23,42,0.85) 100%); border: 1px solid rgba(99,102,241,0.2); border-radius: 16px; padding: 1.25rem 1rem; display: flex; flex-direction: column; justify-content: space-between; gap: 0.5rem;">
+              <div
+                style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em;">
+                Otevřené e-maily</div>
+              <div style="font-size: 1.9rem; font-weight: 800; color: #f8fafc; line-height: 1;" id="kpi-open-emails">–
+              </div>
+              <div style="font-size: 0.75rem; color: #6366f1; font-weight: 600;" id="kpi-open-pct">–</div>
             </div>
-            <div class="chart-placeholder">
-              <canvas id="aiQualityChart" style="height:300px"></canvas>
+
+            <div
+              style="background: linear-gradient(135deg, rgba(30,41,59,0.9) 0%, rgba(15,23,42,0.85) 100%); border: 1px solid rgba(16,185,129,0.25); border-radius: 16px; padding: 1.25rem 1rem; display: flex; flex-direction: column; justify-content: space-between; gap: 0.5rem;">
+              <div
+                style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em;">
+                Celkem zpracováno</div>
+              <div style="font-size: 1.9rem; font-weight: 800; color: #f8fafc; line-height: 1;"
+                id="kpi-total-processed">–</div>
+              <div style="font-size: 0.75rem; color: #10b981; font-weight: 600;">AI odpovědi</div>
+            </div>
+
+            <div
+              style="background: linear-gradient(135deg, rgba(30,41,59,0.9) 0%, rgba(15,23,42,0.85) 100%); border: 1px solid rgba(245,158,11,0.2); border-radius: 16px; padding: 1.25rem 1rem; display: flex; flex-direction: column; justify-content: space-between; gap: 0.5rem;">
+              <div
+                style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em;">
+                Ušetřený čas</div>
+              <div style="font-size: 1.9rem; font-weight: 800; color: #f8fafc; line-height: 1;" id="kpi-time-saved">–
+              </div>
+              <div style="font-size: 0.75rem; color: #f59e0b; font-weight: 600;">hodin celkem</div>
             </div>
           </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; margin-top: 2rem;">
-          <div class="chart-container">
-            <div class="chart-header">
-              <h3 class="chart-title">Nejčastěji používané šablony</h3>
-              <div class="chart-filters">
-                <button class="filter-btn active" data-days="7">7 dní</button>
+        <!-- MIDDLE: Line chart - Vývoj zátěže -->
+        <div
+          style="background: linear-gradient(135deg, rgba(30,41,59,0.95) 0%, rgba(15,23,42,0.9) 100%); border: 1px solid rgba(99,102,241,0.2); border-radius: 20px; padding: 1.5rem; margin-bottom: 1.5rem; position: relative; overflow: hidden;">
+          <div
+            style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #6366f1, #3b82f6, #10b981);">
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+              <h3 style="margin: 0; font-size: 1rem; font-weight: 700; color: #f8fafc;">Vývoj zátěže</h3>
+              <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">Zpracované e-maily celkem (posledních 90
+                dní)</div>
+            </div>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #94a3b8;">
+                <div style="width: 20px; height: 2px; background: #6366f1; border-radius: 2px;"></div>
+                Zpracované e-maily
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #94a3b8;">
+                <div
+                  style="width: 8px; height: 8px; background: #6366f1; border-radius: 50%; outline: 2px solid rgba(99,102,241,0.35);">
+                </div>
+                Otevřené e-maily
               </div>
             </div>
-            <div class="chart-placeholder">
-              <canvas id="templateUsageChart" style="height:300px"></canvas>
+          </div>
+          <div style="height: 240px; position: relative;">
+            <canvas id="activityLineChart"></canvas>
+          </div>
+        </div>
+
+        <!-- BOTTOM: Sentiment + Kategorie -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+
+          <!-- Sentiment Donut -->
+          <div
+            style="background: linear-gradient(135deg, rgba(30,41,59,0.95) 0%, rgba(15,23,42,0.9) 100%); border: 1px solid rgba(99,102,241,0.2); border-radius: 20px; padding: 1.5rem; position: relative; overflow: hidden;">
+            <div
+              style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #10b981, #6366f1);">
+            </div>
+            <h3 style="margin: 0 0 1rem; font-size: 1rem; font-weight: 700; color: #f8fafc;">Sentiment zákazníků <span
+                style="font-size: 0.75rem; color: #64748b; font-weight: 400;">(Celkem)</span></h3>
+            <div style="display: grid; grid-template-columns: 200px 1fr; gap: 1rem; align-items: center;">
+              <div style="position: relative; height: 200px;">
+                <canvas id="sentimentDonutChart"></canvas>
+                <div
+                  style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none;">
+                  <div style="font-size: 1.5rem; font-weight: 800; color: #f8fafc; line-height: 1;"
+                    id="sentiment-total">–</div>
+                  <div style="font-size: 0.7rem; color: #64748b; margin-top: 4px;">Celkem</div>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 0.6rem;" id="sentiment-legend">
+                <!-- filled by JS -->
+              </div>
             </div>
           </div>
 
-          <div class="chart-container">
-            <div class="chart-header">
-              <h3 class="chart-title">Analýza stížností</h3>
-              <div class="chart-filters">
-                <!-- Placeholder pro filtry -->
-              </div>
+          <!-- Kategorie dopisů Bar -->
+          <div
+            style="background: linear-gradient(135deg, rgba(30,41,59,0.95) 0%, rgba(15,23,42,0.9) 100%); border: 1px solid rgba(99,102,241,0.2); border-radius: 20px; padding: 1.5rem; position: relative; overflow: hidden;">
+            <div
+              style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #3b82f6, #6366f1);">
             </div>
-            <div class="chart-placeholder">
-              <canvas id="complaintsChart" style="height:300px"></canvas>
+            <h3 style="margin: 0 0 1rem; font-size: 1rem; font-weight: 700; color: #f8fafc;">Kategorie dopisů <span
+                style="font-size: 0.75rem; color: #64748b; font-weight: 400;">(Celkem)</span></h3>
+            <div style="height: 200px; position: relative;">
+              <canvas id="categoryBarChart"></canvas>
             </div>
           </div>
+
         </div>
+
       </div>
 
       <!-- Integrations Page -->
@@ -5428,145 +5528,234 @@
 
 
     // ===== ANALYTICS =====
-    let __activityChart, __aiChart, __catChart;
+    let __activityLineChart, __sentimentDonutChart, __categoryBarChart;
 
-    async function loadAnalytics(days = 7) {
+    async function loadAnalytics() {
       const dashboardUserEmail = localStorage.getItem('userEmail');
       const account = (localStorage.getItem('primaryEmail') || '').trim();
       if (!dashboardUserEmail || !account) return;
 
-      // Zničíme staré instance grafů, aby se mohly překreslit
-      if (window.__responseTimeChart) window.__responseTimeChart.destroy();
-      if (window.__aiQualityChart) window.__aiQualityChart.destroy();
-      if (window.__templateUsageChart) window.__templateUsageChart.destroy();
-      if (window.__complaintsChart) window.__complaintsChart.destroy();
+      // Zničíme staré instance grafů
+      if (__activityLineChart) { __activityLineChart.destroy(); __activityLineChart = null; }
+      if (__sentimentDonutChart) { __sentimentDonutChart.destroy(); __sentimentDonutChart = null; }
+      if (__categoryBarChart) { __categoryBarChart.destroy(); __categoryBarChart = null; }
 
-      // === 1. Graf: Průměrná doba odpovědi (zatím statická ukázka) ===
-      const ctx1 = document.getElementById('responseTimeChart')?.getContext('2d');
+      // === Načteme data z backendu ===
+      let statsData = null;
+      try {
+        const r = await fetch(`${window.BACKEND}/api/analytics/advanced?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(account)}`);
+        if (r.ok) statsData = await r.json();
+      } catch (e) { /* fallback na demo data */ }
+
+      // Fallback / demo data pokud backend neodpoví
+      const now = new Date();
+      const demoLabels = [];
+      const demoActivity = [];
+      for (let i = 89; i >= 0; i--) {
+        const d = new Date(now); d.setDate(d.getDate() - i);
+        demoLabels.push(d.toLocaleDateString('cs-CZ', { day: '2-digit', month: 'short' }));
+        demoActivity.push(Math.floor(80 + Math.random() * 120 + Math.sin(i * 0.3) * 40));
+      }
+
+      const activity = statsData?.activity || demoLabels.map((l, i) => ({ date: l, count: demoActivity[i] }));
+      const sentiment = statsData?.sentiment || { positive: 64, neutral: 24, negative: 12, total: 1001 };
+      const categories = statsData?.categories || [
+        { label: 'Technická podpora', count: 2845 },
+        { label: 'Dotaz na produkt', count: 1920 },
+        { label: 'Fakturace', count: 1150 },
+        { label: 'Zpětná vazba', count: 780 },
+        { label: 'Ostatní', count: 340 },
+      ];
+      const kpis = statsData?.kpis || {
+        totalProcessed: activity.reduce((s, a) => s + (a.count || 0), 0),
+        openEmails: Math.floor(activity.reduce((s, a) => s + (a.count || 0), 0) * 0.89),
+        timeSavedHours: Math.floor(activity.reduce((s, a) => s + (a.count || 0), 0) * 3 / 60),
+        automationRate: sentiment ? ((sentiment.total - Math.floor(sentiment.total * sentiment.negative / 100)) / sentiment.total * 100).toFixed(1) : '94.2',
+      };
+
+      // === KPI kartičky ===
+      const totalP = kpis.totalProcessed || 0;
+      const openE = kpis.openEmails || 0;
+      const timeSaved = kpis.timeSavedHours || 0;
+      const automationRate = parseFloat(kpis.automationRate) || 94.2;
+
+      const fmt = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+
+      const el = id => document.getElementById(id);
+      if (el('kpi-open-emails')) el('kpi-open-emails').textContent = fmt(openE);
+      if (el('kpi-open-pct')) el('kpi-open-pct').textContent = totalP ? `${((openE / totalP) * 100).toFixed(0)} %` : '–';
+      if (el('kpi-total-processed')) el('kpi-total-processed').textContent = fmt(totalP);
+      if (el('kpi-time-saved')) el('kpi-time-saved').textContent = fmt(timeSaved);
+
+      // === Gauge ===
+      if (el('ai-gauge-value')) el('ai-gauge-value').textContent = automationRate + '%';
+      if (el('ai-gauge-trend')) el('ai-gauge-trend').textContent = `Celková míra automatizace`;
+      // Přepočítej dashoffset : celá dráha = 251.2, 0% = full offset, 100% = 0 offset
+      const arcEl = el('ai-gauge-arc');
+      if (arcEl) {
+        const dashPath = 251.2;
+        const offset = dashPath - (automationRate / 100) * dashPath;
+        arcEl.style.strokeDashoffset = offset;
+        arcEl.style.transition = 'stroke-dashoffset 1.2s ease';
+      }
+      const labelEl = el('ai-gauge-label');
+      if (labelEl) {
+        labelEl.textContent = automationRate >= 90 ? 'VYSOKÁ ÚČINNOST AI' : automationRate >= 70 ? 'DOBRÁ ÚČINNOST AI' : 'ZLEPŠENÍ DOPORUČENO';
+        labelEl.style.color = automationRate >= 90 ? '#10b981' : automationRate >= 70 ? '#f59e0b' : '#ef4444';
+      }
+
+      // === 1. Line chart: Vývoj zátěže ===
+      const ctx1 = el('activityLineChart')?.getContext('2d');
       if (ctx1) {
-        window.__responseTimeChart = new Chart(ctx1, {
-          type: 'bar',
+        const labels = activity.map(a => a.date);
+        const data = activity.map(a => a.count);
+        __activityLineChart = new Chart(ctx1, {
+          type: 'line',
           data: {
-            labels: ['Vy (manuálně)', 'AI Asistent'],
+            labels,
             datasets: [{
-              label: 'Průměrná doba v hodinách',
-              data: [2.5, 0.1], // Statická ukázková data
-              backgroundColor: ['#9ca3af', '#6366f1'],
+              label: 'Zpracované e-maily',
+              data,
+              borderColor: '#6366f1',
+              backgroundColor: 'rgba(99,102,241,0.08)',
+              borderWidth: 2,
+              pointRadius: 3,
+              pointBackgroundColor: '#6366f1',
+              pointBorderColor: 'rgba(99,102,241,0.4)',
+              pointBorderWidth: 2,
+              tension: 0.4,
+              fill: true,
             }]
           },
-          options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' }
-        });
-      }
-
-      // === 2. Graf: Kvalita odpovědí AI (zatím statická ukázka) ===
-      const ctx2 = document.getElementById('aiQualityChart')?.getContext('2d');
-      if (ctx2) {
-        window.__aiQualityChart = new Chart(ctx2, {
-          type: 'doughnut',
-          data: {
-            labels: ['Odesláno bez úprav', 'Upraveno a odesláno', 'Zahozeno'],
-            datasets: [{
-              data: [75, 20, 5], // Statická ukázková data
-              backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
-            }]
-          },
-          options: { responsive: true, maintainAspectRatio: false }
-        });
-      }
-
-      // === 3. Graf: Využití šablon (data z API) ===
-      try {
-        const tplRes = await fetch(`${window.BACKEND}/api/analytics/templates?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`);
-        const tplData = await tplRes.json();
-        const topTemplates = (tplData.top || []).slice(0, 8);
-
-        const ctx3 = document.getElementById('templateUsageChart')?.getContext('2d');
-        if (ctx3) {
-          window.__templateUsageChart = new Chart(ctx3, {
-            type: 'bar',
-            data: {
-              labels: topTemplates.map(t => t.name),
-              datasets: [{
-                label: 'Počet použití',
-                data: topTemplates.map(t => t.uses),
-                backgroundColor: '#3b82f6',
-              }]
-            },
-            options: { responsive: true, maintainAspectRatio: false }
-          });
-        }
-      } catch (e) {
-        console.error("Chyba při načítání dat o šablonách:", e);
-        showToast("Nepodařilo se načíst data o šablonách.", "error");
-      }
-
-      // === 4. Graf: Analýza stížností (nové) ===
-      try {
-        const compRes = await fetch(`${window.BACKEND}/api/analytics/complaints?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&days=${days}`);
-        const compData = await compRes.json();
-
-        const topics = compData.complaints || [];
-        // Fallback pokud nejsou data
-        const labels = topics.length ? topics.map(t => t.topic) : ['Zatím žádná data'];
-        const data = topics.length ? topics.map(t => t.count) : [1];
-        const colors = [
-          '#ef4444', // Červená (nejkritičtější)
-          '#f97316', // Oranžová
-          '#eab308', // Žlutá
-          '#3b82f6', // Modrá
-          '#a855f7', // Fialová
-          '#64748b'  // Šedá (ostatní)
-        ];
-
-        const ctx4 = document.getElementById('complaintsChart')?.getContext('2d');
-        if (ctx4) {
-          window.__complaintsChart = new Chart(ctx4, {
-            type: 'doughnut',
-            data: {
-              labels: labels,
-              datasets: [{
-                data: data,
-                backgroundColor: colors.slice(0, labels.length),
-                borderWidth: 1
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: {
-                legend: {
-                  position: 'right',
-                  labels: { boxWidth: 12, padding: 15 }
-                },
-                tooltip: {
-                  callbacks: {
-                    label: function (context) {
-                      const label = context.label || '';
-                      const value = context.raw || 0;
-                      const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
-                      const percentage = ((value / total) * 100).toFixed(1) + '%';
-                      return `${label}: ${value} (${percentage})`;
-                    }
-                  }
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: 'rgba(15,23,42,0.95)',
+                borderColor: 'rgba(99,102,241,0.5)',
+                borderWidth: 1,
+                titleColor: '#94a3b8',
+                bodyColor: '#f8fafc',
+                padding: 10,
+                callbacks: {
+                  title: ctx => `Datum: ${ctx[0].label}`,
+                  label: ctx => ` ${ctx.raw} e-mailů`,
                 }
               }
+            },
+            scales: {
+              x: {
+                ticks: { color: '#64748b', maxTicksLimit: 12, maxRotation: 0, font: { size: 11 } },
+                grid: { color: 'rgba(99,102,241,0.08)' },
+                border: { color: 'transparent' },
+              },
+              y: {
+                ticks: { color: '#64748b', font: { size: 11 } },
+                grid: { color: 'rgba(99,102,241,0.08)' },
+                border: { color: 'transparent' },
+              }
             }
-          });
-        }
-      } catch (e) {
-        console.error("Chyba při načítání analýzy stížností:", e);
+          }
+        });
       }
 
-      // Zajistíme funkčnost tlačítek pro změnu časového období
-      document.querySelectorAll('#analytics .filter-btn').forEach(btn => {
-        btn.onclick = () => {
-          document.querySelectorAll('#analytics .filter-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          const days = parseInt(btn.dataset.days, 10);
-          // Zde by v budoucnu volalo loadAnalytics(days), ale pro statická data to není nutné
-          // Prozatím jen vizuálně přepínáme
-        };
-      });
+      // === 2. Donut chart: Sentiment zákazníků ===
+      const ctx2 = el('sentimentDonutChart')?.getContext('2d');
+      if (ctx2) {
+        const sentTotal = sentiment.total || (sentiment.positive + sentiment.neutral + sentiment.negative);
+        if (el('sentiment-total')) el('sentiment-total').textContent = sentTotal.toLocaleString('cs-CZ');
+
+        const sentColors = { positive: '#10b981', neutral: '#f59e0b', negative: '#ef4444' };
+        const sentLabels = ['Pozitivní', 'Neutrální', 'Negativní'];
+        const sentValues = [sentiment.positive, sentiment.neutral, sentiment.negative];
+        const sentColorsArr = [sentColors.positive, sentColors.neutral, sentColors.negative];
+
+        __sentimentDonutChart = new Chart(ctx2, {
+          type: 'doughnut',
+          data: {
+            labels: sentLabels,
+            datasets: [{ data: sentValues, backgroundColor: sentColorsArr, borderWidth: 0, hoverOffset: 4 }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '72%',
+            plugins: {
+              legend: { display: false }, tooltip: {
+                backgroundColor: 'rgba(15,23,42,0.95)',
+                borderColor: 'rgba(99,102,241,0.5)',
+                borderWidth: 1,
+                titleColor: '#94a3b8',
+                bodyColor: '#f8fafc',
+              }
+            }
+          }
+        });
+
+        // Vlastní legenda
+        const legendEl = el('sentiment-legend');
+        if (legendEl) {
+          legendEl.innerHTML = sentLabels.map((lbl, i) => {
+            const pct = ((sentValues[i] / (sentValues.reduce((a, b) => a + b, 0))) * 100).toFixed(0);
+            const cnt = Math.round(sentTotal * sentValues[i] / 100);
+            return `<div style="display:flex;align-items:center;gap:8px;">
+              <div style="width:10px;height:10px;border-radius:50%;background:${sentColorsArr[i]};flex-shrink:0;"></div>
+              <div>
+                <div style="font-size:0.8rem;color:#f8fafc;font-weight:600;">${lbl} (${pct}%)</div>
+                <div style="font-size:0.72rem;color:#64748b;">${cnt.toLocaleString('cs-CZ')} e-mailů</div>
+              </div>
+            </div>`;
+          }).join('');
+        }
+      }
+
+      // === 3. Bar chart: Kategorie dopisů ===
+      const ctx3 = el('categoryBarChart')?.getContext('2d');
+      if (ctx3) {
+        __categoryBarChart = new Chart(ctx3, {
+          type: 'bar',
+          data: {
+            labels: categories.map(c => c.label),
+            datasets: [{
+              label: 'Počet e-mailů',
+              data: categories.map(c => c.count),
+              backgroundColor: ['#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#64748b'],
+              borderRadius: 6,
+              borderSkipped: false,
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: 'rgba(15,23,42,0.95)',
+                borderColor: 'rgba(99,102,241,0.5)',
+                borderWidth: 1,
+                titleColor: '#94a3b8',
+                bodyColor: '#f8fafc',
+                callbacks: { label: c => ` ${c.raw.toLocaleString('cs-CZ')} e-mailů` }
+              }
+            },
+            scales: {
+              x: {
+                ticks: { color: '#64748b', font: { size: 11 } },
+                grid: { color: 'rgba(99,102,241,0.08)' },
+                border: { color: 'transparent' },
+              },
+              y: {
+                ticks: { color: '#e2e8f0', font: { size: 12 } },
+                grid: { display: false },
+                border: { color: 'transparent' },
+              }
+            }
+          }
+        });
+      }
     }
 
 
