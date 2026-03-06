@@ -5621,13 +5621,15 @@
       // === 2. Donut chart: Sentiment zákazníků ===
       const ctx2 = el('sentimentDonutChart')?.getContext('2d');
       if (ctx2) {
-        const sentTotal = sentiment.total || (sentiment.positive + sentiment.neutral + sentiment.negative);
-        if (el('sentiment-total')) el('sentiment-total').textContent = sentTotal.toLocaleString('cs-CZ');
+        const knownSent = sentiment.positive + sentiment.neutral + sentiment.negative;
+        const unknownSent = Math.max(0, totalP - knownSent);
 
-        const sentColors = { positive: '#10b981', neutral: '#f59e0b', negative: '#ef4444' };
-        const sentLabels = ['Pozitivní', 'Neutrální', 'Negativní'];
-        const sentValues = [sentiment.positive, sentiment.neutral, sentiment.negative];
-        const sentColorsArr = [sentColors.positive, sentColors.neutral, sentColors.negative];
+        if (el('sentiment-total')) el('sentiment-total').textContent = totalP.toLocaleString('cs-CZ');
+
+        const sentColors = { positive: '#10b981', neutral: '#f59e0b', negative: '#ef4444', unknown: '#475569' };
+        const sentLabels = ['Pozitivní', 'Neutrální', 'Negativní', 'Ostatní / Spam'];
+        const sentValues = [sentiment.positive, sentiment.neutral, sentiment.negative, unknownSent];
+        const sentColorsArr = [sentColors.positive, sentColors.neutral, sentColors.negative, sentColors.unknown];
 
         __sentimentDonutChart = new Chart(ctx2, {
           type: 'doughnut',
@@ -5651,12 +5653,12 @@
           }
         });
 
-        // Vlastní legenda
+        // Vlastní legenda s opravenou matematikou reálných hodnot
         const legendEl = el('sentiment-legend');
         if (legendEl) {
           legendEl.innerHTML = sentLabels.map((lbl, i) => {
-            const pct = ((sentValues[i] / (sentValues.reduce((a, b) => a + b, 0))) * 100).toFixed(0);
-            const cnt = Math.round(sentTotal * sentValues[i] / 100);
+            const pct = totalP > 0 ? ((sentValues[i] / totalP) * 100).toFixed(0) : 0;
+            const cnt = sentValues[i]; // UŽ ŽÁDNÉ NÁSOBENÍ, BERE SE PŘESNÁ HODNOTA Z BACKENDU!
             return `<div style="display:flex;align-items:center;gap:8px;">
               <div style="width:10px;height:10px;border-radius:50%;background:${sentColorsArr[i]};flex-shrink:0;"></div>
               <div>
