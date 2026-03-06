@@ -4093,83 +4093,303 @@
           </div>
 
           <!-- Email Detail Modal -->
+          <style>
+            .email-detail-compact {
+              width: 100%;
+              max-width: 850px;
+              border-radius: 12px;
+              background: #1e293b;
+              color: #f8fafc;
+              box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+              display: flex;
+              flex-direction: column;
+              border: 1px solid rgba(255, 255, 255, 0.1);
+              overflow: hidden;
+            }
+
+            .email-detail-compact .modal-header-compact {
+              padding: 16px 24px;
+              border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              gap: 16px;
+              background: rgba(15, 23, 42, 0.5);
+            }
+
+            .email-detail-compact .header-info {
+              display: flex;
+              flex-direction: column;
+              gap: 6px;
+              flex: 1;
+              min-width: 0;
+            }
+
+            .email-detail-compact .header-title-row {
+              display: flex;
+              align-items: center;
+              gap: 12px;
+            }
+
+            .email-detail-compact .subject-text {
+              font-size: 1.15rem;
+              font-weight: 600;
+              color: #fff;
+              margin: 0;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+
+            .email-detail-compact .header-meta-row {
+              font-size: 0.9rem;
+              color: #94a3b8;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            }
+
+            .email-detail-compact .meta-avatar {
+              width: 24px;
+              height: 24px;
+              border-radius: 50%;
+              background: #475569;
+              color: white;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 0.75rem;
+              font-weight: bold;
+              flex-shrink: 0;
+            }
+
+            .email-detail-compact .header-actions {
+              display: flex;
+              gap: 8px;
+              align-items: center;
+              flex-shrink: 0;
+            }
+
+            .email-detail-compact .ai-summary-bar {
+              padding: 12px 24px;
+              background: rgba(30, 41, 59, 0.8);
+              border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+              display: flex;
+              align-items: center;
+              gap: 16px;
+              font-size: 0.9rem;
+            }
+
+            .email-detail-compact .ai-summary-icon {
+              font-size: 1.2rem;
+              flex-shrink: 0;
+            }
+
+            .email-detail-compact .ai-summary-content {
+              flex: 1;
+              line-height: 1.4;
+            }
+
+            .email-detail-compact .ai-sentiment-badge {
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              padding: 4px 10px;
+              border-radius: 9999px;
+              font-size: 0.8rem;
+              font-weight: 500;
+              background: #334155;
+              color: #f1f5f9;
+              white-space: nowrap;
+              flex-shrink: 0;
+            }
+
+            .email-detail-compact .ai-sentiment-dot {
+              width: 8px;
+              height: 8px;
+              border-radius: 50%;
+              background: #94a3b8;
+            }
+
+            /* Add specific coloring based on sentiment text */
+            .email-detail-compact .ai-sentiment-badge:has(strong:contains("pozitivní")) .ai-sentiment-dot {
+              background: #10b981;
+            }
+
+            .email-detail-compact .ai-sentiment-badge:has(strong:contains("negativní")) .ai-sentiment-dot {
+              background: #ef4444;
+            }
+
+            .email-detail-compact .email-body-area {
+              padding: 24px;
+              max-height: 50vh;
+              overflow-y: auto;
+              font-size: 0.95rem;
+              line-height: 1.6;
+              color: #e2e8f0;
+              background: #1e293b;
+            }
+
+            .email-detail-compact .email-body-area::-webkit-scrollbar {
+              width: 8px;
+            }
+
+            .email-detail-compact .email-body-area::-webkit-scrollbar-track {
+              background: rgba(0, 0, 0, 0.1);
+            }
+
+            .email-detail-compact .email-body-area::-webkit-scrollbar-thumb {
+              background: rgba(255, 255, 255, 0.15);
+              border-radius: 4px;
+            }
+
+            .email-detail-compact .email-body-area::-webkit-scrollbar-thumb:hover {
+              background: rgba(255, 255, 255, 0.25);
+            }
+
+            .email-detail-compact .ai-draft-area {
+              padding: 16px 24px;
+              background: rgba(15, 23, 42, 0.5);
+              border-top: 1px solid rgba(255, 255, 255, 0.08);
+            }
+
+            .email-detail-compact .ai-draft-box {
+              position: relative;
+              background: rgba(30, 41, 59, 0.6);
+              border: 1px solid rgba(147, 197, 253, 0.2);
+              border-radius: 8px;
+              overflow: hidden;
+            }
+
+            .email-detail-compact .ai-draft-header {
+              padding: 8px 12px;
+              font-size: 0.8rem;
+              color: #94a3b8;
+              border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+              display: flex;
+              align-items: center;
+              gap: 6px;
+            }
+
+            .email-detail-compact .ai-draft-textarea {
+              width: 100%;
+              min-height: 120px;
+              background: transparent;
+              border: none;
+              color: #f8fafc;
+              padding: 12px;
+              font-family: inherit;
+              font-size: 0.95rem;
+              line-height: 1.5;
+              resize: vertical;
+              outline: none;
+            }
+
+            .email-detail-compact .ai-draft-textarea:focus {
+              background: rgba(255, 255, 255, 0.02);
+            }
+
+            .email-detail-compact .modal-footer-compact {
+              padding: 16px 24px;
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+              gap: 12px;
+              border-top: 1px solid rgba(255, 255, 255, 0.05);
+              background: #0f172a;
+            }
+
+            /* AI Button Gradient */
+            .btn-ai-magic {
+              background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+              border: none;
+              color: white;
+            }
+
+            .btn-ai-magic:hover {
+              background: linear-gradient(135deg, #4f46e5 0%, #9333ea 100%);
+            }
+          </style>
+
           <div class="modal-overlay" id="emailDetailModal">
-            <div class="modal pro-modal">
+            <div class="modal email-detail-compact">
+
               <!-- Header -->
-              <div class="pro-modal__header">
-                <div class="pro-modal__id">
-                  <div class="pro-avatar" id="ed-avatar" aria-hidden="true">✉️</div>
-                  <div class="pro-headings">
-                    <div class="pro-title" id="ed-subject">Bez předmětu</div>
-                    <div class="pro-subtitle">
-                      <span id="ed-from">—</span>
-                      <span class="pro-dot">•</span>
-                      <span id="ed-date">—</span>
-                    </div>
+              <div class="modal-header-compact">
+                <div class="header-info">
+                  <div class="header-title-row">
+                    <h3 class="subject-text" id="ed-subject">Bez předmětu</h3>
+                  </div>
+                  <div class="header-meta-row">
+                    <div class="meta-avatar" id="ed-avatar">✉️</div>
+                    <span id="ed-from" style="font-weight: 500; color: #e2e8f0;">—</span>
+                    <span>•</span>
+                    <span id="ed-date">—</span>
                   </div>
                 </div>
-                <div class="pro-actions">
-                  <button class="btn btn-secondary pro-chip" id="ed-copy">
-                    <span>Copy</span>
-                  </button>
-                  <button class="btn btn-primary" id="ed-reply-open">Odpovědět</button>
-                  <button class="pro-close" id="closeEmailDetail" aria-label="Zavřít">✕</button>
-                </div>
-              </div>
-
-
-
-
-              <!-- Body -->
-              <div class="pro-modal__body">
-                <!-- Sidebar Removed as requested -->
-
-                <div class="pro-content">
-                  <div class="pro-body-card pro-body-card--email">
-                    <div class="pro-body-card__title">
-                      <span>📄</span> Obsah zprávy
-                    </div>
-                    <div class="pro-body-card__content" id="ed-body">Načítám…</div>
-                  </div>
-
-                  <div class="pro-body-card pro-body-card--ai" id="ed-ai-card" style="display: none;">
-                    <div class="pro-body-card__title">
-                      <span>🤖</span> Návrh odpovědi (AI)
-                    </div>
-                    <div class="pro-body-card__content">
-                      <div
-                        style="color:#e2e8f0; margin-bottom:12px; line-height:1.6; background:rgba(0,0,0,0.2); padding:1rem; border-radius:8px;">
-                        <div><strong>Shrnutí:</strong> <span id="ed-ai-summary">—</span></div>
-                        <div><strong>Sentiment:</strong> <span id="ed-ai-sentiment">—</span></div>
-                      </div>
-                      <div id="ed-ai-reply" style="white-space: pre-wrap; line-height:1.55; color:#f1f5f9;"></div>
-                      <textarea id="ed-ai-reply-editor"
-                        style="display:none; width: 100%; min-height: 150px; margin-top: 10px; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: #f1f5f9; font-family: inherit; resize: vertical; line-height: 1.55;"></textarea>
-                    </div>
-                  </div>
-
-                  <!-- Quick AI Reply Removed as requested -->
+                <div class="header-actions">
+                  <button class="btn btn-secondary btn-sm" id="ed-copy" title="Kopírovat text"
+                    style="padding: 4px 8px; font-size: 0.85rem; background: #334155; border: 1px solid #475569;">📋
+                    Kopírovat</button>
+                  <button class="pro-close" id="closeEmailDetail" aria-label="Zavřít"
+                    style="margin-left: 8px;">✕</button>
+                  <button id="ed-reply-open" style="display:none;"></button>
+                  <!-- Hidden but kept for JS compatibility -->
                 </div>
               </div>
 
+              <!-- AI Summary Bar (Horizontal) -->
+              <div class="ai-summary-bar" id="ed-ai-card" style="display: none;">
+                <div class="ai-summary-icon">✨</div>
+                <div class="ai-summary-content">
+                  <strong style="color: #94a3b8;">Shrnutí:</strong> <span id="ed-ai-summary"
+                    style="color: #f1f5f9;">—</span>
+                </div>
+                <div class="ai-sentiment-badge">
+                  <div class="ai-sentiment-dot"></div>
+                  <strong id="ed-ai-sentiment">—</strong>
+                </div>
+              </div>
 
+              <!-- Body Area -->
+              <div class="email-body-area">
+                <div id="ed-body" style="white-space: pre-wrap;">Načítám…</div>
+              </div>
 
-              <!-- Footer -->
-              <div class="pro-modal__footer">
+              <!-- AI Draft Editor Area -->
+              <div class="ai-draft-area" id="ai-draft-container" style="display:none;">
+                <div class="ai-draft-box">
+                  <div class="ai-draft-header">
+                    <span>✨</span> Drafted by AI
+                  </div>
+                  <div id="ed-ai-reply"
+                    style="white-space: pre-wrap; display:none; padding: 12px; color: #f8fafc; font-size: 0.95rem; line-height: 1.5;">
+                  </div>
+                  <textarea id="ed-ai-reply-editor" class="ai-draft-textarea" style="display:none;"
+                    placeholder="AI návrh odpovědi..."></textarea>
+                </div>
+              </div>
+
+              <!-- Footer Buttons -->
+              <div class="modal-footer-compact">
                 <button class="btn btn-secondary" id="closeEmailDetailBottom">Zavřít</button>
-                <button class="btn btn-secondary" id="ed-edit-manual-bottom" style="display:none;">✏️ Upravit</button>
-                <button class="btn btn-primary" id="ed-edit-ai-bottom" style="display:none;">AI odpověď ✨</button>
-                <button class="btn btn-success" id="ed-save-edit-bottom" style="display:none;">💾 Schválit
-                  upravené</button>
+                <button class="btn btn-secondary" id="ed-edit-manual-bottom"
+                  style="display:none; background: #334155; border-color: #475569; color: white;">✏️ Upravit</button>
+                <button class="btn btn-ai-magic" id="ed-edit-ai-bottom" style="display:none;">AI odpověď ✨</button>
+
                 <button class="btn btn-secondary" id="ed-cancel-edit-bottom" style="display:none;">✖ Zrušit
                   úpravy</button>
+                <button class="btn btn-success" id="ed-save-edit-bottom"
+                  style="display:none; background-color: #10b981; border-color: #10b981; color: white;">💾 Schválit
+                  upravené</button>
+
                 <button class="btn btn-success" id="ed-approve-bottom"
                   style="display:none; background-color: #10b981; border-color: #10b981; color: white;">✅
                   Schválit</button>
                 <button class="btn btn-danger" id="ed-reject-bottom"
                   style="display:none; background-color: #ef4444; border-color: #ef4444; color: white;">❌
                   Zamítnout</button>
-                <button class="btn btn-primary" id="ed-reply-bottom">Odpovědět</button>
+                <button class="btn btn-primary" id="ed-reply-bottom" style="display:none;">Odpovědět</button>
               </div>
             </div>
           </div>
@@ -7200,6 +7420,7 @@ S pozdravem
 
     function renderPendingPreview(entry) {
       const card = document.getElementById('ed-ai-card');
+      const draftContainer = document.getElementById('ai-draft-container');
       const summaryEl = document.getElementById('ed-ai-summary');
       const sentimentEl = document.getElementById('ed-ai-sentiment');
       const replyEl = document.getElementById('ed-ai-reply');
@@ -7208,13 +7429,15 @@ S pozdravem
 
       if (!entry || !entry._pending) {
         card.style.display = 'none';
+        if (draftContainer) draftContainer.style.display = 'none';
         summaryEl.textContent = '—';
         sentimentEl.textContent = '—';
         replyEl.textContent = '';
         return;
       }
 
-      card.style.display = '';
+      card.style.display = 'flex'; // Změna na flex kvůli novému CSS
+      if (draftContainer) draftContainer.style.display = 'block';
       summaryEl.textContent = entry.summary || '(bez shrnutí)';
       sentimentEl.textContent = entry.sentiment || '(neuvedeno)';
       replyEl.textContent = entry.replyBody || '';
