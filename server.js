@@ -499,31 +499,34 @@ app.get('/api/dashboard/stats', async (req, res) => {
 
   const db = await pool.connect();
   try {
-    // Oprava: Zpracované e-maily počítáme jako ty, u kterých AI navrhla odpověď (sent nebo rejected)
+    // 1. Zpracované e-maily = všechny zprávy, co nejsou "pending"
     const rUsage = await db.query(
-      `SELECT status, COUNT(*) as cnt FROM pending_replies 
-        WHERE dashboard_user_email=$1 AND status IN ('sent', 'rejected') 
+      `SELECT COUNT(*) as cnt FROM pending_replies 
+        WHERE dashboard_user_email=$1 AND status != 'pending'`,
+      [dashboardUserEmail]
+    );
+    const aiUsed = Number(rUsage.rows[0]?.cnt) || 0;
+
+    // 2. 5 minut ušetřeného času na jeden zpracovaný email
+    const savedHours = (aiUsed * 5 / 60).toFixed(1);
+
+    // 3. Úspěšnost AI = úspěšná volání z activity_log (spolehlivost)
+    const rLog = await db.query(
+      `SELECT status, COUNT(*) as cnt
+         FROM activity_log
+        WHERE dashboard_user_email=$1
+          AND status IN ('success', 'error')
         GROUP BY status`,
       [dashboardUserEmail]
     );
-
-    let sentCount = 0;
-    let rejectedCount = 0;
-    rUsage.rows.forEach(r => {
-      if (r.status === 'sent') sentCount += Number(r.cnt);
-      if (r.status === 'rejected') rejectedCount += Number(r.cnt);
+    let success = 0;
+    let error = 0;
+    rLog.rows.forEach(r => {
+      if (r.status === 'success') success += Number(r.cnt);
+      if (r.status === 'error') error += Number(r.cnt);
     });
-    const aiUsed = sentCount + rejectedCount;
-
-    // 3 minuty na jeden zpracovaný email
-    const savedMinutes = aiUsed * 3;
-    const savedHours = (savedMinutes / 60).toFixed(1);
-
-    // Míra automatizace (Kolik jich prošlo "sent" z těch, co AI zpracovala)
-    let successRate = 100;
-    if (aiUsed > 0) {
-      successRate = (sentCount / aiUsed) * 100;
-    }
+    const totalLog = success + error;
+    const successRate = totalLog > 0 ? (success / totalLog * 100).toFixed(1) : "100.0";
 
     const rTpl = await db.query(
       `SELECT COUNT(*) as count FROM templates WHERE dashboard_user_email=$1`,
@@ -537,7 +540,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
         processedEmails: aiUsed,
         savedHours: savedHours,
         activeTemplates: tplCount,
-        successRate: successRate.toFixed(1)
+        successRate: successRate
       }
     });
 
@@ -1976,8 +1979,8 @@ app.get('/api/analytics/advanced', async (req, res) => {
     );
     const totalProcessed = Number(rUsage.rows[0]?.cnt) || 0;
 
-    // 3 minuty na jeden zpracovaný email
-    const timeSavedHours = Number((totalProcessed * 3 / 60).toFixed(1));
+    // 5 minut na jeden zpracovaný email (Sjednoceno s dashboardem)
+    const timeSavedHours = Number((totalProcessed * 5 / 60).toFixed(1));
 
     // Úspěšnost AI z activity_log (původní logika spolehlivosti)
     const rLog = await db.query(
