@@ -4378,7 +4378,7 @@
                 <div class="ai-draft-area" id="ai-draft-container" style="display:none;">
                   <div class="ai-draft-box">
                     <div class="ai-draft-header">
-                      <span>✨</span> Navrženo umělou inteligencí
+                      <span>✨</span> Drafted by AI
                     </div>
                     <div id="ed-ai-reply"
                       style="white-space: pre-wrap; display:none; padding: 12px; color: #f8fafc; font-size: 0.95rem; line-height: 1.5;">
@@ -7274,16 +7274,16 @@ S pozdravem
         // Stavový badge – čekající / automaticky zodpovězeno / zamítnuto
         let badge = '';
         if (email._pending) {
-          badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fef3c7;color:#92400e;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;">⏳ Čeká na schválení</div>`;
+          badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fef3c7;color:#92400e;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Čeká na schválení</div>`;
         } else if (!isApprovalView && email.emailStatus) {
           if (email.emailStatus === 'pending') {
-            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fef3c7;color:#92400e;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;">⏳ Čeká na schválení</div>`;
+            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fef3c7;color:#92400e;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Čeká na schválení</div>`;
           } else if (email.emailStatus === 'auto_replied') {
-            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#dcfce7;color:#166534;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;">✅ Automaticky zodpovězeno</div>`;
+            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#dcfce7;color:#166534;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Automaticky zodpovězeno</div>`;
           } else if (email.emailStatus === 'rejected') {
-            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fee2e2;color:#991b1b;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;">❌ Zamítnuto</div>`;
+            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fee2e2;color:#991b1b;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg> Zamítnuto</div>`;
           } else if (email.emailStatus === 'spam') {
-            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fdf4ff;color:#7e22ce;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;">🚫 Spam</div>`;
+            badge = `<div class="status-badge" style="display:inline-flex;align-items:center;gap:6px;background:#fdf4ff;color:#7e22ce;font-weight:600;padding:2px 8px;border-radius:999px;font-size:0.75rem;white-space:nowrap;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg> Spam</div>`;
           }
         }
 
@@ -7958,7 +7958,7 @@ S pozdravem
           </div>
         </div>
         <div class="email-controls">
-          <div class="status-badge ${active ? 'active' : ''}">${active ? '🤖 Aktivní' : 'Neaktivní'}</div>
+          <div class="status-badge ${active ? 'active' : ''}">${active ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:-1px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Aktivní' : 'Neaktivní'}</div>
           <div class="radio-wrapper ${isSelectedForConfig ? 'selected' : ''}" onclick="selectForConfig(this, '${email}')">
             <input type="radio" name="configEmail" value="${email}" class="radio-input" ${isSelectedForConfig ? 'checked' : ''}>
             <div class="radio-custom"></div>
@@ -10174,13 +10174,13 @@ S pozdravem
             // AI stavový badge
             let aiBadge = '';
             if (e.emailStatus === 'pending') {
-              aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;">⏳ Čeká na schválení</div>`;
+              aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Čeká na schválení</div>`;
             } else if (e.emailStatus === 'auto_replied') {
-              aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#dcfce7;color:#166534;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;">✅ Automaticky zodpovězeno</div>`;
+              aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#dcfce7;color:#166534;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Automaticky zodpovězeno</div>`;
             } else if (e.emailStatus === 'rejected') {
-              aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;">❌ Zamítnuto</div>`;
+              aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg> Zamítnuto</div>`;
             } else if (e.emailStatus === 'spam') {
-              aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#fdf4ff;color:#7e22ce;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;">🚫 Spam</div>`;
+              aiBadge = `<div style="display:inline-flex;align-items:center;gap:4px;background:#fdf4ff;color:#7e22ce;font-weight:600;padding:2px 7px;border-radius:999px;font-size:0.72rem;margin-top:3px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg> Spam</div>`;
             }
 
             const threadCount = Number(e.thread_count) || 1;
@@ -10312,4 +10312,3 @@ S pozdravem
 </body>
 
 </html>
-
