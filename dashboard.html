@@ -4105,6 +4105,8 @@
               flex-direction: column;
               border: 1px solid rgba(255, 255, 255, 0.1);
               overflow: hidden;
+              max-height: 90vh;
+              /* Celý modál má maximální výšku okna */
             }
 
             .email-detail-compact .modal-header-compact {
@@ -4222,28 +4224,34 @@
 
             .email-detail-compact .email-body-area {
               padding: 24px;
-              max-height: 50vh;
-              overflow-y: auto;
+              /* max-height: 50vh;  <-- ODEBRÁNO */
+              /* overflow-y: auto;  <-- ODEBRÁNO */
               font-size: 0.95rem;
               line-height: 1.6;
               color: #e2e8f0;
               background: #1e293b;
             }
 
-            .email-detail-compact .email-body-area::-webkit-scrollbar {
+            /* Obal, který bude scrollovat jako jeden celek (střed modálu) */
+            .email-detail-compact .modal-scroll-content {
+              flex: 1;
+              overflow-y: auto;
+            }
+
+            .email-detail-compact .modal-scroll-content::-webkit-scrollbar {
               width: 8px;
             }
 
-            .email-detail-compact .email-body-area::-webkit-scrollbar-track {
+            .email-detail-compact .modal-scroll-content::-webkit-scrollbar-track {
               background: rgba(0, 0, 0, 0.1);
             }
 
-            .email-detail-compact .email-body-area::-webkit-scrollbar-thumb {
+            .email-detail-compact .modal-scroll-content::-webkit-scrollbar-thumb {
               background: rgba(255, 255, 255, 0.15);
               border-radius: 4px;
             }
 
-            .email-detail-compact .email-body-area::-webkit-scrollbar-thumb:hover {
+            .email-detail-compact .modal-scroll-content::-webkit-scrollbar-thumb:hover {
               background: rgba(255, 255, 255, 0.25);
             }
 
@@ -4351,22 +4359,25 @@
                 </div>
               </div>
 
-              <!-- Body Area -->
-              <div class="email-body-area">
-                <div id="ed-body" style="white-space: pre-wrap;">Načítám…</div>
-              </div>
+              <!-- Scrollable Content Area -->
+              <div class="modal-scroll-content">
+                <!-- Body Area -->
+                <div class="email-body-area">
+                  <div id="ed-body" style="white-space: pre-wrap;">Načítám…</div>
+                </div>
 
-              <!-- AI Draft Editor Area -->
-              <div class="ai-draft-area" id="ai-draft-container" style="display:none;">
-                <div class="ai-draft-box">
-                  <div class="ai-draft-header">
-                    <span>✨</span> Drafted by AI
+                <!-- AI Draft Editor Area -->
+                <div class="ai-draft-area" id="ai-draft-container" style="display:none;">
+                  <div class="ai-draft-box">
+                    <div class="ai-draft-header">
+                      <span>✨</span> Navrženo umělou inteligencí
+                    </div>
+                    <div id="ed-ai-reply"
+                      style="white-space: pre-wrap; display:none; padding: 12px; color: #f8fafc; font-size: 0.95rem; line-height: 1.5;">
+                    </div>
+                    <textarea id="ed-ai-reply-editor" class="ai-draft-textarea" style="display:none;"
+                      placeholder="AI návrh odpovědi..."></textarea>
                   </div>
-                  <div id="ed-ai-reply"
-                    style="white-space: pre-wrap; display:none; padding: 12px; color: #f8fafc; font-size: 0.95rem; line-height: 1.5;">
-                  </div>
-                  <textarea id="ed-ai-reply-editor" class="ai-draft-textarea" style="display:none;"
-                    placeholder="AI návrh odpovědi..."></textarea>
                 </div>
               </div>
 
