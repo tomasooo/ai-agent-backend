@@ -7566,6 +7566,17 @@ S pozdravem
           textEditor.value = textDisplay.textContent || '';
           textDisplay.style.display = 'none';
           textEditor.style.display = 'block';
+
+          // Nastavíme výšku přesně podle aktuálního textu (+ padding jako rezerva)
+          textEditor.style.height = 'auto'; // Reset 
+          textEditor.style.height = (textEditor.scrollHeight + 10) + 'px';
+
+          // Přidáme listener pro dynamické zvětšování během psaní
+          textEditor.addEventListener('input', function () {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight + 2) + 'px';
+          });
+
           textEditor.focus();
         }
         document.getElementById('ed-approve-bottom').style.display = 'none';
