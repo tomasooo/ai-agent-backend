@@ -4224,18 +4224,26 @@
 
             .email-detail-compact .email-body-area {
               padding: 24px;
-              /* max-height: 50vh;  <-- ODEBRÁNO */
-              /* overflow-y: auto;  <-- ODEBRÁNO */
               font-size: 0.95rem;
               line-height: 1.6;
               color: #e2e8f0;
               background: #1e293b;
+              height: auto !important;
+              max-height: none !important;
+              overflow: visible !important;
+            }
+
+            .email-detail-compact #ed-body {
+              height: auto !important;
+              max-height: none !important;
+              overflow: visible !important;
             }
 
             /* Obal, který bude scrollovat jako jeden celek (střed modálu) */
             .email-detail-compact .modal-scroll-content {
               flex: 1;
               overflow-y: auto;
+              height: 100%;
             }
 
             .email-detail-compact .modal-scroll-content::-webkit-scrollbar {
@@ -4370,7 +4378,7 @@
                 <div class="ai-draft-area" id="ai-draft-container" style="display:none;">
                   <div class="ai-draft-box">
                     <div class="ai-draft-header">
-                      <span>✨</span> Navrženo umělou inteligencí
+                      <span>✨</span> Drafted by AI
                     </div>
                     <div id="ed-ai-reply"
                       style="white-space: pre-wrap; display:none; padding: 12px; color: #f8fafc; font-size: 0.95rem; line-height: 1.5;">
