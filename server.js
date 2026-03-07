@@ -101,6 +101,49 @@ async function sendVerificationEmail(toEmail, token) {
   console.log(`[AUTH] Verification email sent to ${toEmail}`);
 }
 
+async function sendPasswordResetEmail(toEmail, token) {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    console.warn('[AUTH] SMTP credentials missing, skipping reset email.');
+    return;
+  }
+
+  const link = `${FRONTEND_URL}/reset-password.html?token=${token}`;
+
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: Number(SMTP_PORT),
+    secure: SMTP_SECURE,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+  });
+
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2>Obnova zapomenutého hesla</h2>
+      <p>Dobrý den,</p>
+      <p>obdrželi jsme žádost o obnovení vašeho hesla do aplikace AI Emailový Agent. Klikněte na tlačítko níže pro nastavení nového hesla:</p>
+      <p style="margin: 20px 0;">
+        <a href="${link}" style="background-color: #ff6b6b; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Nastavit nové heslo</a>
+      </p>
+      <p>Tento odkaz je platný pro jedno použití 1 hodinu. Pokud jste o obnovu nežádali, tento email ignorujte.</p>
+      <p>Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:</p>
+      <p><a href="${link}">${link}</a></p>
+      <p>S pozdravem,</p>
+      <p>Tým StejDesign</p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `"AI Agent" <${SMTP_USER}>`,
+    to: toEmail,
+    subject: 'Obnova zapomenutého hesla',
+    html,
+  });
+  console.log(`[AUTH] Password reset email sent to ${toEmail}`);
+}
+
 
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -500,25 +543,21 @@ app.get('/api/dashboard/stats', async (req, res) => {
   const db = await pool.connect();
   try {
     // 1. Zpracované e-maily = všechny zprávy, co nejsou "pending"
-    const rUsage = await db.query(
-      `SELECT COUNT(*) as cnt FROM pending_replies 
-        WHERE dashboard_user_email=$1 AND status != 'pending'`,
-      [dashboardUserEmail]
-    );
+    let qUsage = `SELECT COUNT(*) as cnt FROM pending_replies WHERE dashboard_user_email=$1 AND status != 'pending'`;
+    let paramsUsage = [dashboardUserEmail];
+    if (email) {
+      qUsage += ` AND connected_email=$2`;
+      paramsUsage.push(email);
+    }
+    const rUsage = await db.query(qUsage, paramsUsage);
     const aiUsed = Number(rUsage.rows[0]?.cnt) || 0;
 
     // 2. 5 minut ušetřeného času na jeden zpracovaný email
     const savedHours = (aiUsed * 5 / 60).toFixed(1);
 
     // 3. Úspěšnost AI = úspěšná volání z activity_log (spolehlivost)
-    const rLog = await db.query(
-      `SELECT status, COUNT(*) as cnt
-         FROM activity_log
-        WHERE dashboard_user_email=$1
-          AND status IN ('success', 'error')
-        GROUP BY status`,
-      [dashboardUserEmail]
-    );
+    const qLog = `SELECT status, COUNT(*) as cnt FROM activity_log WHERE dashboard_user_email=$1 AND status IN ('success', 'error') GROUP BY status`;
+    const rLog = await db.query(qLog, [dashboardUserEmail]);
     let success = 0;
     let error = 0;
     rLog.rows.forEach(r => {
@@ -786,7 +825,9 @@ async function setupDatabase() {
                 ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false,
                 ADD COLUMN IF NOT EXISTS verification_token TEXT,
                 ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user',
-                ADD COLUMN IF NOT EXISTS ai_actions_used INT DEFAULT 0;`,
+                ADD COLUMN IF NOT EXISTS ai_actions_used INT DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS reset_token TEXT,
+                ADD COLUMN IF NOT EXISTS reset_token_expires TIMESTAMP WITH TIME ZONE;`,
       // HOTFIX: Existing users (legacy) don't have a token, so we mark them as verified so they can login.
       `UPDATE dashboard_users SET email_verified = true WHERE email_verified = false AND verification_token IS NULL;`,
       `CREATE TABLE IF NOT EXISTS connected_accounts (
@@ -3008,7 +3049,73 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) {
+    return res.status(400).json({ success: false, message: 'Zadejte emailovou adresu.' });
+  }
 
+  const client = await pool.connect();
+  try {
+    const r = await client.query('SELECT email FROM dashboard_users WHERE email = $1', [email]);
+    if (r.rowCount > 0) {
+      // Create token
+      const token = crypto.randomBytes(32).toString('hex');
+      const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hodina
+
+      await client.query(
+        'UPDATE dashboard_users SET reset_token = $1, reset_token_expires = $2 WHERE email = $3',
+        [token, expires, email]
+      );
+
+      await sendPasswordResetEmail(email, token);
+      await logActivity(email, 'Žádost o reset hesla', 'success');
+    } else {
+      await logActivity(email, 'Žádost o reset hesla', 'error', { reason: 'Uživatel nenalezen' });
+    }
+    // Úmyslně vracíme true i když uživatel neexistuje z důvodu enum prevence útoků.
+    return res.json({ success: true, message: 'Odkaz pro obnovení hesla byl odeslán (pokud účet existuje).' });
+  } catch (e) {
+    console.error('FORGOT PASSWORD ERROR', e);
+    return res.status(500).json({ success: false, message: 'Chyba při odesílání emailu.' });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { token, newPassword } = req.body || {};
+  if (!token || !newPassword) {
+    return res.status(400).json({ success: false, message: 'Neplatný požadavek.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const r = await client.query(
+      'SELECT email FROM dashboard_users WHERE reset_token = $1 AND reset_token_expires > NOW()',
+      [token]
+    );
+    if (r.rowCount === 0) {
+      return res.status(400).json({ success: false, message: 'Platnost odkazu vypršela nebo je neplatný.' });
+    }
+
+    const email = r.rows[0].email;
+    const hash = await bcrypt.hash(newPassword, 10);
+
+    await client.query(
+      'UPDATE dashboard_users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL WHERE email = $2',
+      [hash, email]
+    );
+
+    await logActivity(email, 'Reset hesla (zapomenuté)', 'success');
+    return res.json({ success: true, message: 'Heslo bylo úspěšně změněno.' });
+  } catch (e) {
+    console.error('RESET PASSWORD ERROR', e);
+    return res.status(500).json({ success: false, message: 'Chyba serveru při resetu hesla.' });
+  } finally {
+    client.release();
+  }
+});
 
 
 
