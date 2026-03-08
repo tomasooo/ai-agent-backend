@@ -3946,7 +3946,7 @@
                   <path
                     d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
                 </svg>
-                <span id="sync-text" style="font-size:0.8rem; font-weight:500;">Načíst_poštu</span>
+                <span id="sync-text" style="font-size:0.8rem; font-weight:500;">Načíst poštu</span>
               </button>
 
               <!-- Filter icon -->
@@ -10441,7 +10441,8 @@ S pozdravem
         textSpan.innerText = 'Načítám...';
 
         try {
-          const res = await fetch('/api/trigger-worker?secret=mojeSuperTajneHeslo123');
+          // Oprava URL na plnou doménu backendu:
+          const res = await fetch('https://ai-email-server-stejdesign.onrender.com/api/trigger-worker?secret=mojeSuperTajneHeslo123');
           if (res.ok) {
             // Give it a brief moment to finish DB writes if any
             await new Promise(r => setTimeout(r, 1000));
