@@ -3935,6 +3935,20 @@
                 <input type="search" class="form-control" placeholder="Hledat v poště" id="search-bar"
                   style="background:rgba(255,255,255,0.07); border:none; border-radius:999px; padding:8px 16px 8px 36px;">
               </div>
+              <!-- Sync Button -->
+              <button id="sync-emails-btn" title="Synchronizovat emaily ihned"
+                style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:white; padding:8px 11px; cursor:pointer; font-size:1rem; display:flex; align-items:center; gap:5px; transition:all 0.2s;"
+                onmouseenter="this.style.background='rgba(255,255,255,0.15)'"
+                onmouseleave="this.style.background='rgba(255,255,255,0.08)'">
+                <svg id="sync-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                  viewBox="0 0 16 16" style="transition: transform 1s linear;">
+                  <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                  <path
+                    d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+                </svg>
+                <span id="sync-text" style="font-size:0.8rem; font-weight:500;">Načíst_poštu</span>
+              </button>
+
               <!-- Filter icon -->
               <div style="position:relative;">
                 <button id="email-filter-toggle" title="Filtrovat podle období"
@@ -10405,6 +10419,52 @@ S pozdravem
       loadDashboardStats();
       loadDashboardRecentEmails();
     }
+    // Sync Emails Button Logic
+    const syncEmailsBtn = document.getElementById('sync-emails-btn');
+    if (syncEmailsBtn) {
+      syncEmailsBtn.addEventListener('click', async () => {
+        const icon = document.getElementById('sync-icon');
+        const textNodes = syncEmailsBtn.querySelectorAll('span');
+        const textSpan = textNodes[textNodes.length - 1]; // Načíst poštu
+        const originalText = textSpan.innerText;
+
+        // UI Loading state
+        syncEmailsBtn.disabled = true;
+        syncEmailsBtn.style.opacity = '0.7';
+        icon.style.animation = 'spin 1s linear infinite';
+        if (!document.getElementById('sync-spin-style')) {
+          const style = document.createElement('style');
+          style.id = 'sync-spin-style';
+          style.innerHTML = '@keyframes spin { 100% { transform: rotate(360deg); } }';
+          document.head.appendChild(style);
+        }
+        textSpan.innerText = 'Načítám...';
+
+        try {
+          const res = await fetch('/api/trigger-worker?secret=mojeSuperTajneHeslo123');
+          if (res.ok) {
+            // Give it a brief moment to finish DB writes if any
+            await new Promise(r => setTimeout(r, 1000));
+            if (typeof fetchEmails === 'function') {
+              await fetchEmails({ resetPage: true });
+            }
+          } else {
+            console.error('Failed to trigger worker:', await res.text());
+            alert('Chyba při synchronizaci pošty.');
+          }
+        } catch (err) {
+          console.error(err);
+          alert('Chyba při synchronizaci pošty.');
+        } finally {
+          // Restore UI
+          syncEmailsBtn.disabled = false;
+          syncEmailsBtn.style.opacity = '1';
+          icon.style.animation = 'none';
+          textSpan.innerText = originalText;
+        }
+      });
+    }
+
   </script>
 
 
