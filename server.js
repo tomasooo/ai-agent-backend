@@ -6909,6 +6909,12 @@ async function syncRecentEmails() {
       const user = decSecret(acc.enc_username);
       const pass = decSecret(acc.enc_password);
 
+      const cachedRes = await dbClient.query(
+        `SELECT id FROM synced_emails WHERE dashboard_user_email=$1 AND account_email=$2 AND body_text IS NOT NULL`,
+        [acc.dashboard_user_email, acc.email_address]
+      );
+      const cachedIds = new Set(cachedRes.rows.map(r => String(r.id)));
+
       let imap;
       try {
         imap = createImapClient({
@@ -6926,6 +6932,7 @@ async function syncRecentEmails() {
         if (total > 0) {
           const start = Math.max(1, total - 49); // Posledních max 50 emailů pro rychlost 
           const fetchQuery = { seq: `${start}:${total}` };
+          const missingBodies = [];
 
           for await (const msg of imap.fetch(fetchQuery, { envelope: true, internalDate: true, uid: true, flags: true })) {
             const isRead = msg.flags && msg.flags.has('\\Seen');
@@ -6950,6 +6957,30 @@ async function syncRecentEmails() {
                 date = EXCLUDED.date,
                 thread_id = EXCLUDED.thread_id
             `, [String(msg.uid), acc.dashboard_user_email, acc.email_address, subject, from, snippet, isRead, date, threadId]);
+
+            if (!cachedIds.has(String(msg.uid))) {
+              missingBodies.push(msg.uid);
+            }
+          }
+
+          for (const missingUid of missingBodies) {
+            try {
+              const { content } = await imap.download(missingUid, null, { uid: true });
+              const chunks = [];
+              for await (const c of content) chunks.push(c);
+
+              const parsed = await simpleParser(Buffer.concat(chunks));
+              const bodyText = parsed.text || (parsed.html ? parsed.html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : '') || '';
+
+              if (bodyText) {
+                await dbClient.query(
+                  `UPDATE synced_emails SET body_text=$1 WHERE dashboard_user_email=$2 AND account_email=$3 AND id=$4`,
+                  [bodyText, acc.dashboard_user_email, acc.email_address, String(missingUid)]
+                );
+              }
+            } catch (err) {
+              console.error(`Chyba při stahování těla zprávy (IMAP) ${missingUid}:`, err.message);
+            }
           }
         }
       } catch (err) {
@@ -6974,11 +7005,24 @@ async function syncRecentEmails() {
         auth.setCredentials({ refresh_token: acc.refresh_token });
         const gmail = google.gmail({ version: 'v1', auth });
 
+        const cachedRes = await dbClient.query(
+          `SELECT id FROM synced_emails WHERE dashboard_user_email=$1 AND account_email=$2 AND body_text IS NOT NULL`,
+          [acc.dashboard_user_email, acc.email_address]
+        );
+        const cachedIds = new Set(cachedRes.rows.map(r => String(r.id)));
+
         const resp = await gmail.users.messages.list({ userId: 'me', maxResults: 50, labelIds: ['INBOX'] });
         const messages = resp.data.messages || [];
 
         for (const m of messages) {
-          const detail = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'metadata', metadataHeaders: ['Subject', 'From'] });
+          const needsFull = !cachedIds.has(m.id);
+          const detail = await gmail.users.messages.get({
+            userId: 'me',
+            id: m.id,
+            format: needsFull ? 'full' : 'metadata',
+            metadataHeaders: needsFull ? undefined : ['Subject', 'From']
+          });
+
           const headers = detail.data.payload?.headers || [];
           const subject = headers.find(h => h.name.toLowerCase() === 'subject')?.value || '(Bez předmětu)';
           const from = headers.find(h => h.name.toLowerCase() === 'from')?.value || '';
@@ -6989,18 +7033,42 @@ async function syncRecentEmails() {
           const date = dateStr ? new Date(Number(dateStr)) : new Date();
           const threadId = detail.data.threadId || m.id;
 
-          await dbClient.query(`
-            INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date, thread_id)
-            VALUES ($1, $2, $3, 'gmail', $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (dashboard_user_email, account_email, provider, id)
-            DO UPDATE SET
-              subject = EXCLUDED.subject,
-              from_address = EXCLUDED.from_address,
-              snippet = EXCLUDED.snippet,
-              is_read = EXCLUDED.is_read,
-              date = EXCLUDED.date,
-              thread_id = EXCLUDED.thread_id
-          `, [m.id, acc.dashboard_user_email, acc.email_address, subject, from, snippet, isRead, date, threadId]);
+          let bodyTextParam = null;
+          if (needsFull) {
+            const bodyStr = extractPlainText(detail.data.payload) || snippet;
+            if (bodyStr && bodyStr.trim() !== '') {
+              bodyTextParam = bodyStr;
+            }
+          }
+
+          if (needsFull && bodyTextParam !== null) {
+            await dbClient.query(`
+              INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date, thread_id, body_text)
+              VALUES ($1, $2, $3, 'gmail', $4, $5, $6, $7, $8, $9, $10)
+              ON CONFLICT (dashboard_user_email, account_email, provider, id)
+              DO UPDATE SET
+                subject = EXCLUDED.subject,
+                from_address = EXCLUDED.from_address,
+                snippet = EXCLUDED.snippet,
+                is_read = EXCLUDED.is_read,
+                date = EXCLUDED.date,
+                thread_id = EXCLUDED.thread_id,
+                body_text = COALESCE(EXCLUDED.body_text, synced_emails.body_text)
+            `, [m.id, acc.dashboard_user_email, acc.email_address, subject, from, snippet, isRead, date, threadId, bodyTextParam]);
+          } else {
+            await dbClient.query(`
+              INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date, thread_id)
+              VALUES ($1, $2, $3, 'gmail', $4, $5, $6, $7, $8, $9)
+              ON CONFLICT (dashboard_user_email, account_email, provider, id)
+              DO UPDATE SET
+                subject = EXCLUDED.subject,
+                from_address = EXCLUDED.from_address,
+                snippet = EXCLUDED.snippet,
+                is_read = EXCLUDED.is_read,
+                date = EXCLUDED.date,
+                thread_id = EXCLUDED.thread_id
+            `, [m.id, acc.dashboard_user_email, acc.email_address, subject, from, snippet, isRead, date, threadId]);
+          }
         }
       } catch (err) {
         console.error(`Chyba při synchronizaci Gmailu (${acc.email_address}):`, err.message);
@@ -7022,6 +7090,7 @@ app.get('/api/trigger-worker', (req, res) => {
   }
 
   // runEmailWorker(); // odkomentuj, pokud chceš worker spouštět i ručně
+  syncRecentEmails();
 
   return res.status(200).send('Worker je aktivní a spouští se automaticky na serveru.');
 });
