@@ -545,7 +545,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
 
   const db = await pool.connect();
   try {
-    let qUsage = `SELECT COUNT(*) as cnt FROM pending_replies WHERE dashboard_user_email=$1 AND status != 'pending'`;
+    let qUsage = `SELECT COUNT(*) as cnt FROM pending_replies WHERE dashboard_user_email=$1 AND status IN ('sent', 'rejected', 'ignored')`;
     let usageParams = [dashboardUserEmail];
     if (email && email !== 'null' && email !== 'undefined' && email !== '') {
       qUsage += ` AND connected_email=$2`;
@@ -1980,7 +1980,7 @@ app.get('/api/analytics/advanced', async (req, res) => {
           LEFT JOIN synced_emails s ON s.id = p.message_id
          WHERE p.dashboard_user_email = $1
            AND ($2::text IS NULL OR p.connected_email = $2)
-           AND p.status != 'pending'
+           AND p.status IN ('sent', 'rejected', 'ignored')
       )
       SELECT to_char(d.day, 'DD Mon') AS date_label,
              d.day,
@@ -2004,7 +2004,7 @@ app.get('/api/analytics/advanced', async (req, res) => {
         FROM pending_replies
        WHERE dashboard_user_email = $1
          AND ($2::text IS NULL OR connected_email = $2)
-         AND status != 'pending'
+         AND status IN ('sent', 'rejected', 'ignored')
        GROUP BY LOWER(sentiment)
     `, [dashboardUserEmail, hasEmail ? email : null]);
 
@@ -2022,7 +2022,7 @@ app.get('/api/analytics/advanced', async (req, res) => {
         FROM pending_replies
        WHERE dashboard_user_email = $1
          AND ($2::text IS NULL OR connected_email = $2)
-         AND status != 'pending'
+         AND status IN ('sent', 'rejected', 'ignored')
     `, [dashboardUserEmail, hasEmail ? email : null]);
 
     let cats = { 'Technická podpora': 0, 'Dotaz na produkt': 0, 'Fakturace': 0, 'Zpětná vazba': 0, 'Ostatní': 0 };
@@ -2040,7 +2040,7 @@ app.get('/api/analytics/advanced', async (req, res) => {
     // 4. KPIs
     const rUsage = await db.query(
       `SELECT COUNT(*) as cnt FROM pending_replies 
-        WHERE dashboard_user_email=$1 AND ($2::text IS NULL OR connected_email=$2) AND status != 'pending'`,
+        WHERE dashboard_user_email=$1 AND ($2::text IS NULL OR connected_email=$2) AND status IN ('sent', 'rejected', 'ignored')`,
       [dashboardUserEmail, hasEmail ? email : null]
     );
     const totalProcessed = Number(rUsage.rows[0]?.cnt) || 0;
