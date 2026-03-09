@@ -9762,9 +9762,12 @@ S pozdravem
       // Načtení počtů statusů pro dashboard
       async function loadStatusCounts() {
         const due = localStorage.getItem('userEmail');
+        const account = typeof getSelectedAccountEmail === 'function' ? getSelectedAccountEmail() : localStorage.getItem('connectedEmail');
         if (!due) return;
         try {
-          const r = await fetch(`${window.BACKEND}/api/emails/status-counts?dashboardUserEmail=${encodeURIComponent(due)}`);
+          let url = `${window.BACKEND}/api/emails/status-counts?dashboardUserEmail=${encodeURIComponent(due)}`;
+          if (account) url += `&email=${encodeURIComponent(account)}`;
+          const r = await fetch(url);
           const j = await r.json();
           if (!j.success) return;
           const c = j.counts;
