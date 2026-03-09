@@ -535,7 +535,8 @@ const pool = new Pool({
 
 // === DASHBOARD STATS (Relocated) ===
 app.get('/api/dashboard/stats', async (req, res) => {
-  if (!dashboardUserEmail || !email || email === 'undefined' || email === 'null') {
+  const { dashboardUserEmail, email } = req.query || {};
+  if (!dashboardUserEmail) {
     return res.json({
       success: true,
       stats: { processedEmails: 0, savedHours: "0.0", activeTemplates: 0, successRate: "100.0" }
@@ -544,17 +545,22 @@ app.get('/api/dashboard/stats', async (req, res) => {
 
   const db = await pool.connect();
   try {
-    // 1. Zpracované e-maily = ty ze zvoleného konta
-    let qUsage = `SELECT COUNT(*) as cnt FROM pending_replies WHERE dashboard_user_email=$1 AND connected_email=$2 AND status != 'pending'`;
-    const rUsage = await db.query(qUsage, [dashboardUserEmail, email]);
+    let qUsage = `SELECT COUNT(*) as cnt FROM pending_replies WHERE dashboard_user_email=$1 AND status != 'pending'`;
+    let usageParams = [dashboardUserEmail];
+    if (email && email !== 'null' && email !== 'undefined' && email !== '') {
+      qUsage += ` AND connected_email=$2`;
+      usageParams.push(email);
+    }
+
+    const rUsage = await db.query(qUsage, usageParams);
     const aiUsed = Number(rUsage.rows[0]?.cnt) || 0;
 
     // 2. 5 minut ušetřeného času na jeden zpracovaný email
     const savedHours = (aiUsed * 5 / 60).toFixed(1);
 
-    // 3. Úspěšnost AI = úspěšná volání z activity_log (pouze pro tento email, i když logger možná neukládal account, tak bereme jen ty kde se to hodí, nebo aspoň dashboard scope spined by account if available)
-    const qLog = `SELECT status, COUNT(*) as cnt FROM activity_log WHERE dashboard_user_email=$1 AND account=$2 AND status IN ('success', 'error') GROUP BY status`;
-    const rLog = await db.query(qLog, [dashboardUserEmail, email]);
+    // 3. Úspěšnost AI = úspěšná volání z activity_log 
+    const qLog = `SELECT status, COUNT(*) as cnt FROM activity_log WHERE dashboard_user_email=$1 AND status IN ('success', 'error') GROUP BY status`;
+    const rLog = await db.query(qLog, [dashboardUserEmail]);
     let success = 0;
     let error = 0;
     rLog.rows.forEach(r => {
@@ -1936,7 +1942,8 @@ ensureStyleTables().catch(console.error);
 // === ANALYTICS: ADVANCED (NEW DASHBOARD) ===
 app.get('/api/analytics/advanced', async (req, res) => {
   const { dashboardUserEmail, email } = req.query || {};
-  if (!dashboardUserEmail || !email || email === 'undefined' || email === 'null') {
+  if (!dashboardUserEmail) {
+    // Return empty 90-day demo array array if no user
     const activity = [];
     const now = new Date();
     const monthsCz = { 'Jan': 'Led', 'Feb': 'Úno', 'Mar': 'Bře', 'Apr': 'Dub', 'May': 'Kvě', 'Jun': 'Čvn', 'Jul': 'Čvc', 'Aug': 'Srp', 'Sep': 'Zář', 'Oct': 'Říj', 'Nov': 'Lis', 'Dec': 'Pro' };
@@ -1955,9 +1962,9 @@ app.get('/api/analytics/advanced', async (req, res) => {
     });
   }
 
+  const hasEmail = (email && email !== 'undefined' && email !== 'null' && email !== '');
   const db = await pool.connect();
   try {
-    // 1. Získání aktivity (posledních 90 dní) z pending_replies pro 'processed'
     const actQ = await db.query(`
       WITH date_series AS (
         SELECT generate_series(
@@ -1972,7 +1979,7 @@ app.get('/api/analytics/advanced', async (req, res) => {
           FROM pending_replies p
           LEFT JOIN synced_emails s ON s.id = p.message_id
          WHERE p.dashboard_user_email = $1
-           AND p.connected_email = $2
+           AND ($2::text IS NULL OR p.connected_email = $2)
            AND p.status != 'pending'
       )
       SELECT to_char(d.day, 'DD Mon') AS date_label,
@@ -1982,7 +1989,7 @@ app.get('/api/analytics/advanced', async (req, res) => {
         LEFT JOIN valid_replies vr ON vr.activity_date = d.day
        GROUP BY d.day, date_label
        ORDER BY d.day ASC
-    `, [dashboardUserEmail, email]);
+    `, [dashboardUserEmail, hasEmail ? email : null]);
 
     // Transform month names to Czech
     const monthsCz = { 'Jan': 'Led', 'Feb': 'Úno', 'Mar': 'Bře', 'Apr': 'Dub', 'May': 'Kvě', 'Jun': 'Čvn', 'Jul': 'Čvc', 'Aug': 'Srp', 'Sep': 'Zář', 'Oct': 'Říj', 'Nov': 'Lis', 'Dec': 'Pro' };
@@ -1996,10 +2003,10 @@ app.get('/api/analytics/advanced', async (req, res) => {
       SELECT LOWER(sentiment) as sent, COUNT(*)::int as cnt
         FROM pending_replies
        WHERE dashboard_user_email = $1
-         AND connected_email = $2
+         AND ($2::text IS NULL OR connected_email = $2)
          AND status != 'pending'
        GROUP BY LOWER(sentiment)
-    `, [dashboardUserEmail, email]);
+    `, [dashboardUserEmail, hasEmail ? email : null]);
 
     let sentiment = { positive: 0, neutral: 0, negative: 0, total: 0 };
     sentQ.rows.forEach(r => {
@@ -2014,9 +2021,9 @@ app.get('/api/analytics/advanced', async (req, res) => {
       SELECT subject, summary
         FROM pending_replies
        WHERE dashboard_user_email = $1
-         AND connected_email = $2
+         AND ($2::text IS NULL OR connected_email = $2)
          AND status != 'pending'
-    `, [dashboardUserEmail, email]);
+    `, [dashboardUserEmail, hasEmail ? email : null]);
 
     let cats = { 'Technická podpora': 0, 'Dotaz na produkt': 0, 'Fakturace': 0, 'Zpětná vazba': 0, 'Ostatní': 0 };
     catQ.rows.forEach(r => {
@@ -2030,21 +2037,21 @@ app.get('/api/analytics/advanced', async (req, res) => {
 
     const categories = Object.keys(cats).map(k => ({ label: k, count: cats[k] })).sort((a, b) => b.count - a.count);
 
-    // 4. KPIs (Zrcadlí Nástěnku - přepočítáváme z pending_replies pro správný celkový počet)
+    // 4. KPIs
     const rUsage = await db.query(
       `SELECT COUNT(*) as cnt FROM pending_replies 
-        WHERE dashboard_user_email=$1 AND connected_email=$2 AND status != 'pending'`,
-      [dashboardUserEmail, email]
+        WHERE dashboard_user_email=$1 AND ($2::text IS NULL OR connected_email=$2) AND status != 'pending'`,
+      [dashboardUserEmail, hasEmail ? email : null]
     );
     const totalProcessed = Number(rUsage.rows[0]?.cnt) || 0;
 
     // 5 minut na jeden zpracovaný email (Sjednoceno s dashboardem)
     const timeSavedHours = Number((totalProcessed * 5 / 60).toFixed(1));
 
-    // Úspěšnost AI z activity_log (původní logika spolehlivosti) - scope pro daný email
+    // Úspěšnost AI z activity_log (původní logika spolehlivosti)
     const rLog = await db.query(
-      `SELECT status, COUNT(*) as cnt FROM activity_log WHERE dashboard_user_email=$1 AND account=$2 AND status IN ('success', 'error') GROUP BY status`,
-      [dashboardUserEmail, email]
+      `SELECT status, COUNT(*) as cnt FROM activity_log WHERE dashboard_user_email=$1 AND status IN ('success', 'error') GROUP BY status`,
+      [dashboardUserEmail]
     );
     let successCount = 0; let errorCount = 0;
     rLog.rows.forEach(r => {
@@ -2056,8 +2063,8 @@ app.get('/api/analytics/advanced', async (req, res) => {
 
     const openEQ = await db.query(`
       SELECT COUNT(*)::int as cnt FROM pending_replies 
-       WHERE dashboard_user_email = $1 AND connected_email = $2 AND status = 'pending'
-    `, [dashboardUserEmail, email]);
+       WHERE dashboard_user_email = $1 AND ($2::text IS NULL OR connected_email = $2) AND status = 'pending'
+    `, [dashboardUserEmail, hasEmail ? email : null]);
     const openEmails = openEQ.rows[0].cnt;
 
     res.json({
