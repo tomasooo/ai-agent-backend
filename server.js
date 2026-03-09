@@ -1936,8 +1936,23 @@ ensureStyleTables().catch(console.error);
 // === ANALYTICS: ADVANCED (NEW DASHBOARD) ===
 app.get('/api/analytics/advanced', async (req, res) => {
   const { dashboardUserEmail, email } = req.query || {};
-  if (!dashboardUserEmail || !email) {
-    return res.status(400).json({ success: false, message: 'Chybí parametry.' });
+  if (!dashboardUserEmail || !email || email === 'undefined' || email === 'null') {
+    const activity = [];
+    const now = new Date();
+    const monthsCz = { 'Jan': 'Led', 'Feb': 'Úno', 'Mar': 'Bře', 'Apr': 'Dub', 'May': 'Kvě', 'Jun': 'Čvn', 'Jul': 'Čvc', 'Aug': 'Srp', 'Sep': 'Zář', 'Oct': 'Říj', 'Nov': 'Lis', 'Dec': 'Pro' };
+    for (let i = 89; i >= 0; i--) {
+      const d = new Date(now); d.setDate(d.getDate() - i);
+      const enMon = d.toLocaleDateString('en-US', { month: 'short' });
+      const dd = d.getDate().toString().padStart(2, '0');
+      activity.push({ date: `${dd} ${monthsCz[enMon] || enMon}`, count: 0 });
+    }
+    return res.json({
+      success: true,
+      activity,
+      sentiment: { positive: 0, neutral: 0, negative: 0, total: 0 },
+      categories: [],
+      kpis: { totalProcessed: 0, openEmails: 0, timeSavedHours: 0, automationRate: "100.0" }
+    });
   }
 
   const db = await pool.connect();
@@ -1950,15 +1965,21 @@ app.get('/api/analytics/advanced', async (req, res) => {
                  CURRENT_DATE::date,
                  '1 day'::interval
                )::date AS day
+      ),
+      valid_replies AS (
+        SELECT p.id,
+               COALESCE((s.date AT TIME ZONE 'Europe/Prague')::date, (p.created_at AT TIME ZONE 'Europe/Prague')::date) AS activity_date
+          FROM pending_replies p
+          LEFT JOIN synced_emails s ON s.id = p.message_id
+         WHERE p.dashboard_user_email = $1
+           AND p.connected_email = $2
+           AND p.status != 'pending'
       )
       SELECT to_char(d.day, 'DD Mon') AS date_label,
              d.day,
-             COUNT(p.id)::int AS count
+             COUNT(vr.id)::int AS count
         FROM date_series d
-        LEFT JOIN pending_replies p ON p.dashboard_user_email = $1
-                                   AND p.connected_email = $2
-                                   AND p.status != 'pending'
-                                   AND (p.created_at AT TIME ZONE 'Europe/Prague')::date = d.day
+        LEFT JOIN valid_replies vr ON vr.activity_date = d.day
        GROUP BY d.day, date_label
        ORDER BY d.day ASC
     `, [dashboardUserEmail, email]);
