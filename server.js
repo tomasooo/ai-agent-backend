@@ -3608,6 +3608,21 @@ app.post('/api/gmail/send-reply', async (req, res) => {
       requestBody: { raw, threadId: msgResponse.data.threadId }
     });
 
+    try {
+      const labelsRes = await gmail.users.labels.list({ userId: 'me' });
+      const approvalLabelId = labelsRes.data.labels?.find((l) => l.name === 'ceka-na-schvaleni')?.id;
+      const removeLabelIds = ['UNREAD'];
+      if (approvalLabelId) removeLabelIds.push(approvalLabelId);
+
+      await gmail.users.messages.modify({
+        userId: 'me',
+        id: messageId,
+        requestBody: { removeLabelIds }
+      });
+    } catch (lblErr) {
+      console.error('[gmail send-reply] Nelze odebrat štítky UNREAD/ceka-na-schvaleni:', lblErr.message);
+    }
+
     res.json({ success: true, message: "Email byl úspěšně odeslán." });
   } catch (error) {
     const apiMessage = error?.response?.data?.error?.message;
@@ -4984,7 +4999,7 @@ async function sendCustomReply({
 
     try {
       await imapClient.mailboxOpen('INBOX');
-      await imapClient.messageFlagsAdd({ uid: String(replyToUid) }, ['\\Seen', '\\Answered']);
+      await imapClient.messageFlagsAdd(String(replyToUid), ['\\Seen', '\\Answered'], { uid: true });
       console.log(`[OK] Původní zpráva (UID: ${replyToUid}) byla označena jako přečtená a zodpovězená.`);
     } catch (flagError) {
       console.warn(`[VAROVÁNÍ] Nepodařilo se označit původní zprávu:`, flagError.message);
@@ -5058,8 +5073,12 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
          WHERE message_id=$1::text AND dashboard_user_email=$2 AND status='pending'`,
         [String(replyToUid), dashboardUserEmail]
       );
+      await db2.query(
+        `UPDATE synced_emails SET is_read = true WHERE id = $1`,
+        [String(replyToUid)]
+      );
     } catch (err) {
-      console.error('[custom send-reply] error updating pending_replies status:', err);
+      console.error('[custom send-reply] error updating pending_replies or synced_emails:', err);
     } finally {
       db2.release();
     }
