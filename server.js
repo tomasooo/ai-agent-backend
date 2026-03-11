@@ -10,7 +10,6 @@ import { google } from 'googleapis';
 import OpenAI from 'openai';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
-import jwt from 'jsonwebtoken';
 import { ImapFlow } from 'imapflow';
 import fetch from 'node-fetch';
 import nodemailer from 'nodemailer';
@@ -19,7 +18,6 @@ import { XMLParser } from 'fast-xml-parser';
 import libmime from 'libmime';
 import dns from 'dns';
 const { decodeWords } = libmime;
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const DISABLE_AI_WORKER = process.env.DISABLE_AI_WORKER === '1' || false; // false = výchozí běží
 
 
@@ -760,13 +758,14 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
 });
 
 
-async function chatJson({ model, system, user, client, dashboardUserEmail }) {
+async function chatJson({ model, system, user, client = null, dashboardUserEmail = null }) {
+  const messages = [];
+  if (system) messages.push({ role: 'system', content: system });
+  messages.push({ role: 'user', content: user });
+
   const resp = await openai.chat.completions.create({
     model,
-    messages: [
-      system ? { role: 'system', content: system } : null,
-      { role: 'user', content: user }
-    ].filter(Boolean),
+    messages,
     response_format: { type: 'json_object' }
   });
 
@@ -783,13 +782,14 @@ async function chatJson({ model, system, user, client, dashboardUserEmail }) {
 
 
 
-async function chatText({ model, system, user, client, dashboardUserEmail }) {
+async function chatText({ model, system, user, client = null, dashboardUserEmail = null }) {
+  const messages = [];
+  if (system) messages.push({ role: 'system', content: system });
+  messages.push({ role: 'user', content: user });
+
   const resp = await openai.chat.completions.create({
     model,
-    messages: [
-      system ? { role: 'system', content: system } : null,
-      { role: 'user', content: user }
-    ].filter(Boolean)
+    messages
   });
 
   const txt = resp.choices?.[0]?.message?.content?.trim() || '';
@@ -1288,7 +1288,7 @@ app.get('/api/unread', async (req, res) => {
               id: String(msg.uid),
               subject: subjectDecoded || '(bez předmětu)',
               from: msg.envelope?.from?.map(a => a.address).join(', ') || '',
-              date: msg.internalDate?.toISOString?.() || '',
+              date: msg.internalDate ? new Date(msg.internalDate).toISOString() : '',
               snippet: '',
               provider: 'imap'
             });
@@ -1518,7 +1518,7 @@ app.post('/api/custom-email/connect', async (req, res) => {
     } catch (e) {
       imapLastErr = e;
       console.warn('[IMAP verify failed]', a, unwrapImapError ? unwrapImapError(e) : (e?.message || e));
-      try { if (imapClient?.connected) await imapClient.logout(); } catch { }
+      try { if (imapClient?.usable) await imapClient.logout(); } catch { }
     }
   }
 
@@ -1833,7 +1833,7 @@ app.get('/api/custom-email/emails', async (req, res) => {
         sender: replyToHeader || fromAddress,
         from: `${decodedName} <${fromRaw.address || ''}>`,
         replyTo: replyToHeader,
-        date: msg.internalDate ? msg.internalDate.toISOString() : null,
+        date: msg.internalDate ? new Date(msg.internalDate).toISOString() : null,
         unread: isUnread
       });
       if (out.length >= pageSize) break;
@@ -4074,7 +4074,7 @@ async function handleCustomAnalyzeEmail(req, res) {
     for await (const c of content) chunks.push(c);
 
     // vždy se odhlásit
-    try { if (imap?.connected) await imap.logout(); } catch { }
+    try { if (imap?.usable) await imap.logout(); } catch { }
 
     const parsed = await simpleParser(Buffer.concat(chunks));
     const emailBody = parsed.text || (parsed.html ? parsed.html.replace(/<[^>]+>/g, '').trim() : '');
@@ -4750,9 +4750,12 @@ async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pe
 
   const origMessageId = metadata.origMessageId || pending.external_message_id || '';
   const origReferences = metadata.origReferences || pending.references_header || '';
-  const referencesCombined = origMessageId
-    ? `${(origReferences || '').trim()} ${origMessageId}`.trim()
-    : (origReferences || '').trim();
+  const cleanMsgId = (id) => id && !id.startsWith('<') && !id.endsWith('>') ? `<${id}>` : id;
+  const origMsgIdSafe = cleanMsgId(origMessageId);
+  const origRefsSafe = (origReferences || '').split(/\s+/).filter(Boolean).map(cleanMsgId).join(' ');
+  const referencesCombinedSafe = origMsgIdSafe
+    ? (origRefsSafe ? `${origRefsSafe} ${origMsgIdSafe}` : origMsgIdSafe)
+    : origRefsSafe;
 
   const now = new Date();
   const dateHeader = now.toUTCString();
@@ -4766,11 +4769,11 @@ async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pe
     `Message-ID: ${messageIdHeader}`
   ];
 
-  if (origMessageId) {
-    lines.push(`In-Reply-To: ${origMessageId}`);
-    if (referencesCombined) lines.push(`References: ${referencesCombined}`);
-  } else if (referencesCombined) {
-    lines.push(`References: ${referencesCombined}`);
+  if (origMsgIdSafe) {
+    lines.push(`In-Reply-To: ${origMsgIdSafe}`);
+    if (referencesCombinedSafe) lines.push(`References: ${referencesCombinedSafe}`);
+  } else if (referencesCombinedSafe) {
+    lines.push(`References: ${referencesCombinedSafe}`);
   }
 
   lines.push(
@@ -4803,7 +4806,7 @@ async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pe
   try {
     await imapClient.connect();
     await imapClient.mailboxOpen('INBOX');
-    const replyUid = metadata.replyToUid || metadata.uid || metadata.messageUid;
+    const replyUid = metadata.replyToUid || metadata.uid || metadata.messageUid || pending.message_id;
     if (replyUid) {
       await imapClient.messageFlagsAdd(String(replyUid), ['\\Seen', '\\Answered'], { uid: true }).catch(() => { });
       await imapClient.messageFlagsRemove(String(replyUid), ['\\Flagged'], { uid: true }).catch(() => { });
@@ -4820,7 +4823,7 @@ async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pe
   } catch (imapErr) {
     console.warn('[custom pending] IMAP update selhala:', imapErr?.message || imapErr);
   } finally {
-    try { if (imapClient.connected) await imapClient.logout(); } catch { }
+    try { if (imapClient.usable) await imapClient.logout(); } catch { }
   }
 
   const updateDb = await pool.connect();
@@ -4935,7 +4938,7 @@ app.post('/api/custom-email/pending-replies/:id/reject', async (req, res) => {
         try {
           await imapClient.connect();
           await imapClient.mailboxOpen('INBOX');
-          const replyUid = metadata.replyToUid || metadata.uid || metadata.messageUid;
+          const replyUid = metadata.replyToUid || metadata.uid || metadata.messageUid || pending.message_id;
           if (replyUid) {
             try {
               await imapClient.messageFlagsRemove(String(replyUid), ['\\Flagged', '$LabelCekaNaSchvaleni'], { uid: true });
@@ -4948,7 +4951,7 @@ app.post('/api/custom-email/pending-replies/:id/reject', async (req, res) => {
         } catch (imapErr) {
           console.warn('[custom pending] Nepodařilo se odebrat příznak:', imapErr?.message || imapErr);
         } finally {
-          try { if (imapClient.connected) await imapClient.logout(); } catch { }
+          try { if (imapClient.usable) await imapClient.logout(); } catch { }
         }
       }
     } catch (metaErr) {
@@ -5000,10 +5003,17 @@ async function sendCustomReply({
   const dateHeader = now.toUTCString();
   const messageIdHeader = `<${Date.now()}.${crypto.randomBytes(4).toString('hex')}@${emailAddress.split('@')[1]}>`;
 
+  const cleanMsgId = (id) => id && !id.startsWith('<') && !id.endsWith('>') ? `<${id}>` : id;
+  const origMsgIdSafe = cleanMsgId(origMessageId);
+  const origRefsSafe = (origReferences || '').split(/\s+/).filter(Boolean).map(cleanMsgId).join(' ');
+  const referencesCombinedSafe = origMsgIdSafe
+    ? (origRefsSafe ? `${origRefsSafe} ${origMsgIdSafe}` : origMsgIdSafe)
+    : origRefsSafe;
+
   const rawLines = [
     `From: ${fromHeader}`, `To: ${toHeader}`, `Subject: ${libmime.encodeWord(replySubject, 'B', 'utf-8')}`,
     `Date: ${dateHeader}`, `Message-ID: ${messageIdHeader}`,
-    `In-Reply-To: ${origMessageId}`, `References: ${(origReferences ? `${origReferences} ${origMessageId}` : origMessageId).trim()}`,
+    `In-Reply-To: ${origMsgIdSafe}`, `References: ${referencesCombinedSafe}`,
     'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '', text
   ];
   const rawMessage = rawLines.join('\r\n');
@@ -5044,7 +5054,7 @@ async function sendCustomReply({
   } catch (imapError) {
     console.error('[CHYBA] Během IMAP operací došlo k chybě:', imapError);
   } finally {
-    if (imapClient.connected) await imapClient.logout();
+    if (imapClient.usable) await imapClient.logout();
   }
 
   return { toAddr };
@@ -6389,7 +6399,7 @@ ${String(bodyText).slice(0, 3000)}
               origMessageId: messageIdHeader || '',
               origReferences: referencesHeader || '',
               senderName: parseNameFromFromHeader(fromHeaderText),
-              internalDate: msg.internalDate?.toISOString?.() || new Date().toISOString(),
+              internalDate: msg.internalDate ? new Date(msg.internalDate).toISOString() : new Date().toISOString(),
               fromHeader: fromHeaderText,
               replyToHeader,
               replyTo: replyToAddress,
@@ -6468,9 +6478,9 @@ ${String(bodyText).slice(0, 3000)}
         console.error('[IMAP worker] chyba:', e?.message || e);
       } finally {
         if (dbClient) dbClient.release();
-        try { if (imap.connected) await imap.logout(); } catch { }
+        try { if (imap.usable) await imap.logout(); } catch { }
         try { await imap.close?.(); } catch { }
-        try { if (actionImap.connected) await actionImap.logout(); } catch { }
+        try { if (actionImap.usable) await actionImap.logout(); } catch { }
         try { await actionImap.close?.(); } catch { }
       }
     }
