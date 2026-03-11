@@ -5381,8 +5381,8 @@
       const replyTo = row.dataset.replyTo || '';
       const originalFrom = row.dataset.fromOriginal || '';
       const accountEmail = row.dataset.account || localStorage.getItem('primaryEmail') || '';
-      const subject = row.querySelector('.email-subject')?.textContent?.trim()
-        || row.dataset.subject
+      const subject = row.dataset.subject
+        || row.querySelector('.email-subject')?.textContent?.trim()
         || '';
       const from = row.dataset.from || '';
       const dateTxt = row.querySelector('.email-meta > div')?.textContent?.trim() || '';
@@ -7418,6 +7418,7 @@ S pozdravem
         ];
         if (email.replyTo) datasetParts.push(`data-reply-to="${escapeHtml(email.replyTo)}"`);
         if (email.originalFrom) datasetParts.push(`data-from-original="${escapeHtml(email.originalFrom)}"`);
+        if (email.subject) datasetParts.push(`data-subject="${escapeHtml(email.subject)}"`);
         const accountValue = email.account || localStorage.getItem('primaryEmail') || '';
         if (accountValue) datasetParts.push(`data-account="${escapeHtml(accountValue)}"`);
         if (pendingIdValue !== null && pendingIdValue !== undefined) datasetParts.push(`data-pending-id="${pendingIdAttr}"`);
@@ -7576,7 +7577,7 @@ S pozdravem
             const unreadClass = e.unread ? 'unread' : 'processed';
             // Použijeme data-atributy, aby na to mohl uživatel kliknout a otevřel se mu detail
             return `
-          <div class="email-item nested-thread-item ${unreadClass}" data-id="${escapeHtml(e.id)}" data-message-id="${escapeHtml(e.messageId || e.id)}" data-src="${src}" data-from="${escapeHtml(e.sender)}" style="margin-bottom:6px; padding:10px 14px; border-radius:8px; display:flex; gap:12px; cursor:pointer; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05);">
+          <div class="email-item nested-thread-item ${unreadClass}" data-id="${escapeHtml(e.id)}" data-message-id="${escapeHtml(e.messageId || e.id)}" data-subject="${escapeHtml(e.subject || '')}" data-src="${src}" data-from="${escapeHtml(e.sender)}" style="margin-bottom:6px; padding:10px 14px; border-radius:8px; display:flex; gap:12px; cursor:pointer; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05);">
                   <div class="email-status ${unreadClass}" style="transform: scale(0.8); margin-right:10px;"></div>
                   <div class="email-content" style="flex-grow:1;">
                       <div class="email-sender" style="font-size:0.95em; font-weight:600; opacity: 0.95;">${escapeHtml(e.sender)}</div>
@@ -8866,7 +8867,7 @@ S pozdravem
                 const datasetOriginalFrom = analyzeCtx?.originalFrom || item?.dataset?.fromOriginal || datasetFrom;
                 window.CURRENT_EMAIL = {
                   id: currentMessageId,
-                  subject: analyzeCtx?.subject || item?.querySelector('.email-subject')?.textContent?.trim() || '',
+                  subject: analyzeCtx?.subject || item?.dataset?.subject || item?.querySelector('.email-subject')?.textContent?.trim() || '',
                   from: datasetReplyTo || datasetFrom || '',
                   replyTo: datasetReplyTo || '',
                   originalFrom: datasetOriginalFrom || '',
@@ -8965,7 +8966,7 @@ S pozdravem
             const id = ctx?.id || item.dataset.id;
             const src = (ctx?.src || item.dataset.src || 'gmail').toLowerCase();
             const from = ctx?.from || item.dataset.from || '';
-            const subject = ctx?.subject || item.querySelector('.email-subject')?.textContent?.trim() || '';
+            const subject = ctx?.subject || item?.dataset?.subject || item.querySelector('.email-subject')?.textContent?.trim() || '';
             const dateTxt = ctx?.date || item.querySelector('.email-meta > div')?.textContent?.trim() || '';
             const pendingId = ctx?.pendingId || item.dataset.pendingId || '';
 
