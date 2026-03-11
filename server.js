@@ -394,7 +394,7 @@ function matchProviderByMx(mxHost = '') {
   if (mxHost.includes('cesky-hosting') || mxHost.includes('thinline')) {
     return {
       imap: { host: 'mail.cesky-hosting.cz', port: 993, secure: true, starttls: false },
-      smtp: { host: 'smtp.cesky-hosting.cz', port: 465, secure: false, starttls: true }
+      smtp: { host: 'smtp.cesky-hosting.cz', port: 465, secure: true, starttls: false }
     };
   }
   if (mxHost.includes('wedos')) {
