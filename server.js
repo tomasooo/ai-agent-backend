@@ -391,7 +391,7 @@ function guessByConvention(domain) {
 function matchProviderByMx(mxHost = '') {
   if (!mxHost) return null;
 
-  if (mxHost.includes('cesky-hosting')) {
+  if (mxHost.includes('cesky-hosting') || mxHost.includes('thinline')) {
     return {
       imap: { host: 'mail.cesky-hosting.cz', port: 993, secure: true, starttls: false },
       smtp: { host: 'smtp.cesky-hosting.cz', port: 465, secure: false, starttls: true }
@@ -1500,11 +1500,13 @@ app.post('/api/custom-email/connect', async (req, res) => {
       port: a.port,
       secure: a.secure,
       servername: a.servername,
-      auth: { user: baseUsername, pass: password }
+      auth: { user: baseUsername, pass: password },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000
     });
 
     // zkraťme handshake timeout, ať to nečeká věčnost
-    imapClient.socketTimeout = 20000; // 20 s
+    imapClient.socketTimeout = 10000; // 10 s
 
     try {
       await imapClient.connect();
