@@ -9539,6 +9539,8 @@ S pozdravem
           }
         } catch (e) {
           showToast('Síťová chyba při regeneraci FAQ.', 'error');
+        } finally {
+          document.body.style.overflow = '';
         }
       }
 
@@ -9680,6 +9682,8 @@ S pozdravem
           showToast(e.message || 'Auto-generace FAQ selhala.', 'error');
           listEl.innerHTML = ''; // Vyčistíme indikátor i v případě chyby
           return false;
+        } finally {
+          document.body.style.overflow = '';
         }
       }
 
