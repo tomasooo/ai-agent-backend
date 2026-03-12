@@ -9746,28 +9746,9 @@ S pozdravem
         loadSettings();
       }
 
-      // Automaticky doplníme historické spam emaily z activity_log (jednou, tiše na pozadí)
-      window.backfillSpam = async function () {
-        const due = localStorage.getItem('userEmail');
-        if (!due) return;
-        try {
-          const r = await fetch(`${window.BACKEND}/api/emails/backfill-spam`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dashboardUserEmail: due })
-          });
-          const j = await r.json();
-          if (j.inserted > 0) {
-            console.log(`[backfill] Doplněno ${j.inserted} historických spam emailů.`);
-            // Pokud je emailová sekce aktivní, načteme znovu
-            if (document.getElementById('emails')?.classList.contains('active')) {
-              fetchEmails();
-            }
-          }
-        } catch (e) { /* tichá chyba */ }
-      };
-      // Spustit automaticky jednou po načtení (odložit o 2s, aby se nejdřív načetly emaily)
-      setTimeout(window.backfillSpam, 2000);
+      // Automaticky doplníme historické spam emaily z activity_log (zakázáno, jelikož log nemá originálního odesílatele a tvoří duplikáty)
+      // window.backfillSpam = async function () { ... };
+      // setTimeout(window.backfillSpam, 2000);
 
       // Načtení počtů statusů pro dashboard
       async function loadStatusCounts() {
