@@ -6278,8 +6278,25 @@ ${String(bodyText).slice(0, 3000)}
             console.log(`[IMAP Worker] UID: ${msg.uid} - AI Action: "${action}"`);
 
             // Předpočítáme threadId (potřebujeme i pro auto-reply status)
-            const cleanSubjectForThread = subject.replace(/^(re|fwd|fw|odp|aw|odpověď):\s*/ig, '').trim().toLowerCase();
-            const threadId = 'custom_' + crypto.createHash('md5').update(acc.dashboard_user_email + '|' + acc.email_address + '|' + replyToAddress + '|' + cleanSubjectForThread).digest('hex');
+            const cleanSubjectForThread = subject.replace(/^(re(?:\[\d+\])?|fwd|fw|odp|aw|odpověď):\s*/ig, '').trim().toLowerCase();
+            const threadHashMonth = new Date(msg.internalDate || new Date()).toISOString().slice(0, 7); // e.g. "2026-03"
+            const participantsHash = [acc.email_address, replyToAddress || fromHeaderText || ''].map(s => String(s).toLowerCase().trim()).sort().join('|');
+            let threadId = 'custom_' + crypto.createHash('md5').update(acc.dashboard_user_email + '|' + participantsHash + '|' + cleanSubjectForThread + '|' + threadHashMonth).digest('hex');
+
+            // 1. Pokus o spárování s existujícím vláknem přes hlavičky (In-Reply-To / References)
+            const rawInReplyTo = parsed.inReplyTo || referencesHeader?.split(/\s+/).pop();
+            const inReplyToId = rawInReplyTo ? String(rawInReplyTo).replace(/[<>]/g, '') : null;
+            if (inReplyToId) {
+              try {
+                const parentRes = await dbClient.query(`
+                  SELECT thread_id FROM synced_emails
+                  WHERE dashboard_user_email=$1 AND account_email=$2 AND message_id=$3 AND thread_id IS NOT NULL LIMIT 1
+                `, [acc.dashboard_user_email, acc.email_address, '<' + inReplyToId + '>']);
+                if (parentRes.rowCount > 0 && parentRes.rows[0].thread_id) {
+                  threadId = parentRes.rows[0].thread_id;
+                }
+              } catch(e) { console.warn('Error looking up parent thread:', e); }
+            }
 
             // 1. IGNORE
             if (action === 'ignore') {
@@ -6308,10 +6325,10 @@ ${String(bodyText).slice(0, 3000)}
                 // Taky ulož do synced_emails aby se email zobrazil v seznamu
                 await dbClient.query(`
                   INSERT INTO synced_emails
-                    (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, date, is_read)
-                  VALUES ($1, $2, $3, 'custom', $4, $5, $6, $7, true)
+                    (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, date, is_read, message_id, in_reply_to)
+                  VALUES ($1, $2, $3, 'custom', $4, $5, $6, $7, true, $8, $9)
                   ON CONFLICT (dashboard_user_email, account_email, provider, id) DO NOTHING
-                `, [pendingKey, acc.dashboard_user_email, acc.email_address, subject || null, fromAddr || null, firstLineSnippet(bodyText, 280), msg.internalDate || new Date()]);
+                `, [pendingKey, acc.dashboard_user_email, acc.email_address, subject || null, fromAddr || null, firstLineSnippet(bodyText, 280), msg.internalDate || new Date(), messageIdHeader || null, inReplyToId || null]);
               } catch (spamSaveErr) {
                 console.warn('[IMAP Worker] Nepodařilo se uložit AI spam záznam:', spamSaveErr?.message || spamSaveErr);
               }
@@ -7003,12 +7020,30 @@ async function syncRecentEmails() {
             const snippet = ''; // Pro IMAP by se muselo stahovat celé tělo, to uděláme jen jednoduše
 
             // Jednoduché pseudo-vlákno pro IMAP: spojíme všechny zprávy se stejným (očištěným) předmětem od stejného odesílatele
-            const cleanSubject = subject.replace(/^(re|fwd|fw|odp|aw|odpověď):\s*/ig, '').trim().toLowerCase();
-            const threadId = 'custom_' + crypto.createHash('md5').update(acc.dashboard_user_email + '|' + acc.email_address + '|' + replyTo + '|' + cleanSubject).digest('hex');
+            const messageIdHeader = msg.envelope.messageId || null;
+            const inReplyToHeader = msg.envelope.inReplyTo || null;
+            const inReplyToId = inReplyToHeader ? String(inReplyToHeader).replace(/[<>]/g, '') : null;
+
+            const cleanSubject = subject.replace(/^(re(?:\[\d+\])?|fwd|fw|odp|aw|odpověď):\s*/ig, '').trim().toLowerCase();
+            const threadHashMonth = new Date(date || new Date()).toISOString().slice(0, 7);
+            const participantsHash = [acc.email_address, replyTo || from || ''].map(s => String(s).toLowerCase().trim()).sort().join('|');
+            let threadId = 'custom_' + crypto.createHash('md5').update(acc.dashboard_user_email + '|' + participantsHash + '|' + cleanSubject + '|' + threadHashMonth).digest('hex');
+
+            if (inReplyToId) {
+              try {
+                const parentRes = await dbClient.query(`
+                  SELECT thread_id FROM synced_emails
+                  WHERE dashboard_user_email=$1 AND account_email=$2 AND message_id=$3 AND thread_id IS NOT NULL LIMIT 1
+                `, [acc.dashboard_user_email, acc.email_address, '<' + inReplyToId + '>']);
+                if (parentRes.rowCount > 0 && parentRes.rows[0].thread_id) {
+                  threadId = parentRes.rows[0].thread_id;
+                }
+              } catch(e) { console.warn('Error looking up parent thread:', e); }
+            }
 
             await dbClient.query(`
-              INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date, thread_id)
-              VALUES ($1, $2, $3, 'custom', $4, $5, $6, $7, $8, $9)
+              INSERT INTO synced_emails (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, is_read, date, thread_id, message_id, in_reply_to)
+              VALUES ($1, $2, $3, 'custom', $4, $5, $6, $7, $8, $9, $10, $11)
               ON CONFLICT (dashboard_user_email, account_email, provider, id)
               DO UPDATE SET
                 subject = EXCLUDED.subject,
@@ -7016,7 +7051,7 @@ async function syncRecentEmails() {
                 is_read = EXCLUDED.is_read,
                 date = EXCLUDED.date,
                 thread_id = EXCLUDED.thread_id
-            `, [String(msg.uid), acc.dashboard_user_email, acc.email_address, subject, from, snippet, isRead, date, threadId]);
+            `, [String(msg.uid), acc.dashboard_user_email, acc.email_address, subject, from, snippet, isRead, date, threadId, messageIdHeader, inReplyToId]);
 
             if (!cachedIds.has(String(msg.uid))) {
               missingBodies.push(msg.uid);
