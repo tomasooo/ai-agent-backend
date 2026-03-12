@@ -5739,6 +5739,7 @@ app.post('/api/emails/backfill-spam', async (req, res) => {
       const details = row.details || {};
       const account = details.account || '';
       const subject = details.subject || '(bez předmětu)';
+      const trueSender = details.from || details.sender || account;
       const createdAt = row.created_at || new Date();
 
       if (!account) continue;
@@ -5755,7 +5756,7 @@ app.post('/api/emails/backfill-spam', async (req, res) => {
             (id, dashboard_user_email, account_email, provider, subject, from_address, snippet, date, is_read)
           VALUES ($1, $2, $3, 'custom', $4, $5, $6, $7, true)
           ON CONFLICT (dashboard_user_email, account_email, provider, id) DO NOTHING
-        `, [syntheticId, dashboardUserEmail, account, subject, account, subject, createdAt]);
+        `, [syntheticId, dashboardUserEmail, account, subject, trueSender, subject, createdAt]);
 
         // Uložit do pending_replies se statusem 'spam'
         const pr = await client.query(`
@@ -5763,7 +5764,7 @@ app.post('/api/emails/backfill-spam', async (req, res) => {
             (dashboard_user_email, connected_email, provider, message_id, subject, sender, snippet, reply_body, status)
           VALUES ($1, $2, 'custom', $3, $4, $5, $6, '', 'spam')
           ON CONFLICT (dashboard_user_email, connected_email, provider, message_id) DO NOTHING
-        `, [dashboardUserEmail, account, syntheticId, subject, account, subject]);
+        `, [dashboardUserEmail, account, syntheticId, subject, trueSender, subject]);
 
         if (pr.rowCount > 0) inserted++;
       } catch (rowErr) {
