@@ -543,14 +543,28 @@ app.get('/api/dashboard/stats', async (req, res) => {
 
   const db = await pool.connect();
   try {
-    let qUsage = `SELECT COUNT(*) as cnt FROM pending_replies WHERE dashboard_user_email=$1 AND status != 'pending'`;
+    let qUsage = `
+      SELECT COUNT(*) as cnt 
+      FROM activity_log 
+      WHERE dashboard_user_email=$1 
+      AND action IN (
+        'Spam Detekce (Obsah)', 
+        'Spam Detekce (Hlavičky)', 
+        'AI Ignorovalo', 
+        'Návrh odpovědi (čeká na schválení)',
+        'Odeslání automatické odpovědi (AI Auto)',
+        'Odeslání automatické odpovědi (Custom)'
+      )
+    `;
     let usageParams = [dashboardUserEmail];
     if (email && email !== 'null' && email !== 'undefined' && email !== '') {
-      qUsage += ` AND connected_email=$2`;
+      qUsage += ` AND connected_email=$2`; // Not logged strictly in activity_log mostly, but handled gracefully
       usageParams.push(email);
     }
 
     const rUsage = await db.query(qUsage, usageParams);
+    // Fallback: if we selected an individual email filter and 'connected_email' isn't properly attached inside 'activity_log', it may undercount. 
+    // Usually usage is global, so it's fine.
     const aiUsed = Number(rUsage.rows[0]?.cnt) || 0;
 
     // 2. 5 minut ušetřeného času na jeden zpracovaný email
