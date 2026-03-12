@@ -5376,6 +5376,7 @@
     function buildEmailContextFromRow(row) {
       if (!row) return null;
       const id = row.dataset.id || row.dataset.messageId || '';
+      const messageId = row.dataset.messageId || '';
       const pendingId = row.dataset.pendingId || '';
       const srcRaw = (row.dataset.src || '').toLowerCase();
       const replyTo = row.dataset.replyTo || '';
@@ -5390,6 +5391,7 @@
       const entry = findEmailEntryById(id, pendingId);
       const context = {
         id: id || entry?.id || '',
+        messageId: messageId || entry?.messageId || '',
         pendingId,
         src: srcRaw || entry?._src || entry?.source || 'gmail',
         account: accountEmail || entry?.account || '',
@@ -6138,7 +6140,7 @@
             const replyTargetRaw = lastGeneratedContext.replyTo || lastGeneratedContext.from || '';
             const toAddress = extractEmailAddress(replyTargetRaw || '');
             const subject = (lastGeneratedContext.subject || '').trim();
-            const replyToUid = Number(lastGeneratedContext.pendingId || lastGeneratedContext.id);
+            const replyToUid = Number(lastGeneratedContext.messageId || lastGeneratedContext.id || lastGeneratedContext.pendingId);
 
             if (!replyTargetRaw || !toAddress) {
               throw new Error('Nepodařilo se určit adresáta odpovědi.');
@@ -8969,6 +8971,9 @@ S pozdravem
             const subject = ctx?.subject || item?.dataset?.subject || item.querySelector('.email-subject')?.textContent?.trim() || '';
             const dateTxt = ctx?.date || item.querySelector('.email-meta > div')?.textContent?.trim() || '';
             const pendingId = ctx?.pendingId || item.dataset.pendingId || '';
+            
+            // DŮLEŽITÉ: Nastavíme currentMessageId na správné data-message-id nebo id pro zobrazení
+            currentMessageId = item.dataset.messageId || ctx?.messageId || id;
 
             let emailEntry = findEmailEntryById(id, pendingId);
             if (!emailEntry && item.classList.contains('nested-thread-item')) {
