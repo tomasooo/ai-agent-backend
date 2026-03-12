@@ -3776,7 +3776,7 @@ app.get('/api/gmail/emails', async (req, res) => {
       ),
       FilteredThreads AS (
         SELECT DISTINCT ON (COALESCE(se.thread_id, se.id))
-          se.id, se.subject, se.from_address as sender, se.snippet, se.date, se.is_read as "isRead",
+          se.id, se.provider, se.subject, se.from_address as sender, se.snippet, se.date, se.is_read as "isRead",
           COALESCE(se.thread_id, se.id) as thread_group,
           t.last_activity
         FROM synced_emails se
@@ -3785,7 +3785,7 @@ app.get('/api/gmail/emails', async (req, res) => {
         ORDER BY COALESCE(se.thread_id, se.id), se.date ASC
       )
       SELECT 
-        f.id, f.subject, f.sender, f.snippet, f.date, f."isRead", f.thread_group as thread_id,
+        f.id, f.provider, f.subject, f.sender, f.snippet, f.date, f."isRead", f.thread_group as thread_id,
         (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count,
         (SELECT pr2.status 
          FROM pending_replies pr2 
@@ -3842,6 +3842,7 @@ app.get('/api/gmail/emails', async (req, res) => {
 
       return {
         id: row.id,
+        provider: row.provider,
         snippet: row.snippet || '',
         sender: row.sender || '',
         subject: row.subject || '(Bez předmětu)',
