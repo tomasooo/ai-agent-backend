@@ -1990,13 +1990,19 @@ app.get('/api/analytics/advanced', async (req, res) => {
                )::date AS day
       ),
       valid_replies AS (
-        SELECT p.id,
-               COALESCE((s.date AT TIME ZONE 'Europe/Prague')::date, (p.created_at AT TIME ZONE 'Europe/Prague')::date) AS activity_date
-          FROM pending_replies p
-          LEFT JOIN synced_emails s ON s.id = p.message_id
-         WHERE p.dashboard_user_email = $1
-           AND ($2::text IS NULL OR p.connected_email = $2)
-           AND p.status != 'pending'
+        SELECT id,
+               (created_at AT TIME ZONE 'Europe/Prague')::date AS activity_date
+          FROM activity_log
+         WHERE dashboard_user_email = $1
+           AND ($2::text IS NULL OR connected_email = $2)
+           AND action IN (
+             'Spam Detekce (Obsah)', 
+             'Spam Detekce (Hlavičky)', 
+             'AI Ignorovalo', 
+             'Návrh odpovědi (čeká na schválení)',
+             'Odeslání automatické odpovědi (AI Auto)',
+             'Odeslání automatické odpovědi (Custom)'
+           )
       )
       SELECT to_char(d.day, 'DD Mon') AS date_label,
              d.day,
@@ -2055,8 +2061,16 @@ app.get('/api/analytics/advanced', async (req, res) => {
 
     // 4. KPIs
     const rUsage = await db.query(
-      `SELECT COUNT(*) as cnt FROM pending_replies 
-        WHERE dashboard_user_email=$1 AND ($2::text IS NULL OR connected_email=$2) AND status != 'pending'`,
+      `SELECT COUNT(*) as cnt FROM activity_log 
+        WHERE dashboard_user_email=$1 AND ($2::text IS NULL OR connected_email=$2) 
+        AND action IN (
+          'Spam Detekce (Obsah)', 
+          'Spam Detekce (Hlavičky)', 
+          'AI Ignorovalo', 
+          'Návrh odpovědi (čeká na schválení)',
+          'Odeslání automatické odpovědi (AI Auto)',
+          'Odeslání automatické odpovědi (Custom)'
+        )`,
       [dashboardUserEmail, hasEmail ? email : null]
     );
     const totalProcessed = Number(rUsage.rows[0]?.cnt) || 0;
