@@ -4890,13 +4890,13 @@
             <p style="margin:0;color:#a5b4fc;font-size:0.85rem;line-height:1.5;">AI agent použije nahrané soubory při odpovídání na emaily. Hodí se pro ceníky, manuály nebo obchodní podmínky.</p>
           </div>
 
-          <label for="ds-file-input" id="ds-drop-zone" style="display:block;border:2px dashed rgba(255,255,255,0.15);border-radius:12px;padding:2rem 1.5rem;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;margin-bottom:1.2rem;">
+          <label for="ds-file-input" id="ds-drop-zone" style="display:block;border:2px dashed rgba(255,255,255,0.15);border-radius:12px;padding:2rem 1.5rem;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;margin-bottom:1.2rem;" ondragover="event.preventDefault();this.style.borderColor='#667eea';this.style.background='rgba(102,126,234,0.07)';" ondragleave="this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='';" ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='';if(event.dataTransfer.files[0])window._dsUpload(event.dataTransfer.files[0]);">
             <div style="width:44px;height:44px;background:rgba(102,126,234,0.15);border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto 0.6rem;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#667eea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
             </div>
             <p style="margin:0 0 0.2rem;font-weight:500;color:#e2e8f0;font-size:0.95rem;">Přetáhněte soubor nebo klikněte pro nahrání</p>
             <p style="margin:0;color:#64748b;font-size:0.82rem;">Max. 25 MB · PDF, DOCX, XLSX, TXT</p>
-            <input type="file" id="ds-file-input" accept=".pdf,.docx,.xlsx,.txt,.csv" style="display:none;">
+            <input type="file" id="ds-file-input" accept=".pdf,.docx,.xlsx,.txt,.csv" style="display:none;" onchange="if(this.files[0])window._dsUpload(this.files[0]);this.value='';">
           </label>
 
           <div id="ds-upload-progress" style="display:none;margin-bottom:1.2rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:0.9rem 1.1rem;">
@@ -10588,11 +10588,24 @@ S pozdravem
         var sel = document.getElementById('ds-account-select');
         if (!sel) return;
 
-        // Sbírej ze všech možných klíčů
         var emails = new Set();
+
+        // 1. Použij getConnectedAccounts() pokud existuje (primární zdroj)
+        try {
+          if (typeof getConnectedAccounts === 'function') {
+            var accs = getConnectedAccounts();
+            accs.forEach(function(a) {
+              var e = typeof a === 'string' ? a : (a.email || a.email_address || '');
+              if (e) emails.add(e);
+            });
+          }
+        } catch(e) {}
+
+        // 2. Fallback: localStorage primaryEmail
         var primary = localStorage.getItem('primaryEmail') || '';
         if (primary) emails.add(primary);
 
+        // 3. Fallback: localStorage connectedEmails/connectedAccounts
         ['connectedEmails', 'connectedAccounts'].forEach(function(key) {
           try {
             var arr = JSON.parse(localStorage.getItem(key) || '[]');
@@ -10603,7 +10616,7 @@ S pozdravem
           } catch(e) {}
         });
 
-        var prev = sel.value || primary;
+        var prev = sel.value;
         sel.innerHTML = '<option value="">— Vyber emailový účet —</option>';
         emails.forEach(function(email) {
           var o = document.createElement('option');
@@ -10611,9 +10624,14 @@ S pozdravem
           sel.appendChild(o);
         });
 
-        // Automaticky vyber primary nebo předchozí
-        if (prev) sel.value = prev;
-        if (!sel.value && primary) sel.value = primary;
+        // Automaticky vyber: předchozí hodnota > primaryEmail > první v seznamu
+        if (prev && emails.has(prev)) {
+          sel.value = prev;
+        } else if (primary && emails.has(primary)) {
+          sel.value = primary;
+        } else if (emails.size > 0) {
+          sel.value = Array.from(emails)[0];
+        }
       }
 
       function loadFiles() {
@@ -10713,48 +10731,28 @@ S pozdravem
           });
       }
 
+      // Exportuj funkce na window aby byly dostupné z inline handlerů
+      window._dsUpload = doUpload;
+
+      // Nav klik → refresh select + soubory (funguje vždy, bez DOMContentLoaded race)
+      document.addEventListener('click', function(e) {
+        var link = e.target.closest('.nav-link[data-page="datasheety"]');
+        if (!link) return;
+        setTimeout(function() {
+          refreshAccountSelect();
+          var sel = document.getElementById('ds-account-select');
+          if (sel) sel.addEventListener('change', loadFiles);
+          loadFiles();
+        }, 60);
+      });
+
+      // Pokud je stránka datasheety aktivní při načtení
       document.addEventListener('DOMContentLoaded', function() {
-        var input = document.getElementById('ds-file-input');
-        var zone  = document.getElementById('ds-drop-zone');
-        var sel   = document.getElementById('ds-account-select');
-
-        if (input) {
-          input.addEventListener('change', function() {
-            if (input.files[0]) doUpload(input.files[0]);
-            input.value = '';
-          });
+        var active = document.getElementById('datasheety');
+        if (active && active.classList.contains('active')) {
+          refreshAccountSelect();
+          loadFiles();
         }
-
-        if (zone) {
-          zone.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            zone.style.borderColor = '#667eea';
-            zone.style.background  = 'rgba(102,126,234,0.07)';
-          });
-          zone.addEventListener('dragleave', function(e) {
-            if (zone.contains(e.relatedTarget)) return;
-            zone.style.borderColor = 'rgba(255,255,255,0.15)';
-            zone.style.background  = '';
-          });
-          zone.addEventListener('drop', function(e) {
-            e.preventDefault();
-            zone.style.borderColor = 'rgba(255,255,255,0.15)';
-            zone.style.background  = '';
-            if (e.dataTransfer.files[0]) doUpload(e.dataTransfer.files[0]);
-          });
-        }
-
-        if (sel) sel.addEventListener('change', loadFiles);
-
-        // Nav klik → refresh select + soubory
-        document.querySelectorAll('.nav-link[data-page="datasheety"]').forEach(function(link) {
-          link.addEventListener('click', function() {
-            setTimeout(function() {
-              refreshAccountSelect();
-              loadFiles();
-            }, 60);
-          });
-        });
       });
     })();
 
