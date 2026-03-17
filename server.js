@@ -17,6 +17,7 @@ import { simpleParser } from 'mailparser';
 import { XMLParser } from 'fast-xml-parser';
 import libmime from 'libmime';
 import dns from 'dns';
+import { setupDatasheetsDB, registerDatasheetsRoutes, retrieveRelevantChunks, buildDatasheetsContext } from './datasheets.js';
 const { decodeWords } = libmime;
 const DISABLE_AI_WORKER = process.env.DISABLE_AI_WORKER === '1' || false; // false = výchozí běží
 
@@ -1055,6 +1056,8 @@ async function setupDatabase() {
 }
 
 await setupDatabase();
+await setupDatasheetsDB(pool);
+registerDatasheetsRoutes(app, pool, openai);
 
 
 // ---------- Helpers pro čtení Gmail zpráv ----------
@@ -5973,9 +5976,28 @@ async function runImapWorker() {
 
         let faqContext = '';
         if (faqRows.length) {
-          faqContext = 'Při generování odpovědi se inspiruj a čerpej informace z následující FAQ databáze:\n---\n';
-          faqContext += faqRows.map(row => `Otázka: ${row.question}\nOdpověď: ${row.answer}`).join('\n\n');
+          faqContext = 'P\u0159i generov\u00e1n\u00ed odpov\u011bdi se inspiruj a \u010derpej informace z n\u00e1sleduj\u00edc\u00ed FAQ datab\u00e1ze:\n---\n';
+          faqContext += faqRows.map(row => `Ot\u00e1zka: ${row.question}\nOdpov\u011b\u010f: ${row.answer}`).join('\n\n');
           faqContext += '\n---\n\n';
+        }
+
+        // RAG: Na\u010dti relevantn\u00ed chunky z datasheet pro tento email
+        let datasheetsContext = '';
+        try {
+          const emailPreview = `${subject || ''}\n${bodyText || ''}`.slice(0, 2000);
+          const ragChunks = await retrieveRelevantChunks({
+            pool,
+            openai,
+            dashboardUserEmail: acc.dashboard_user_email,
+            connectedEmail: acc.email_address,
+            query: emailPreview,
+          });
+          datasheetsContext = buildDatasheetsContext(ragChunks);
+          if (ragChunks.length > 0) {
+            console.log(`[RAG] IMAP: nalezeno ${ragChunks.length} chunk\u016f pro UID ${msg.uid}`);
+          }
+        } catch (ragErr) {
+          console.warn('[RAG] IMAP chyba p\u0159i hled\u00e1n\u00ed v datasheetch:', ragErr.message);
         }
 
         const styleProfile = {
@@ -6006,7 +6028,7 @@ Pravidla pro tvorbu "suggested_reply":
   - Podpis neduplikuj, pokud už v textu je.
 `;
 
-        const buildTask = (bodyText) => `${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+        const buildTask = (bodyText) => `${datasheetsContext}${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
 {
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
@@ -6599,6 +6621,25 @@ async function processGmailAccount(acc, dbClient) {
     faqContext += '\n---\n\n';
   }
 
+  // RAG: Načti relevantní chunky z datasheet pro Gmail worker
+  let datasheetsContext = '';
+  try {
+    const emailPreview = `${subject || ''}\n${bodyText || ''}`.slice(0, 2000);
+    const ragChunks = await retrieveRelevantChunks({
+      pool,
+      openai,
+      dashboardUserEmail: acc.dashboard_user_email,
+      connectedEmail: acc.connected_email,
+      query: emailPreview,
+    });
+    datasheetsContext = buildDatasheetsContext(ragChunks);
+    if (ragChunks.length > 0) {
+      console.log(`[RAG] Gmail: nalezeno ${ragChunks.length} chunků`);
+    }
+  } catch (ragErr) {
+    console.warn('[RAG] Gmail chyba při hledání v datasheetch:', ragErr.message);
+  }
+
   const styleProfile = {
     tone: acc.tone || 'Formální',
     length: acc.length || 'Střední (1 odstavec)',
@@ -6627,7 +6668,7 @@ Pravidla pro tvorbu "suggested_reply":
   - Podpis neduplikuj, pokud už v textu je.
 `;
 
-  const buildTask = (bodyText) => `${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+  const buildTask = (bodyText) => `${datasheetsContext}${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
 {
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
@@ -7433,18 +7474,3 @@ app.use((req, res, next) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
