@@ -8717,14 +8717,9 @@ S pozdravem
             pageTitle.textContent = titles[targetPageId] || 'Dashboard';
           }
 
-          // FIX: Hide content-area for pages outside it (admin, analytics, integrations)
-          const pagesOutsideContentArea = ['admin', 'analytics', 'integrations'];
+          // Všechny stránky jsou uvnitř content-area — vždy zobrazit
           if (contentArea) {
-            if (pagesOutsideContentArea.includes(targetPageId)) {
-              contentArea.style.display = 'none';
-            } else {
-              contentArea.style.display = '';
-            }
+            contentArea.style.display = '';
           }
 
           // Načtení dat pro příslušnou stránku
@@ -10577,6 +10572,23 @@ S pozdravem
 (function () {
   var B = '';
 
+  function escHtml(str) {
+    var d = document.createElement('div');
+    d.textContent = str || '';
+    return d.innerHTML;
+  }
+
+  function fixFilename(name) {
+    if (!name) return '';
+    try {
+      // Pokud byl název uložen jako Latin-1 místo UTF-8, opravíme
+      // "NovÃ©" -> "Nové" (escape+unescape trik)
+      return decodeURIComponent(escape(name));
+    } catch (e) {
+      return name;
+    }
+  }
+
   function activeEmail() {
     try {
       var accs = getConnectedAccounts();
@@ -10614,7 +10626,7 @@ S pozdravem
         }
         var colors = { pdf: '#ef4444', docx: '#3b82f6', xlsx: '#22c55e', txt: '#94a3b8', csv: '#f59e0b' };
         var rows = d.datasheets.map(function (ds, i) {
-          var ext  = (ds.filename || '').split('.').pop().toLowerCase();
+          var ext  = (fixFilename(ds.filename) || '').split('.').pop().toLowerCase();
           var c    = colors[ext] || '#94a3b8';
           var br   = i < d.datasheets.length - 1 ? 'border-bottom:1px solid rgba(255,255,255,0.07);' : '';
           var sz   = ds.char_count < 1000 ? ds.char_count + ' zn.' : Math.round(ds.char_count / 1000) + 'k zn.';
@@ -10626,7 +10638,7 @@ S pozdravem
             +   '<span style="font-size:8px;font-weight:700;color:' + c + ';">' + ext.toUpperCase() + '</span>'
             + '</div>'
             + '<div style="flex:1;min-width:0;">'
-            +   '<div style="font-size:0.85rem;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + ds.filename + '</div>'
+            +   '<div style="font-size:0.85rem;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(fixFilename(ds.filename)) + '</div>'
             +   '<div style="font-size:0.75rem;color:#64748b;margin-top:2px;">' + sz + ' &middot; ' + (ds.chunk_count || 0) + ' chunk&ugrave; &middot; ' + dt + '</div>'
             + '</div>'
             + '<span style="font-size:11px;padding:2px 9px;border-radius:20px;'
