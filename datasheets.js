@@ -192,11 +192,14 @@ export function registerDatasheetsRoutes(app, pool, openai) {
     }
 
     try {
+      // Multer dekóduje název souboru jako Latin-1 — opravíme na UTF-8
+      const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+
       const result = await ingestDatasheet({
         pool, openai,
         dashboardUserEmail,
         connectedEmail,
-        originalName: req.file.originalname,
+        originalName,
         filePath: req.file.path,
       });
       res.json({ success: true, ...result });
