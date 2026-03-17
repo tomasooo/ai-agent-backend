@@ -1089,14 +1089,16 @@
     /* FIX: Connect negative margins to specific sections to reduce gap */
     #admin,
     #analytics,
-    #integrations {
+    #integrations,
+    #datasheety {
       margin-top: 0 !important;
       padding-top: 1rem !important;
     }
 
     #admin>*:first-child,
     #analytics>*:first-child,
-    #integrations>*:first-child {
+    #integrations>*:first-child,
+    #datasheety>*:first-child {
       margin-top: 0 !important;
       padding-top: 0 !important;
     }
@@ -5170,8 +5172,8 @@
 
   
       <!-- Datasheety Page -->
-      <div class="page-content" id="datasheety">
-        <div style="padding: 1rem;">
+      <div class="page-content" id="datasheety" style="margin-top: 0 !important; padding-top: 0 !important;">
+        <div style="padding: 0 1.5rem 1.5rem 1.5rem;">
 
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
             <div>
@@ -10592,23 +10594,42 @@ S pozdravem
       function refreshAccountSelect() {
         var sel = document.getElementById('ds-account-select');
         if (!sel) return;
-        var prev = sel.value;
+        var primary = localStorage.getItem('primaryEmail') || '';
+        var prev = sel.value || primary;
+
+        // Sbírej emaily ze všech možných localStorage klíčů
+        var emailSet = new Set();
+        if (primary) emailSet.add(primary);
+
         try {
-          var accounts = JSON.parse(localStorage.getItem('connectedEmails') || '[]');
-          sel.innerHTML = '<option value="">— Vyber emailový účet —</option>';
-          accounts.forEach(function(a) {
-            var email = typeof a === 'string' ? a : (a.email || a.email_address || '');
-            if (!email) return;
-            var opt = document.createElement('option');
-            opt.value = email; opt.textContent = email;
-            if (email === prev) opt.selected = true;
-            sel.appendChild(opt);
+          var ce = JSON.parse(localStorage.getItem('connectedEmails') || '[]');
+          ce.forEach(function(a) {
+            var e = typeof a === 'string' ? a : (a.email || a.email_address || '');
+            if (e) emailSet.add(e);
           });
-          if (!sel.value) {
-            var primary = localStorage.getItem('primaryEmail') || '';
-            if (primary) sel.value = primary;
-          }
         } catch(e) {}
+
+        try {
+          var ca = JSON.parse(localStorage.getItem('connectedAccounts') || '[]');
+          ca.forEach(function(a) {
+            var e = typeof a === 'string' ? a : (a.email || a.email_address || a.connected_email || '');
+            if (e) emailSet.add(e);
+          });
+        } catch(e) {}
+
+        sel.innerHTML = '<option value="">— Vyber emailový účet —</option>';
+        emailSet.forEach(function(email) {
+          var opt = document.createElement('option');
+          opt.value = email; opt.textContent = email;
+          sel.appendChild(opt);
+        });
+
+        // Automaticky vyber primaryEmail nebo předchozí hodnotu
+        if (prev && emailSet.has(prev)) {
+          sel.value = prev;
+        } else if (primary) {
+          sel.value = primary;
+        }
       }
 
       function fmtSize(n) {
@@ -10764,6 +10785,11 @@ S pozdravem
             }, 80);
           });
         });
+
+        // Pokud jsme již na datasheety stránce při načtení
+        if (window.location.hash === '#datasheety') {
+          setTimeout(function() { refreshAccountSelect(); loadFiles(); }, 200);
+        }
       });
     })();
 
