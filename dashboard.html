@@ -2,6 +2,16 @@
 <html lang="cs">
 
 <head>
+<script>
+// Datasheety stub — definováno v <head> aby inline handlery vždy fungovaly
+window._dsPendingFile = null;
+window._dsDoUpload = function(file) {
+  window._dsPendingFile = file;
+  // Skutečná implementace se přepíše po načtení scriptu
+};
+window._dsDel = function(id) { /* přepsáno po načtení */ };
+</script>
+
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
   <meta name="description"
@@ -4888,13 +4898,13 @@
             <p style="margin:0;color:#a5b4fc;font-size:0.85rem;line-height:1.5;">AI agent použije nahrané soubory při odpovídání na emaily. Hodí se pro ceníky, manuály nebo obchodní podmínky.</p>
           </div>
 
-          <label for="ds-file-input" id="ds-drop-zone" style="display:block;border:2px dashed rgba(255,255,255,0.15);border-radius:12px;padding:2rem 1.5rem;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;margin-bottom:1.2rem;" ondragover="event.preventDefault();this.style.borderColor='#667eea';this.style.background='rgba(102,126,234,0.07)';" ondragleave="if(!this.contains(event.relatedTarget)){this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='';}" ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='';if(event.dataTransfer.files[0])window._dsDoUpload(event.dataTransfer.files[0]);">
+          <label for="ds-file-input" id="ds-drop-zone" style="display:block;border:2px dashed rgba(255,255,255,0.15);border-radius:12px;padding:2rem 1.5rem;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;margin-bottom:1.2rem;" ondragover="event.preventDefault();this.style.borderColor='#667eea';this.style.background='rgba(102,126,234,0.07)';" ondragleave="if(!this.contains(event.relatedTarget)){this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='';}" ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='';var f=event.dataTransfer.files[0];if(f){if(typeof window._dsDoUpload==='function')window._dsDoUpload(f);else setTimeout(function(){window._dsDoUpload(f);},200);}">
             <div style="width:44px;height:44px;background:rgba(102,126,234,0.15);border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto 0.6rem;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#667eea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
             </div>
             <p style="margin:0 0 0.2rem;font-weight:500;color:#e2e8f0;font-size:0.95rem;">Přetáhněte soubor nebo klikněte pro nahrání</p>
             <p style="margin:0;color:#64748b;font-size:0.82rem;">Max. 25 MB · PDF, DOCX, XLSX, TXT</p>
-            <input type="file" id="ds-file-input" accept=".pdf,.docx,.xlsx,.txt,.csv" style="display:none;" onchange="if(this.files[0])window._dsDoUpload(this.files[0]);this.value='';">
+            <input type="file" id="ds-file-input" accept=".pdf,.docx,.xlsx,.txt,.csv" style="display:none;" onchange="var f=this.files[0];this.value='';if(f){if(typeof window._dsDoUpload==='function')window._dsDoUpload(f);else setTimeout(function(){window._dsDoUpload(f);},200);}">
           </label>
 
           <div id="ds-upload-progress" style="display:none;margin-bottom:1.2rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:0.9rem 1.1rem;">
@@ -10659,6 +10669,13 @@ S pozdravem
           })
           .catch(function(){clearInterval(iv);if(prog)prog.style.display='none';showToast('Chyba při nahrávání.','error');});
       };
+
+      // Zpracuj soubor který přišel před inicializací (pending)
+      if (window._dsPendingFile) {
+        var pf = window._dsPendingFile;
+        window._dsPendingFile = null;
+        setTimeout(function() { window._dsDoUpload(pf); }, 100);
+      }
 
       // Nav klik — document-level handler, funguje vždy
       document.addEventListener('click', function(e) {
