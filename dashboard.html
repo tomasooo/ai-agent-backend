@@ -3737,6 +3737,19 @@
             </a>
           </li>
           <li class="nav-item">
+            <a href="#" class="nav-link" data-page="datasheety">
+              <span class="nav-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="9" y1="15" x2="15" y2="15"></line>
+                  <line x1="9" y1="11" x2="15" y2="11"></line>
+                </svg>
+              </span>
+              <span class="nav-text">Datasheety</span>
+            </a>
+          </li>
+          <li class="nav-item">
             <a href="#" class="nav-link" data-page="faq">
               <span class="nav-icon">
                 <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"
@@ -5042,6 +5055,67 @@
         </div>
 
       </div>
+      <!-- Datasheety Page -->
+      <div class="page-content" id="datasheety" style="margin-top: 0 !important; padding-top: 0 !important;">
+        <div class="form-section" style="margin-top: 0 !important;">
+
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+              <h3 style="margin: 0 0 0.25rem;">Datasheety</h3>
+              <p style="margin: 0; color: #94a3b8; font-size: 0.9rem;">Dokumenty pro AI agenta — produktové listy, manuály, ceníky</p>
+            </div>
+            <select id="ds-account-select" class="form-control" style="width: auto; min-width: 220px;">
+              <option value="">— Vyber emailový účet —</option>
+            </select>
+          </div>
+
+          <!-- Info box -->
+          <div style="background: rgba(102,126,234,0.1); border: 1px solid rgba(102,126,234,0.3); border-radius: 12px; padding: 0.9rem 1.1rem; display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 1.5rem;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#667eea" stroke-width="2" stroke-linecap="round" style="flex-shrink:0; margin-top:2px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p style="margin: 0; color: #a5b4fc; font-size: 0.875rem; line-height: 1.5;">AI agent si přečte nahrané soubory a použije je při odpovídání na emaily. Hodí se pro produktové listy, manuály, ceníky nebo obchodní podmínky.</p>
+          </div>
+
+          <!-- Upload zona -->
+          <div id="ds-drop-zone" style="border: 2px dashed rgba(255,255,255,0.15); border-radius: 16px; padding: 2.5rem 1.5rem; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 1.5rem;">
+            <div style="width: 48px; height: 48px; background: rgba(102,126,234,0.15); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.75rem;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#667eea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+            </div>
+            <p style="margin: 0 0 0.25rem; font-weight: 500; color: #e2e8f0;">Přetáhněte soubor nebo klikněte pro nahrání</p>
+            <p style="margin: 0 0 0.75rem; color: #64748b; font-size: 0.85rem;">Maximálně 25 MB na soubor</p>
+            <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;">
+              <span style="font-size: 11px; padding: 2px 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15); color: #94a3b8;">PDF</span>
+              <span style="font-size: 11px; padding: 2px 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15); color: #94a3b8;">DOCX</span>
+              <span style="font-size: 11px; padding: 2px 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15); color: #94a3b8;">XLSX</span>
+              <span style="font-size: 11px; padding: 2px 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15); color: #94a3b8;">TXT</span>
+            </div>
+            <input type="file" id="ds-file-input" accept=".pdf,.docx,.xlsx,.txt,.csv" style="display:none;">
+          </div>
+
+          <!-- Upload progress (skrytý) -->
+          <div id="ds-upload-progress" style="display:none; margin-bottom: 1.5rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem 1.25rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#667eea" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span id="ds-upload-filename" style="font-size: 0.875rem; color: #e2e8f0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+              <span id="ds-upload-pct" style="font-size: 0.8rem; color: #667eea; font-weight: 500;">0%</span>
+            </div>
+            <div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+              <div id="ds-upload-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 2px; transition: width 0.3s;"></div>
+            </div>
+          </div>
+
+          <!-- Seznam souborů -->
+          <div>
+            <p style="font-size: 0.75rem; font-weight: 500; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem;">Nahrané soubory</p>
+            <div id="ds-files-list" style="border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden; min-height: 60px;">
+              <div id="ds-empty" style="padding: 2rem; text-align: center; color: #475569; font-size: 0.875rem;">
+                Žádné soubory. Nahrajte první datasheet výše.
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
       <!-- Admin Page -->
       <div class="page-content" id="admin" style="margin-top: 0 !important; padding-top: 0 !important;">
         <div class="admin-stats" style="margin-top: 0 !important;">
@@ -6762,7 +6836,7 @@ S pozdravem
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               dashboardUserEmail, email: emailAddress,
-              tone: 'Formální', length: 'Střední (1 odstavec)', signature: '',
+              tone: 'Formální', length: 'Střední (1 odstavec)', signature: 'Společnost Senzoor',
               auto_reply: false, approval_required: true, spam_filter: true
             })
           });
@@ -10510,7 +10584,237 @@ S pozdravem
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js">
+    // ═══════════════════════════════════════════
+    // DATASHEETY — upload, seznam, smazání
+    // ═══════════════════════════════════════════
+    (function () {
+      const BACKEND = window.BACKEND || '';
+
+      function getDsUserEmail() {
+        return localStorage.getItem('userEmail') || '';
+      }
+
+      function getDsConnectedEmail() {
+        const sel = document.getElementById('ds-account-select');
+        return sel ? sel.value : '';
+      }
+
+      // Naplnění selectu účty
+      function refreshDsAccountSelect() {
+        const sel = document.getElementById('ds-account-select');
+        if (!sel) return;
+        try {
+          const accounts = JSON.parse(localStorage.getItem('connectedEmails') || '[]');
+          const current = sel.value;
+          sel.innerHTML = '<option value="">— Vyber emailový účet —</option>';
+          accounts.forEach(a => {
+            const email = typeof a === 'string' ? a : (a.email || a.email_address || '');
+            if (!email) return;
+            const opt = document.createElement('option');
+            opt.value = email;
+            opt.textContent = email;
+            if (email === current) opt.selected = true;
+            sel.appendChild(opt);
+          });
+          // Fallback: vyber primaryEmail
+          if (!sel.value) {
+            const primary = localStorage.getItem('primaryEmail') || '';
+            if (primary) sel.value = primary;
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      // Formátování velikosti
+      function fmtSize(chars) {
+        if (!chars) return '';
+        if (chars < 1000) return chars + ' znaků';
+        return Math.round(chars / 1000) + ' tis. znaků';
+      }
+
+      // Formátování data
+      function fmtDate(iso) {
+        if (!iso) return '';
+        try {
+          return new Date(iso).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short', year: 'numeric' });
+        } catch { return iso; }
+      }
+
+      // Ikona podle přípony
+      function fileIcon(name) {
+        const ext = (name || '').split('.').pop().toLowerCase();
+        const colors = { pdf: '#ef4444', docx: '#3b82f6', xlsx: '#22c55e', txt: '#94a3b8', csv: '#f59e0b' };
+        const color = colors[ext] || '#94a3b8';
+        return `<div style="width:32px;height:38px;border-radius:6px;background:${color}22;border:1px solid ${color}44;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span style="font-size:9px;font-weight:700;color:${color};">${ext.toUpperCase()}</span>
+        </div>`;
+      }
+
+      // Renderování seznamu souborů
+      async function loadDsFiles() {
+        const userEmail = getDsUserEmail();
+        const connEmail = getDsConnectedEmail();
+        const list = document.getElementById('ds-files-list');
+        const empty = document.getElementById('ds-empty');
+        if (!list) return;
+        if (!userEmail || !connEmail) {
+          list.innerHTML = '<div id="ds-empty" style="padding:2rem;text-align:center;color:#475569;font-size:0.875rem;">Vyberte emailový účet pro zobrazení datasheet.</div>';
+          return;
+        }
+        try {
+          const r = await fetch(`${BACKEND}/api/datasheets?dashboardUserEmail=${encodeURIComponent(userEmail)}&connectedEmail=${encodeURIComponent(connEmail)}`);
+          const data = await r.json();
+          if (!data.success || !data.datasheets || data.datasheets.length === 0) {
+            list.innerHTML = '<div id="ds-empty" style="padding:2rem;text-align:center;color:#475569;font-size:0.875rem;">Žádné soubory. Nahrajte první datasheet výše.</div>';
+            return;
+          }
+          list.innerHTML = data.datasheets.map((ds, i) => `
+            <div class="ds-row" data-id="${ds.id}" style="display:flex;align-items:center;gap:12px;padding:12px 16px;${i < data.datasheets.length - 1 ? 'border-bottom:1px solid rgba(255,255,255,0.07);' : ''}">
+              ${fileIcon(ds.filename)}
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:0.875rem;color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ds.filename}</div>
+                <div style="font-size:0.75rem;color:#64748b;margin-top:2px;">${fmtSize(ds.char_count)} · ${ds.chunk_count} chunků · ${fmtDate(ds.created_at)}</div>
+              </div>
+              <span style="font-size:11px;padding:2px 10px;border-radius:20px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:#4ade80;">Aktivní</span>
+              <button onclick="window.dsDelete(${ds.id})" title="Smazat" style="width:28px;height:28px;border-radius:7px;border:1px solid rgba(255,255,255,0.1);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748b;transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.1)';this.style.color='#ef4444';" onmouseout="this.style.background='transparent';this.style.color='#64748b';">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+              </button>
+            </div>
+          `).join('');
+        } catch (e) {
+          list.innerHTML = '<div style="padding:2rem;text-align:center;color:#ef4444;font-size:0.875rem;">Chyba při načítání souborů.</div>';
+        }
+      }
+
+      // Smazání datasheetu
+      window.dsDelete = async function (id) {
+        if (!confirm('Opravdu smazat tento datasheet? AI agent ho přestane používat.')) return;
+        const userEmail = getDsUserEmail();
+        try {
+          const r = await fetch(`${BACKEND}/api/datasheets/${id}?dashboardUserEmail=${encodeURIComponent(userEmail)}`, { method: 'DELETE' });
+          const data = await r.json();
+          if (data.success) {
+            showToast('Datasheet smazán.', 'success');
+            loadDsFiles();
+          } else {
+            showToast(data.message || 'Chyba při mazání.', 'error');
+          }
+        } catch (e) {
+          showToast('Chyba připojení.', 'error');
+        }
+      };
+
+      // Upload souboru
+      async function uploadFile(file) {
+        const userEmail = getDsUserEmail();
+        const connEmail = getDsConnectedEmail();
+        if (!userEmail) { showToast('Nejsi přihlášen.', 'error'); return; }
+        if (!connEmail) { showToast('Nejdřív vyber emailový účet.', 'error'); return; }
+        if (file.size > 25 * 1024 * 1024) { showToast('Soubor je příliš velký (max 25 MB).', 'error'); return; }
+
+        // Ukáže progress bar
+        const prog = document.getElementById('ds-upload-progress');
+        const bar = document.getElementById('ds-upload-bar');
+        const pct = document.getElementById('ds-upload-pct');
+        const fname = document.getElementById('ds-upload-filename');
+        prog.style.display = 'block';
+        fname.textContent = file.name;
+        bar.style.width = '0%';
+        pct.textContent = '0%';
+
+        // Animuj progress (embedding trvá, nemáme real progress)
+        let fakeP = 0;
+        const fakeInterval = setInterval(() => {
+          fakeP = Math.min(fakeP + Math.random() * 8, 88);
+          bar.style.width = fakeP + '%';
+          pct.textContent = Math.round(fakeP) + '%';
+        }, 400);
+
+        try {
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('dashboardUserEmail', userEmail);
+          fd.append('connectedEmail', connEmail);
+
+          const r = await fetch(`${BACKEND}/api/datasheets/upload`, { method: 'POST', body: fd });
+          const data = await r.json();
+
+          clearInterval(fakeInterval);
+          bar.style.width = '100%';
+          pct.textContent = '100%';
+
+          setTimeout(() => { prog.style.display = 'none'; }, 1200);
+
+          if (data.success) {
+            showToast(`Nahráno: ${file.name} (${data.chunkCount} chunků)`, 'success');
+            loadDsFiles();
+          } else {
+            showToast(data.message || 'Nahrávání selhalo.', 'error');
+          }
+        } catch (e) {
+          clearInterval(fakeInterval);
+          prog.style.display = 'none';
+          showToast('Chyba při nahrávání: ' + e.message, 'error');
+        }
+      }
+
+      // Inicializace po načtení stránky
+      function initDatasheety() {
+        const dropZone = document.getElementById('ds-drop-zone');
+        const fileInput = document.getElementById('ds-file-input');
+        const accountSel = document.getElementById('ds-account-select');
+        if (!dropZone || !fileInput) return;
+
+        // Klik na zónu
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        // Výběr souboru přes dialog
+        fileInput.addEventListener('change', () => {
+          if (fileInput.files[0]) uploadFile(fileInput.files[0]);
+          fileInput.value = '';
+        });
+
+        // Drag & drop
+        dropZone.addEventListener('dragover', e => {
+          e.preventDefault();
+          dropZone.style.borderColor = '#667eea';
+          dropZone.style.background = 'rgba(102,126,234,0.07)';
+        });
+        dropZone.addEventListener('dragleave', () => {
+          dropZone.style.borderColor = 'rgba(255,255,255,0.15)';
+          dropZone.style.background = '';
+        });
+        dropZone.addEventListener('drop', e => {
+          e.preventDefault();
+          dropZone.style.borderColor = 'rgba(255,255,255,0.15)';
+          dropZone.style.background = '';
+          const f = e.dataTransfer.files[0];
+          if (f) uploadFile(f);
+        });
+
+        // Přepnutí účtu → reload souborů
+        accountSel.addEventListener('change', loadDsFiles);
+
+        // Přepnutí na tuto stránku → refresh
+        document.querySelectorAll('.nav-link[data-page="datasheety"]').forEach(link => {
+          link.addEventListener('click', () => {
+            refreshDsAccountSelect();
+            setTimeout(loadDsFiles, 100);
+          });
+        });
+
+        refreshDsAccountSelect();
+      }
+
+      // Spusť po DOMContentLoaded
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initDatasheety);
+      } else {
+        initDatasheety();
+      }
+    })();
+
+  </script>
 
 </body>
 
