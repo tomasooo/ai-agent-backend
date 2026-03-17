@@ -1089,7 +1089,8 @@
     /* FIX: Connect negative margins to specific sections to reduce gap */
     #admin,
     #analytics,
-    #integrations {
+    #integrations,
+    #datasheety {
       margin-top: 0 !important;
       padding-top: 1rem !important;
     }
@@ -5057,6 +5058,7 @@
       </div>
       <!-- Datasheety Page -->
       <div class="page-content" id="datasheety" style="margin-top: 0 !important; padding-top: 0 !important;">
+        <div class="page-container">
         <div class="form-section" style="margin-top: 0 !important;">
 
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
@@ -5113,6 +5115,7 @@
             </div>
           </div>
 
+        </div>
         </div>
       </div>
 
@@ -10758,15 +10761,20 @@ S pozdravem
         }
       }
 
-      // Inicializace po načtení stránky
+      // Inicializace — spustí se vždy při kliknutí na nav položku Datasheety
+      // (elementy existují v DOMu hned od začátku, jen jsou skryté přes display:none)
       function initDatasheety() {
         const dropZone = document.getElementById('ds-drop-zone');
         const fileInput = document.getElementById('ds-file-input');
         const accountSel = document.getElementById('ds-account-select');
-        if (!dropZone || !fileInput) return;
+        if (!dropZone || !fileInput || dropZone._dsInit) return;
+        dropZone._dsInit = true; // zabránění dvojité inicializaci
 
-        // Klik na zónu
-        dropZone.addEventListener('click', () => fileInput.click());
+        // Klik na zónu — stopPropagation zabrání bubblování
+        dropZone.addEventListener('click', (e) => {
+          e.stopPropagation();
+          fileInput.click();
+        });
 
         // Výběr souboru přes dialog
         fileInput.addEventListener('change', () => {
@@ -10780,7 +10788,8 @@ S pozdravem
           dropZone.style.borderColor = '#667eea';
           dropZone.style.background = 'rgba(102,126,234,0.07)';
         });
-        dropZone.addEventListener('dragleave', () => {
+        dropZone.addEventListener('dragleave', e => {
+          if (dropZone.contains(e.relatedTarget)) return;
           dropZone.style.borderColor = 'rgba(255,255,255,0.15)';
           dropZone.style.background = '';
         });
@@ -10793,25 +10802,22 @@ S pozdravem
         });
 
         // Přepnutí účtu → reload souborů
-        accountSel.addEventListener('change', loadDsFiles);
+        if (accountSel) accountSel.addEventListener('change', loadDsFiles);
+      }
 
-        // Přepnutí na tuto stránku → refresh
+      // Nav klik → inicializuj + načti data
+      document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.nav-link[data-page="datasheety"]').forEach(link => {
           link.addEventListener('click', () => {
-            refreshDsAccountSelect();
-            setTimeout(loadDsFiles, 100);
+            // Krátká prodleva aby se page-content zobrazil (třída active se přidá)
+            setTimeout(() => {
+              initDatasheety();
+              refreshDsAccountSelect();
+              loadDsFiles();
+            }, 50);
           });
         });
-
-        refreshDsAccountSelect();
-      }
-
-      // Spusť po DOMContentLoaded
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initDatasheety);
-      } else {
-        initDatasheety();
-      }
+      });
     })();
 
   </script>
