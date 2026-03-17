@@ -2,15 +2,6 @@
 <html lang="cs">
 
 <head>
-<script>
-// Datasheety stub — definováno v <head> aby inline handlery vždy fungovaly
-window._dsPendingFile = null;
-window._dsDoUpload = function(file) {
-  window._dsPendingFile = file;
-  // Skutečná implementace se přepíše po načtení scriptu
-};
-window._dsDel = function(id) { /* přepsáno po načtení */ };
-</script>
 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
@@ -4898,13 +4889,13 @@ window._dsDel = function(id) { /* přepsáno po načtení */ };
             <p style="margin:0;color:#a5b4fc;font-size:0.85rem;line-height:1.5;">AI agent použije nahrané soubory při odpovídání na emaily. Hodí se pro ceníky, manuály nebo obchodní podmínky.</p>
           </div>
 
-          <label for="ds-file-input" id="ds-drop-zone" style="display:block;border:2px dashed rgba(255,255,255,0.15);border-radius:12px;padding:2rem 1.5rem;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;margin-bottom:1.2rem;" ondragover="event.preventDefault();this.style.borderColor='#667eea';this.style.background='rgba(102,126,234,0.07)';" ondragleave="if(!this.contains(event.relatedTarget)){this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='';}" ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='';var f=event.dataTransfer.files[0];if(f){if(typeof window._dsDoUpload==='function')window._dsDoUpload(f);else setTimeout(function(){window._dsDoUpload(f);},200);}">
+          <label for="ds-file-input" id="ds-drop-zone" style="display:block;border:2px dashed rgba(255,255,255,0.15);border-radius:12px;padding:2rem 1.5rem;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;margin-bottom:1.2rem;">
             <div style="width:44px;height:44px;background:rgba(102,126,234,0.15);border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto 0.6rem;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#667eea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
             </div>
             <p style="margin:0 0 0.2rem;font-weight:500;color:#e2e8f0;font-size:0.95rem;">Přetáhněte soubor nebo klikněte pro nahrání</p>
             <p style="margin:0;color:#64748b;font-size:0.82rem;">Max. 25 MB · PDF, DOCX, XLSX, TXT</p>
-            <input type="file" id="ds-file-input" accept=".pdf,.docx,.xlsx,.txt,.csv" style="display:none;" onchange="var f=this.files[0];this.value='';if(f){if(typeof window._dsDoUpload==='function')window._dsDoUpload(f);else setTimeout(function(){window._dsDoUpload(f);},200);}">
+            <input type="file" id="ds-file-input" accept=".pdf,.docx,.xlsx,.txt,.csv" style="display:none;" >
           </label>
 
           <div id="ds-upload-progress" style="display:none;margin-bottom:1.2rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:0.9rem 1.1rem;">
@@ -10578,116 +10569,190 @@ S pozdravem
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js">
-    // ═══════════════════════════════════════════
-    // DATASHEETY
-    // ═══════════════════════════════════════════
-    (function () {
-      var B = window.BACKEND || '';
-
-      function activeEmail() {
-        try {
-          var a = getConnectedAccounts().find(function(x){return x.active;});
-          if (a && a.email) return a.email;
-        } catch(e){}
-        return localStorage.getItem('primaryEmail') || '';
-      }
-
-      function userEmail() { return localStorage.getItem('userEmail') || ''; }
-
-      function showBadge() {
-        var el = document.getElementById('ds-active-account');
-        if (!el) return;
-        var e = activeEmail();
-        el.textContent = e || '—';
-        el.style.display = e ? 'block' : 'none';
-      }
-
-      function loadFiles() {
-        var ue = userEmail(), ce = activeEmail();
-        var list = document.getElementById('ds-files-list');
-        if (!list) return;
-        if (!ue || !ce) {
-          list.innerHTML = '<div style="padding:1.5rem;text-align:center;color:#ef4444;font-size:0.85rem;">Nepodařilo se zjistit aktivní účet. Nastavte ho v Nastavení.</div>';
-          return;
-        }
-        list.innerHTML = '<div style="padding:1.5rem;text-align:center;color:#475569;font-size:0.85rem;">Načítám…</div>';
-        fetch(B+'/api/datasheets?dashboardUserEmail='+encodeURIComponent(ue)+'&connectedEmail='+encodeURIComponent(ce))
-          .then(function(r){return r.json();})
-          .then(function(d){
-            if (!d.success||!d.datasheets||!d.datasheets.length) {
-              list.innerHTML='<div style="padding:1.5rem;text-align:center;color:#475569;font-size:0.85rem;">Žádné soubory. Nahrajte první datasheet výše.</div>';
-              return;
-            }
-            var cx={pdf:'#ef4444',docx:'#3b82f6',xlsx:'#22c55e',txt:'#94a3b8',csv:'#f59e0b'};
-            list.innerHTML=d.datasheets.map(function(ds,i){
-              var ext=(ds.filename||'').split('.').pop().toLowerCase();
-              var c=cx[ext]||'#94a3b8';
-              var size=ds.char_count<1000?ds.char_count+' zn.':Math.round(ds.char_count/1000)+' tis. zn.';
-              var date=''; try{date=new Date(ds.created_at).toLocaleDateString('cs-CZ');}catch(e){}
-              var br=i<d.datasheets.length-1?'border-bottom:1px solid rgba(255,255,255,0.07);':'';
-              return '<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;'+br+'">'
-                +'<div style="width:30px;height:36px;border-radius:5px;background:'+c+'22;border:1px solid '+c+'44;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span style="font-size:8px;font-weight:700;color:'+c+';">'+ext.toUpperCase()+'</span></div>'
-                +'<div style="flex:1;min-width:0;"><div style="font-size:0.85rem;color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+ds.filename+'</div>'
-                +'<div style="font-size:0.75rem;color:#64748b;margin-top:2px;">'+size+' · '+(ds.chunk_count||0)+' chunků · '+date+'</div></div>'
-                +'<span style="font-size:11px;padding:2px 9px;border-radius:20px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:#4ade80;white-space:nowrap;flex-shrink:0;">Aktivní</span>'
-                +'<button onclick="window._dsDel('+ds.id+')" style="width:26px;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:transparent;cursor:pointer;color:#64748b;display:flex;align-items:center;justify-content:center;flex-shrink:0;" onmouseover="this.style.color='#ef4444';" onmouseout="this.style.color='#64748b';"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>'
-              +'</div>';
-            }).join('');
-          })
-          .catch(function(){list.innerHTML='<div style="padding:1.5rem;text-align:center;color:#ef4444;">Chyba při načítání.</div>';});
-      }
-
-      window._dsDel = function(id) {
-        if (!confirm('Smazat tento datasheet?')) return;
-        fetch(B+'/api/datasheets/'+id+'?dashboardUserEmail='+encodeURIComponent(userEmail()),{method:'DELETE'})
-          .then(function(r){return r.json();})
-          .then(function(d){if(d.success){showToast('Datasheet smazán.','success');loadFiles();}else showToast(d.message||'Chyba.','error');})
-          .catch(function(){showToast('Chyba připojení.','error');});
-      };
-
-      window._dsDoUpload = function(file) {
-        var ue=userEmail(), ce=activeEmail();
-        if (!ue){showToast('Nejsi přihlášen.','error');return;}
-        if (!ce){showToast('Žádný aktivní emailový účet. Nastavte ho v Nastavení.','error');return;}
-        if (file.size>25*1024*1024){showToast('Soubor je příliš velký (max 25 MB).','error');return;}
-        var prog=document.getElementById('ds-upload-progress');
-        var bar=document.getElementById('ds-upload-bar');
-        var pct=document.getElementById('ds-upload-pct');
-        var fn=document.getElementById('ds-upload-filename');
-        if(prog){prog.style.display='block';fn.textContent=file.name;bar.style.width='0%';pct.textContent='0 %';}
-        var p=0, iv=setInterval(function(){p=Math.min(p+Math.random()*8+1,88);if(bar){bar.style.width=p+'%';pct.textContent=Math.round(p)+' %';}},400);
-        var fd=new FormData();
-        fd.append('file',file);fd.append('dashboardUserEmail',ue);fd.append('connectedEmail',ce);
-        fetch(B+'/api/datasheets/upload',{method:'POST',body:fd})
-          .then(function(r){return r.json();})
-          .then(function(d){
-            clearInterval(iv);
-            if(bar){bar.style.width='100%';pct.textContent='100 %';}
-            setTimeout(function(){if(prog)prog.style.display='none';},1500);
-            if(d.success){showToast('Nahráno: '+file.name+' ('+d.chunkCount+' chunků)','success');loadFiles();}
-            else showToast(d.message||'Nahrávání selhalo.','error');
-          })
-          .catch(function(){clearInterval(iv);if(prog)prog.style.display='none';showToast('Chyba při nahrávání.','error');});
-      };
-
-      // Zpracuj soubor který přišel před inicializací (pending)
-      if (window._dsPendingFile) {
-        var pf = window._dsPendingFile;
-        window._dsPendingFile = null;
-        setTimeout(function() { window._dsDoUpload(pf); }, 100);
-      }
-
-      // Nav klik — document-level handler, funguje vždy
-      document.addEventListener('click', function(e) {
-        if (e.target.closest('.nav-link[data-page="datasheety"]')) {
-          setTimeout(function(){ showBadge(); loadFiles(); }, 60);
-        }
-      });
-
-    })();
 
   </script>
 
+
+<script>
+// ── DATASHEETY ─────────────────────────────────────────────────────────────
+(function() {
+  var B = '';
+
+  function init() {
+    B = window.BACKEND || '';
+
+    var zone  = document.getElementById('ds-drop-zone');
+    var input = document.getElementById('ds-file-input');
+    if (!zone || !input) return;
+
+    // Klik na zónu otevře file dialog
+    zone.addEventListener('click', function() { input.click(); });
+
+    // Výběr souboru
+    input.addEventListener('change', function() {
+      var f = this.files[0];
+      this.value = '';
+      if (f) upload(f);
+    });
+
+    // Drag & drop
+    zone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      zone.style.borderColor = '#667eea';
+      zone.style.background  = 'rgba(102,126,234,0.07)';
+    });
+    zone.addEventListener('dragleave', function(e) {
+      if (zone.contains(e.relatedTarget)) return;
+      zone.style.borderColor = 'rgba(255,255,255,0.15)';
+      zone.style.background  = '';
+    });
+    zone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      zone.style.borderColor = 'rgba(255,255,255,0.15)';
+      zone.style.background  = '';
+      var f = e.dataTransfer.files[0];
+      if (f) upload(f);
+    });
+  }
+
+  function activeEmail() {
+    try {
+      var a = getConnectedAccounts().find(function(x) { return x.active; });
+      if (a && a.email) return a.email;
+    } catch(e) {}
+    return localStorage.getItem('primaryEmail') || '';
+  }
+
+  function showBadge() {
+    var el = document.getElementById('ds-active-account');
+    if (!el) return;
+    var e = activeEmail();
+    if (e) { el.textContent = e; el.style.display = 'block'; }
+    else   { el.style.display = 'none'; }
+  }
+
+  function loadFiles() {
+    var ue = localStorage.getItem('userEmail') || '';
+    var ce = activeEmail();
+    var list = document.getElementById('ds-files-list');
+    if (!list) return;
+
+    if (!ce) {
+      list.innerHTML = '<div style="padding:1.5rem;text-align:center;color:#ef4444;font-size:0.85rem;">Žádný aktivní účet. Nastavte ho v Nastavení.</div>';
+      return;
+    }
+    list.innerHTML = '<div style="padding:1.5rem;text-align:center;color:#475569;font-size:0.85rem;">Načítám…</div>';
+
+    fetch(B + '/api/datasheets?dashboardUserEmail=' + encodeURIComponent(ue) + '&connectedEmail=' + encodeURIComponent(ce))
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.success || !d.datasheets || !d.datasheets.length) {
+          list.innerHTML = '<div style="padding:1.5rem;text-align:center;color:#475569;font-size:0.85rem;">Žádné soubory. Nahrajte první datasheet výše.</div>';
+          return;
+        }
+        var cx = {pdf:'#ef4444',docx:'#3b82f6',xlsx:'#22c55e',txt:'#94a3b8',csv:'#f59e0b'};
+        list.innerHTML = d.datasheets.map(function(ds, i) {
+          var ext = (ds.filename || '').split('.').pop().toLowerCase();
+          var c   = cx[ext] || '#94a3b8';
+          var sz  = ds.char_count < 1000 ? ds.char_count + ' zn.' : Math.round(ds.char_count / 1000) + 'k zn.';
+          var dt  = ''; try { dt = new Date(ds.created_at).toLocaleDateString('cs-CZ'); } catch(e) {}
+          var br  = i < d.datasheets.length - 1 ? 'border-bottom:1px solid rgba(255,255,255,0.07);' : '';
+          return '<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;' + br + '">'
+            + '<div style="width:30px;height:36px;border-radius:5px;background:' + c + '22;border:1px solid ' + c + '44;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span style="font-size:8px;font-weight:700;color:' + c + ';">' + ext.toUpperCase() + '</span></div>'
+            + '<div style="flex:1;min-width:0;"><div style="font-size:0.85rem;color:#e2e8f0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + ds.filename + '</div>'
+            + '<div style="font-size:0.75rem;color:#64748b;margin-top:2px;">' + sz + ' · ' + (ds.chunk_count || 0) + ' chunků · ' + dt + '</div></div>'
+            + '<span style="font-size:11px;padding:2px 9px;border-radius:20px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:#4ade80;white-space:nowrap;flex-shrink:0;">Aktivní</span>'
+            + '<button data-dsid="' + ds.id + '" class="ds-del-btn" style="width:26px;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:transparent;cursor:pointer;color:#64748b;display:flex;align-items:center;justify-content:center;flex-shrink:0;" onmouseover="this.style.color='#ef4444';" onmouseout="this.style.color='#64748b';"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>'
+            + '</div>';
+        }).join('');
+
+        // Přidej listenery na delete tlačítka
+        list.querySelectorAll('.ds-del-btn').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            deleteFile(parseInt(this.getAttribute('data-dsid')));
+          });
+        });
+      })
+      .catch(function() {
+        list.innerHTML = '<div style="padding:1.5rem;text-align:center;color:#ef4444;">Chyba při načítání.</div>';
+      });
+  }
+
+  function deleteFile(id) {
+    if (!confirm('Smazat tento datasheet?')) return;
+    var ue = localStorage.getItem('userEmail') || '';
+    fetch(B + '/api/datasheets/' + id + '?dashboardUserEmail=' + encodeURIComponent(ue), { method: 'DELETE' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.success) { showToast('Datasheet smazán.', 'success'); loadFiles(); }
+        else showToast(d.message || 'Chyba.', 'error');
+      })
+      .catch(function() { showToast('Chyba připojení.', 'error'); });
+  }
+
+  function upload(file) {
+    var ue = localStorage.getItem('userEmail') || '';
+    var ce = activeEmail();
+    if (!ue)   { showToast('Nejsi přihlášen.', 'error'); return; }
+    if (!ce)   { showToast('Žádný aktivní emailový účet. Nastavte ho v Nastavení.', 'error'); return; }
+    if (file.size > 25 * 1024 * 1024) { showToast('Soubor je příliš velký (max 25 MB).', 'error'); return; }
+
+    var prog  = document.getElementById('ds-upload-progress');
+    var bar   = document.getElementById('ds-upload-bar');
+    var pct   = document.getElementById('ds-upload-pct');
+    var fname = document.getElementById('ds-upload-filename');
+
+    if (prog)  { prog.style.display = 'block'; fname.textContent = file.name; bar.style.width = '0%'; pct.textContent = '0 %'; }
+
+    var p = 0;
+    var iv = setInterval(function() {
+      p = Math.min(p + Math.random() * 8 + 1, 88);
+      if (bar) { bar.style.width = p + '%'; pct.textContent = Math.round(p) + ' %'; }
+    }, 400);
+
+    var fd = new FormData();
+    fd.append('file', file);
+    fd.append('dashboardUserEmail', ue);
+    fd.append('connectedEmail', ce);
+
+    fetch(B + '/api/datasheets/upload', { method: 'POST', body: fd })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        clearInterval(iv);
+        if (bar) { bar.style.width = '100%'; pct.textContent = '100 %'; }
+        setTimeout(function() { if (prog) prog.style.display = 'none'; }, 1500);
+        if (d.success) {
+          showToast('Nahráno: ' + file.name + ' (' + d.chunkCount + ' chunků)', 'success');
+          loadFiles();
+        } else {
+          showToast(d.message || 'Nahrávání selhalo.', 'error');
+        }
+      })
+      .catch(function() {
+        clearInterval(iv);
+        if (prog) prog.style.display = 'none';
+        showToast('Chyba při nahrávání.', 'error');
+      });
+  }
+
+  // Nav klik — inicializuj + načti
+  document.addEventListener('click', function(e) {
+    if (e.target.closest && e.target.closest('.nav-link[data-page="datasheety"]')) {
+      init();
+      setTimeout(function() { showBadge(); loadFiles(); }, 60);
+    }
+  });
+
+  // Pokud je stránka při načtení aktivní
+  document.addEventListener('DOMContentLoaded', function() {
+    var page = document.getElementById('datasheety');
+    if (page && page.classList.contains('active')) {
+      init(); showBadge(); loadFiles();
+    }
+  });
+
+})();
+</script>
 </body>
 
 </html>
