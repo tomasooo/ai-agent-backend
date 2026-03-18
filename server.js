@@ -37,6 +37,23 @@ const ORIGINS = [
 
 
 app.use(express.json({ limit: '5mb' }));
+
+// DEBUG - obsah chunků
+app.get('/api/chunks', async (req, res) => {
+  const { due, ce } = req.query;
+  if (!due) return res.json({error:'chybi due'});
+  try {
+    const r = await pool.query(
+      `SELECT id, chunk_index, char_length(content) as len, left(content,300) as preview,
+              (embedding IS NOT NULL) as has_emb
+         FROM datasheet_chunks WHERE dashboard_user_email=$1 AND ($2::text IS NULL OR connected_email=$2)
+         ORDER BY id`,
+      [due, ce||null]
+    );
+    res.json({count: r.rows.length, rows: r.rows});
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 const PORT = process.env.PORT || 3000;
