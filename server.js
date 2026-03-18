@@ -7471,6 +7471,49 @@ app.use((req, res, next) => {
 })();
 
 // Spuštění serveru
+
+// ── DOČASNÝ DEBUG ENDPOINT – RAG test ──────────────────────────────────────
+app.get('/api/debug/rag', async (req, res) => {
+  const { dashboardUserEmail, connectedEmail, query } = req.query;
+  if (!dashboardUserEmail) return res.json({ error: 'chybí dashboardUserEmail' });
+  try {
+    const client = await pool.connect();
+
+    // 1. Obsah chunků
+    const chunks = await client.query(
+      `SELECT id, chunk_index, content, (embedding IS NOT NULL) AS has_embedding
+         FROM datasheet_chunks
+        WHERE dashboard_user_email = $1
+          AND ($2::text IS NULL OR connected_email = $2)
+        ORDER BY id`,
+      [dashboardUserEmail, connectedEmail || null]
+    );
+
+    // 2. RAG retrieval pokud je query
+    let ragResult = null;
+    if (query && chunks.rows.length > 0) {
+      try {
+        const { retrieveRelevantChunks } = await import('./datasheets.js');
+        const found = await retrieveRelevantChunks({ pool, openai, dashboardUserEmail, connectedEmail, query });
+        ragResult = found;
+      } catch(e) {
+        ragResult = { error: e.message };
+      }
+    }
+
+    client.release();
+    res.json({
+      chunk_count: chunks.rows.length,
+      chunks: chunks.rows.map(r => ({ id: r.id, idx: r.chunk_index, has_embedding: r.has_embedding, content: r.content.substring(0, 200) })),
+      rag_query: query || null,
+      rag_result: ragResult,
+    });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+// ── KONEC DEBUG ENDPOINTU ────────────────────────────────────────────────────
+
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
