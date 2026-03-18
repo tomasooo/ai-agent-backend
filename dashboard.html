@@ -10723,11 +10723,16 @@ S pozdravem
     zone._dsReady = true;
 
     zone.addEventListener('click', function (e) {
+      e.stopPropagation();
       if (e.target === input) return;
       if (zone._opening) return;
       zone._opening = true;
       input.click();
-      setTimeout(function () { zone._opening = false; }, 500);
+      // Reset až po focusu zpět na window (user zavřel dialog)
+      window.addEventListener('focus', function onFocus() {
+        window.removeEventListener('focus', onFocus);
+        setTimeout(function () { zone._opening = false; }, 300);
+      });
     });
     input.addEventListener('change', function () {
       var f = this.files[0];
