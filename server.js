@@ -38,9 +38,9 @@ const ORIGINS = [
 
 app.use(express.json({ limit: '5mb' }));
 
-// DEBUG - obsah chunků
+// DEBUG - obsah chunků + RAG test
 app.get('/api/chunks', async (req, res) => {
-  const { due, ce } = req.query;
+  const { due, ce, q } = req.query;
   if (!due) return res.json({error:'chybi due'});
   try {
     const r = await pool.query(
@@ -50,7 +50,35 @@ app.get('/api/chunks', async (req, res) => {
          ORDER BY id`,
       [due, ce||null]
     );
-    res.json({count: r.rows.length, rows: r.rows});
+
+    let ragTest = null;
+    if (q && r.rows.length > 0) {
+      try {
+        // Embedding dotazu
+        const qEmb = await openai.embeddings.create({ model: 'text-embedding-3-small', input: q.slice(0,2000) });
+        const qVec = qEmb.data[0].embedding;
+
+        // Similarity search
+        const simRes = await pool.query(
+          `SELECT id, left(content,200) as content,
+                  1 - (embedding <=> $1::vector) AS similarity
+             FROM datasheet_chunks
+            WHERE dashboard_user_email=$2 AND ($3::text IS NULL OR connected_email=$3)
+            ORDER BY embedding <=> $1::vector LIMIT 5`,
+          [JSON.stringify(qVec), due, ce||null]
+        );
+        ragTest = {
+          query: q,
+          results: simRes.rows,
+          threshold_03: simRes.rows.filter(x => x.similarity >= 0.3).length,
+          threshold_01: simRes.rows.filter(x => x.similarity >= 0.1).length,
+        };
+      } catch(e2) {
+        ragTest = { error: e2.message };
+      }
+    }
+
+    res.json({count: r.rows.length, rows: r.rows, rag_test: ragTest});
   } catch(e) { res.status(500).json({error: e.message}); }
 });
 
