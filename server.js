@@ -7560,6 +7560,44 @@ app.get('/api/debug/rag', async (req, res) => {
 });
 // ── KONEC DEBUG ──────────────────────────────────────────────────────────────
 
+
+// SIMULACE WORKERU - co přesně jde do AI promptu
+app.get('/api/simulate-email', async (req, res) => {
+  const { due, ce, subject, body } = req.query;
+  if (!due || !ce) return res.json({error:'chybi due nebo ce'});
+  try {
+    // 1. FAQ
+    const faqRows = (await pool.query(
+      'SELECT question, answer FROM faqs WHERE dashboard_user_email=$1 AND connected_email=$2',
+      [due, ce]
+    )).rows;
+    let faqContext = '';
+    if (faqRows.length) {
+      faqContext = 'FAQ:\n' + faqRows.map(r => r.question + ': ' + r.answer).join('\n') + '\n\n';
+    }
+
+    // 2. RAG
+    let datasheetsContext = '';
+    let ragChunks = [];
+    try {
+      const emailPreview = ((subject||'') + '\n' + (body||'')).slice(0, 2000);
+      ragChunks = await retrieveRelevantChunks({ pool, openai, dashboardUserEmail: due, connectedEmail: ce, query: emailPreview });
+      datasheetsContext = buildDatasheetsContext(ragChunks);
+    } catch(e) { datasheetsContext = 'RAG ERROR: ' + e.message; }
+
+    // 3. Ukáž co by šlo do promptu
+    const promptUser = datasheetsContext + faqContext + 'EMAIL: ' + (body||'');
+
+    res.json({
+      faq_count: faqRows.length,
+      rag_chunks: ragChunks.length,
+      datasheetsContext_length: datasheetsContext.length,
+      datasheetsContext_preview: datasheetsContext.substring(0, 300),
+      prompt_preview: promptUser.substring(0, 500),
+    });
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
 });
