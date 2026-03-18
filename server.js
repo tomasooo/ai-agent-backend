@@ -52,13 +52,12 @@ app.get('/api/chunks', async (req, res) => {
     );
 
     let ragTest = null;
-    if (q && r.rows.length > 0) {
+    const hasRetrieve = typeof retrieveRelevantChunks === 'function';
+    ragTest = { hasRetrieveFunc: hasRetrieve };
+    if (q) {
       try {
-        // Embedding dotazu
         const qEmb = await openai.embeddings.create({ model: 'text-embedding-3-small', input: q.slice(0,2000) });
         const qVec = qEmb.data[0].embedding;
-
-        // Similarity search
         const simRes = await pool.query(
           `SELECT id, left(content,200) as content,
                   1 - (embedding <=> $1::vector) AS similarity
@@ -67,14 +66,16 @@ app.get('/api/chunks', async (req, res) => {
             ORDER BY embedding <=> $1::vector LIMIT 5`,
           [JSON.stringify(qVec), due, ce||null]
         );
-        ragTest = {
-          query: q,
-          results: simRes.rows,
-          threshold_03: simRes.rows.filter(x => x.similarity >= 0.3).length,
-          threshold_01: simRes.rows.filter(x => x.similarity >= 0.1).length,
-        };
+        ragTest.query = q;
+        ragTest.results = simRes.rows;
+        ragTest.threshold_03 = simRes.rows.filter(x => x.similarity >= 0.3).length;
+        if (hasRetrieve) {
+          const chunks = await retrieveRelevantChunks({ pool, openai, dashboardUserEmail: due, connectedEmail: ce||null, query: q });
+          ragTest.rag_chunks_returned = chunks.length;
+          ragTest.rag_preview = chunks.map(c => c.substring(0,100));
+        }
       } catch(e2) {
-        ragTest = { error: e2.message };
+        ragTest.error = e2.message;
       }
     }
 
