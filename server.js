@@ -6012,8 +6012,8 @@ Pravidla pro tvorbu "suggested_reply":
   - Podpis neduplikuj, pokud už v textu je.
 `;
 
-        const buildTask = (bodyText) => `${datasheetsContext}${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
-{
+        const buildTask = (bodyText, dsCtx) => `${dsCtx || ''}${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
   "category": "Objednávka|Poptávka|Dotaz|Stížnost|Fakturace|Ostatní",
@@ -6180,6 +6180,7 @@ ${String(bodyText).slice(0, 3000)}
               console.warn('[RAG] IMAP chyba:', ragErr.message);
             }
 
+{
               // --- LATE SPAM CHECK (Body) ---
               const subjectBodyLower = `${subject} ${bodyText}`.toLowerCase();
               const promoTokens = ['benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'sleva', 'newsletter', 'reklama', 'akce', 'google play developer program', 'seo audit', 'ranking on google', 'mobile app development services', 'app development', 'everbot'];
@@ -6276,7 +6277,7 @@ ${String(bodyText).slice(0, 3000)}
               rawAnalysis = await chatJson({
                 model: EMAIL_MODEL,
                 system: systemInstruction,
-                user: buildTask(bodyText),
+                user: buildTask(bodyText, datasheetsContext),
                 client: dbClient,
                 dashboardUserEmail: acc.dashboard_user_email
               });
@@ -6813,7 +6814,7 @@ ${String(bodyText).slice(0, 3000)}
       raw = await chatJson({
         model: EMAIL_MODEL,
         system: systemInstruction,
-        user: buildTask(bodyText),
+        user: buildTask(bodyText, datasheetsContext),
         client: dbClient,
         dashboardUserEmail: acc.dashboard_user_email
       });
