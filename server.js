@@ -37,49 +37,6 @@ const ORIGINS = [
 
 
 app.use(express.json({ limit: '5mb' }));
-
-// DEBUG - obsah chunků + RAG test
-app.get('/api/chunks', async (req, res) => {
-  const { due, ce, q } = req.query;
-  if (!due) return res.json({error:'chybi due'});
-  try {
-    const r = await pool.query(
-      `SELECT id, chunk_index, char_length(content) as len, left(content,300) as preview,
-              (embedding IS NOT NULL) as has_emb
-         FROM datasheet_chunks WHERE dashboard_user_email=$1 AND ($2::text IS NULL OR connected_email=$2)
-         ORDER BY id`,
-      [due, ce||null]
-    );
-
-    let ragTest = null;
-    const hasRetrieve = typeof retrieveRelevantChunks === 'function';
-    ragTest = { hasRetrieveFunc: hasRetrieve };
-    if (q) {
-      try {
-        const qEmb = await openai.embeddings.create({ model: 'text-embedding-3-small', input: q.slice(0,2000) });
-        const qVec = qEmb.data[0].embedding;
-        const simRes = await pool.query(
-          `SELECT id, left(content,200) as content,
-                  1 - (embedding <=> $1::vector) AS similarity
-             FROM datasheet_chunks
-            WHERE dashboard_user_email=$2 AND ($3::text IS NULL OR connected_email=$3)
-            ORDER BY embedding <=> $1::vector LIMIT 5`,
-          [JSON.stringify(qVec), due, ce||null]
-        );
-        ragTest.query = q;
-        ragTest.results = simRes.rows;
-        ragTest.threshold_03 = simRes.rows.filter(x => x.similarity >= 0.3).length;
-        if (hasRetrieve) {
-          const chunks = await retrieveRelevantChunks({ pool, openai, dashboardUserEmail: due, connectedEmail: ce||null, query: q });
-          ragTest.rag_chunks_returned = chunks.length;
-          ragTest.rag_preview = chunks.map(c => c.substring(0,100));
-        }
-      } catch(e2) {
-        ragTest.error = e2.message;
-      }
-    }
-
-    res.json({count: r.rows.length, rows: r.rows, rag_test: ragTest});
   } catch(e) { res.status(500).json({error: e.message}); }
 });
 
@@ -7517,86 +7474,8 @@ app.use((req, res, next) => {
 })();
 
 // Spuštění serveru
-
-// ── DEBUG ENDPOINT – RAG test ──────────────────────────────────────────────
-app.get('/api/debug/rag', async (req, res) => {
-  const { dashboardUserEmail, connectedEmail, query } = req.query;
-  if (!dashboardUserEmail) return res.json({ error: 'chybí dashboardUserEmail' });
-  try {
-    const client = await pool.connect();
-    const chunks = await client.query(
-      `SELECT id, chunk_index, content, (embedding IS NOT NULL) AS has_embedding,
-              octet_length(embedding::text) AS emb_bytes
-         FROM datasheet_chunks
-        WHERE dashboard_user_email = $1
-          AND ($2::text IS NULL OR connected_email = $2)
-        ORDER BY id`,
-      [dashboardUserEmail, connectedEmail || null]
-    );
-    let ragResult = null;
-    if (query) {
-      try {
-        const found = await retrieveRelevantChunks({ pool, openai, dashboardUserEmail, connectedEmail, query });
-        ragResult = found;
-      } catch(e) {
-        ragResult = { error: e.message };
-      }
-    }
-    client.release();
-    res.json({
-      chunk_count: chunks.rows.length,
-      chunks: chunks.rows.map(r => ({
-        id: r.id, idx: r.chunk_index,
-        has_embedding: r.has_embedding,
-        emb_bytes: r.emb_bytes,
-        content: r.content.substring(0, 300)
-      })),
-      rag_query: query || null,
-      rag_result: ragResult,
-    });
-  } catch(e) {
-    res.status(500).json({ error: e.message, stack: e.stack?.substring(0, 500) });
-  }
-});
 // ── KONEC DEBUG ──────────────────────────────────────────────────────────────
 
-
-// SIMULACE WORKERU - co přesně jde do AI promptu
-app.get('/api/simulate-email', async (req, res) => {
-  const { due, ce, subject, body } = req.query;
-  if (!due || !ce) return res.json({error:'chybi due nebo ce'});
-  try {
-    // 1. FAQ
-    const faqRows = (await pool.query(
-      'SELECT question, answer FROM faqs WHERE dashboard_user_email=$1 AND connected_email=$2',
-      [due, ce]
-    )).rows;
-    let faqContext = '';
-    if (faqRows.length) {
-      faqContext = 'FAQ:\n' + faqRows.map(r => r.question + ': ' + r.answer).join('\n') + '\n\n';
-    }
-
-    // 2. RAG
-    let datasheetsContext = '';
-    let ragChunks = [];
-    try {
-      const emailPreview = ((subject||'') + '\n' + (body||'')).slice(0, 2000);
-      ragChunks = await retrieveRelevantChunks({ pool, openai, dashboardUserEmail: due, connectedEmail: ce, query: emailPreview });
-      datasheetsContext = buildDatasheetsContext(ragChunks);
-    } catch(e) { datasheetsContext = 'RAG ERROR: ' + e.message; }
-
-    // 3. Ukáž co by šlo do promptu
-    const promptUser = datasheetsContext + faqContext + 'EMAIL: ' + (body||'');
-
-    res.json({
-      faq_count: faqRows.length,
-      rag_chunks: ragChunks.length,
-      datasheetsContext_length: datasheetsContext.length,
-      datasheetsContext_preview: datasheetsContext.substring(0, 300),
-      prompt_preview: promptUser.substring(0, 500),
-    });
-  } catch(e) { res.status(500).json({error: e.message}); }
-});
 
 app.listen(PORT, () => {
   console.log(`🚀 Server běží na ${SERVER_URL} (PORT=${PORT})`);
