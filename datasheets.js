@@ -162,10 +162,14 @@ export async function retrieveRelevantChunks({ pool, openai, dashboardUserEmail,
     [JSON.stringify(queryVector), dashboardUserEmail, connectedEmail, TOP_K]
   );
 
-  // Vrať jen chunky s dostatečnou podobností (práh 0.3)
-  return res.rows
-    .filter(r => r.similarity >= 0.3)
-    .map(r => r.content);
+  // Vrať chunky nad prahem - pokud žádný neprojde, vrať stejně top výsledky
+  // (fallback zajistí že datasheet se použije vždy když existuje)
+  const filtered = res.rows.filter(r => r.similarity >= 0.1);
+  if (filtered.length > 0) {
+    return filtered.map(r => r.content);
+  }
+  // Fallback: žádný chunk nepřekročil práh - vrať top výsledky bez filtru
+  return res.rows.map(r => r.content);
 }
 
 // ─── Sestavení kontextu pro prompt ───────────────────────────────────────────
