@@ -37,8 +37,6 @@ const ORIGINS = [
 
 
 app.use(express.json({ limit: '5mb' }));
-  } catch(e) { res.status(500).json({error: e.message}); }
-});
 
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
