@@ -5981,25 +5981,8 @@ async function runImapWorker() {
           faqContext += faqRows.map(row => `Ot\u00e1zka: ${row.question}\nOdpov\u011b\u010f: ${row.answer}`).join('\n\n');
           faqContext += '\n---\n\n';
         }
-
-        // RAG: Na\u010dti relevantn\u00ed chunky z datasheet pro tento email
         let datasheetsContext = '';
-        try {
-          const emailPreview = `${subject || ''}\n${bodyText || ''}`.slice(0, 2000);
-          const ragChunks = await retrieveRelevantChunks({
-            pool,
-            openai,
-            dashboardUserEmail: acc.dashboard_user_email,
-            connectedEmail: acc.email_address,
-            query: emailPreview,
-          });
-          datasheetsContext = buildDatasheetsContext(ragChunks);
-          if (ragChunks.length > 0) {
-            console.log(`[RAG] IMAP: nalezeno ${ragChunks.length} chunk\u016f pro UID ${msg.uid}`);
-          }
-        } catch (ragErr) {
-          console.warn('[RAG] IMAP chyba p\u0159i hled\u00e1n\u00ed v datasheetch:', ragErr.message);
-        }
+
 
         const styleProfile = {
           tone: acc.tone || 'Formální',
@@ -6177,6 +6160,25 @@ ${String(bodyText).slice(0, 3000)}
 
               const parsed = await simpleParser(source);
               const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
+
+            // RAG: Načti relevantní chunky z datasheetu
+            let datasheetsContext = '';
+            try {
+              const emailPreview = `${subject || ''}\n${bodyText || ''}`.slice(0, 2000);
+              const ragChunks = await retrieveRelevantChunks({
+                pool,
+                openai,
+                dashboardUserEmail: acc.dashboard_user_email,
+                connectedEmail: acc.email_address,
+                query: emailPreview,
+              });
+              datasheetsContext = buildDatasheetsContext(ragChunks);
+              if (ragChunks.length > 0) {
+                console.log(`[RAG] IMAP: nalezeno ${ragChunks.length} chunků pro UID ${msg.uid}`);
+              }
+            } catch (ragErr) {
+              console.warn('[RAG] IMAP chyba:', ragErr.message);
+            }
 
               // --- LATE SPAM CHECK (Body) ---
               const subjectBodyLower = `${subject} ${bodyText}`.toLowerCase();
