@@ -5981,9 +5981,6 @@ async function runImapWorker() {
           faqContext += faqRows.map(row => `Ot\u00e1zka: ${row.question}\nOdpov\u011b\u010f: ${row.answer}`).join('\n\n');
           faqContext += '\n---\n\n';
         }
-        let datasheetsContext = '';
-
-
         const styleProfile = {
           tone: acc.tone || 'Formální',
           length: acc.length || 'Střední (1 odstavec)',
@@ -6161,26 +6158,6 @@ ${String(bodyText).slice(0, 3000)}
               const parsed = await simpleParser(source);
               const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
 
-            // RAG: Načti relevantní chunky z datasheetu
-            let datasheetsContext = '';
-            try {
-              const emailPreview = `${subject || ''}\n${bodyText || ''}`.slice(0, 2000);
-              const ragChunks = await retrieveRelevantChunks({
-                pool,
-                openai,
-                dashboardUserEmail: acc.dashboard_user_email,
-                connectedEmail: acc.email_address,
-                query: emailPreview,
-              });
-              datasheetsContext = buildDatasheetsContext(ragChunks);
-              if (ragChunks.length > 0) {
-                console.log(`[RAG] IMAP: nalezeno ${ragChunks.length} chunků pro UID ${msg.uid}`);
-              }
-            } catch (ragErr) {
-              console.warn('[RAG] IMAP chyba:', ragErr.message);
-            }
-
-{
               // --- LATE SPAM CHECK (Body) ---
               const subjectBodyLower = `${subject} ${bodyText}`.toLowerCase();
               const promoTokens = ['benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'sleva', 'newsletter', 'reklama', 'akce', 'google play developer program', 'seo audit', 'ranking on google', 'mobile app development services', 'app development', 'everbot'];
@@ -6272,7 +6249,16 @@ ${String(bodyText).slice(0, 3000)}
 
             console.log(`[IMAP Worker] UID: ${msg.uid} - Proceeding to AI analysis...`);
 
-            let rawAnalysis;
+            // RAG: Načti relevantní chunky pro tento email
+            let datasheetsContext = '';
+            try {
+              const _ragPreview = `${subject || ''}\n${bodyText || ''}`.slice(0, 2000);
+              const _ragChunks = await retrieveRelevantChunks({ pool, openai, dashboardUserEmail: acc.dashboard_user_email, connectedEmail: acc.email_address, query: _ragPreview });
+              datasheetsContext = buildDatasheetsContext(_ragChunks);
+              if (_ragChunks.length > 0) console.log(`[RAG] IMAP: nalezeno ${_ragChunks.length} chunků pro UID ${msg.uid}`);
+            } catch (_ragErr) { console.warn('[RAG] IMAP chyba:', _ragErr.message); }
+
+                        let rawAnalysis;
             try {
               rawAnalysis = await chatJson({
                 model: EMAIL_MODEL,
