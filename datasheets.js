@@ -176,7 +176,12 @@ export async function retrieveRelevantChunks({ pool, openai, dashboardUserEmail,
 export function buildDatasheetsContext(chunks) {
   if (!chunks || chunks.length === 0) return '';
   return (
-    'ZNALOSTNÍ DATABÁZE (čerpej z ní při tvorbě odpovědi, pokud je relevantní):\n---\n' +
+    'FIREMNÍ ZNALOSTNÍ DATABÁZE (ZÁVAZNÝ ZDROJ INFORMACÍ):\n' +
+    'Následující informace pocházejí z oficiálních firemních dokumentů. ' +
+    'MUSÍŠ je použít při odpovědi na dotazy zákazníků. ' +
+    'Pokud zákazník ptá na cenu, produkt, záruku nebo jiný údaj který je zde uveden, ' +
+    'VŽDY odpověz na základě těchto dat — nikdy neříkej že informace nemáš.\n' +
+    '---\n' +
     chunks.join('\n\n---\n') +
     '\n---\n\n'
   );
