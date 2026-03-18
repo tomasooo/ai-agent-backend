@@ -10723,7 +10723,11 @@ S pozdravem
     zone._dsReady = true;
 
     zone.addEventListener('click', function (e) {
-      if (e.target !== input) input.click();
+      if (e.target === input) return;
+      if (zone._opening) return;
+      zone._opening = true;
+      input.click();
+      setTimeout(function () { zone._opening = false; }, 500);
     });
     input.addEventListener('change', function () {
       var f = this.files[0];
