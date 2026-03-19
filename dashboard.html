@@ -4895,8 +4895,28 @@
             </div>
             <p style="margin:0 0 0.2rem;font-weight:500;color:#e2e8f0;font-size:0.95rem;">Přetáhněte soubor nebo klikněte pro nahrání</p>
             <p style="margin:0;color:#64748b;font-size:0.82rem;">Max. 25 MB · PDF, DOCX, XLSX, TXT</p>
-            <input type="file" id="ds-file-input" accept=".pdf,.docx,.xlsx,.txt,.csv" style="display:none;" >
           </label>
+          <input type="file" id="ds-file-input" accept=".pdf,.docx,.xlsx,.txt,.csv" style="display:none;">
+
+          <!-- URL crawl sekce -->
+          <div style="margin-bottom:1.2rem;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.6rem;">
+              <div style="flex:1;height:1px;background:rgba(255,255,255,0.08);"></div>
+              <span style="font-size:0.75rem;color:#475569;white-space:nowrap;">nebo importuj z webu</span>
+              <div style="flex:1;height:1px;background:rgba(255,255,255,0.08);"></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input type="text" id="ds-url-input" placeholder="https://www.senzoor.cz" style="flex:1;min-width:200px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:10px 14px;color:#e2e8f0;font-size:0.85rem;outline:none;" />
+              <button id="ds-url-btn" style="background:rgba(102,126,234,0.2);border:1px solid rgba(102,126,234,0.4);border-radius:10px;padding:10px 16px;color:#a5b4fc;font-size:0.85rem;cursor:pointer;white-space:nowrap;transition:all 0.2s;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:5px;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                Importovat web
+              </button>
+            </div>
+            <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="ds-crawl-subpages" style="accent-color:#667eea;cursor:pointer;">
+              <label for="ds-crawl-subpages" style="font-size:0.78rem;color:#64748b;cursor:pointer;">Stáhnout i podstránky (max 5) — pro kompletní znalost webu</label>
+            </div>
+          </div>
 
           <div id="ds-upload-progress" style="display:none;margin-bottom:1.2rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:0.9rem 1.1rem;">
             <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.4rem;">
@@ -10723,16 +10743,7 @@ S pozdravem
     zone._dsReady = true;
 
     zone.addEventListener('click', function (e) {
-      e.stopPropagation();
-      if (e.target === input) return;
-      if (zone._opening) return;
-      zone._opening = true;
       input.click();
-      // Reset až po focusu zpět na window (user zavřel dialog)
-      window.addEventListener('focus', function onFocus() {
-        window.removeEventListener('focus', onFocus);
-        setTimeout(function () { zone._opening = false; }, 300);
-      });
     });
     input.addEventListener('change', function () {
       var f = this.files[0];
@@ -10758,15 +10769,86 @@ S pozdravem
     });
   }
 
+  // URL crawl
+  function initUrlBtn() {
+    var btn = document.getElementById('ds-url-btn');
+    var input = document.getElementById('ds-url-input');
+    if (!btn || !input || btn._ready) return;
+    btn._ready = true;
+
+    btn.addEventListener('click', function () {
+      var url = input.value.trim();
+      if (!url) { showToast('Zadejte URL adresu.', 'error'); return; }
+      if (!url.startsWith('http')) url = 'https://' + url;
+
+      var ue = localStorage.getItem('userEmail') || '';
+      var ce = activeEmail();
+      if (!ue) { showToast('Nejsi přihlášen.', 'error'); return; }
+      if (!ce) { showToast('Žádný aktivní emailový účet.', 'error'); return; }
+
+      var crawlSub = document.getElementById('ds-crawl-subpages');
+      var subpages = crawlSub ? crawlSub.checked : false;
+
+      var prog = document.getElementById('ds-upload-progress');
+      var bar = document.getElementById('ds-upload-bar');
+      var pct = document.getElementById('ds-upload-pct');
+      var fname = document.getElementById('ds-upload-filename');
+      if (prog) { prog.style.display = 'block'; fname.textContent = url; bar.style.width = '5%'; pct.textContent = '...'; }
+      btn.disabled = true;
+      btn.textContent = 'Stahuji...';
+
+      // Animovaný progress během crawlingu
+      var p = 5;
+      var iv = setInterval(function () {
+        p = Math.min(p + Math.random() * 5 + 1, 85);
+        if (bar) bar.style.width = p + '%';
+      }, 800);
+
+      fetch(B + '/api/datasheets/crawl-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dashboardUserEmail: ue, connectedEmail: ce, url: url, crawlSubpages: subpages })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          clearInterval(iv);
+          if (bar) { bar.style.width = '100%'; pct.textContent = '100 %'; }
+          setTimeout(function () { if (prog) prog.style.display = 'none'; }, 1500);
+          btn.disabled = false;
+          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:5px;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Importovat web';
+          if (d.success) {
+            input.value = '';
+            showToast('Web importován: ' + d.pagesCount + ' stránek, ' + d.chunkCount + ' chunků', 'success');
+            loadFiles();
+          } else {
+            showToast(d.message || 'Chyba při importu.', 'error');
+          }
+        })
+        .catch(function () {
+          clearInterval(iv);
+          if (prog) prog.style.display = 'none';
+          btn.disabled = false;
+          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:5px;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Importovat web';
+          showToast('Chyba připojení.', 'error');
+        });
+    });
+
+    // Enter v URL inputu
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') btn.click();
+    });
+  }
+
   // Nav klik
   document.addEventListener('click', function (e) {
     var link = e.target.closest && e.target.closest('.nav-link[data-page="datasheety"]');
     if (!link) return;
-    setTimeout(function () { init(); showBadge(); loadFiles(); }, 80);
+    setTimeout(function () { init(); initUrlBtn(); showBadge(); loadFiles(); }, 80);
   });
 
   // Spustit okamzite (script je za </body> - DOM je kompletni)
   init();
+  initUrlBtn();
 
 })();
 </script>
