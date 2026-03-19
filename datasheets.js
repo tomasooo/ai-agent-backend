@@ -243,6 +243,139 @@ export function registerDatasheetsRoutes(app, pool, openai) {
     }
   });
 
+  // POST /api/datasheets/crawl-url
+  app.post('/api/datasheets/crawl-url', async (req, res) => {
+    const { dashboardUserEmail, connectedEmail, url, crawlSubpages } = req.body || {};
+    if (!dashboardUserEmail || !connectedEmail || !url) {
+      return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail, connectedEmail nebo url.' });
+    }
+
+    // Ověř URL formát
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(url.startsWith('http') ? url : 'https://' + url);
+    } catch {
+      return res.status(400).json({ success: false, message: 'Neplatná URL adresa.' });
+    }
+
+    try {
+      console.log(`[RAG] Crawling URL: ${parsedUrl.href}`);
+      const crawledTexts = [];
+
+      // Pomocná funkce pro stažení a extrakci textu z jedné URL
+      async function fetchPageText(pageUrl) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        try {
+          const resp = await fetch(pageUrl, {
+            signal: controller.signal,
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AI-Agent-Bot/1.0)' }
+          });
+          clearTimeout(timeout);
+          if (!resp.ok) return null;
+          const contentType = resp.headers.get('content-type') || '';
+          if (!contentType.includes('text/html') && !contentType.includes('text/plain')) return null;
+          const html = await resp.text();
+          // Odstraň HTML tagy a vyčisti text
+          const text = html
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+            .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+            .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+            .replace(/<!--[\s\S]*?-->/g, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s{3,}/g, '\n\n')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .trim();
+          return text.slice(0, 30000); // max 30k znaků na stránku
+        } catch {
+          clearTimeout(timeout);
+          return null;
+        }
+      }
+
+      // Stáhni hlavní stránku
+      const mainText = await fetchPageText(parsedUrl.href);
+      if (!mainText || mainText.length < 50) {
+        return res.status(400).json({ success: false, message: 'Nepodařilo se načíst obsah stránky nebo je prázdná.' });
+      }
+      crawledTexts.push({ url: parsedUrl.href, text: mainText });
+
+      // Pokud crawlSubpages=true, najdi a stáhni interní podstránky (max 5)
+      if (crawlSubpages) {
+        const resp = await fetch(parsedUrl.href, { headers: { 'User-Agent': 'Mozilla/5.0' } }).catch(() => null);
+        if (resp?.ok) {
+          const html = await resp.text();
+          const linkRegex = /href=["']([^"'#?]+)["']/gi;
+          const foundLinks = new Set();
+          let match;
+          while ((match = linkRegex.exec(html)) !== null && foundLinks.size < 10) {
+            const href = match[1];
+            try {
+              const abs = new URL(href, parsedUrl.href);
+              // Jen stejná doména, bez obrázků/souborů
+              if (abs.hostname === parsedUrl.hostname &&
+                  !abs.pathname.match(/\.(jpg|jpeg|png|gif|svg|pdf|zip|mp4|mp3|css|js)$/i) &&
+                  abs.href !== parsedUrl.href) {
+                foundLinks.add(abs.href);
+              }
+            } catch { /* neplatná URL, ignoruj */ }
+          }
+
+          // Stáhni max 5 podstránek
+          let count = 0;
+          for (const link of foundLinks) {
+            if (count >= 5) break;
+            const subText = await fetchPageText(link);
+            if (subText && subText.length > 100) {
+              crawledTexts.push({ url: link, text: subText });
+              count++;
+            }
+          }
+        }
+      }
+
+      // Spoj všechny texty do jednoho dokumentu
+      const combinedText = crawledTexts
+        .map(p => `=== ${p.url} ===\n${p.text}`)
+        .join('\n\n');
+
+      // Pojmenuj soubor podle domény
+      const domainName = parsedUrl.hostname.replace('www.', '');
+      const filename = `web-${domainName}${crawlSubpages ? '-full' : ''}.txt`;
+
+      // Ulož jako dočasný soubor a ingests
+      const tmpPath = `/tmp/crawl-${Date.now()}.txt`;
+      await fs.writeFile(tmpPath, combinedText, 'utf-8');
+
+      const result = await ingestDatasheet({
+        pool, openai,
+        dashboardUserEmail,
+        connectedEmail,
+        originalName: filename,
+        filePath: tmpPath,
+      });
+
+      await fs.unlink(tmpPath).catch(() => {});
+
+      console.log(`[RAG] URL crawl hotov: ${parsedUrl.href} (${crawledTexts.length} stránek, ${combinedText.length} znaků)`);
+      res.json({
+        success: true,
+        ...result,
+        pagesCount: crawledTexts.length,
+        totalChars: combinedText.length,
+      });
+    } catch (err) {
+      console.error('[RAG] Crawl error:', err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
   // DELETE /api/datasheets/:id
   app.delete('/api/datasheets/:id', async (req, res) => {
     const { dashboardUserEmail } = req.query || {};
