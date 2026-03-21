@@ -342,13 +342,14 @@
         }
 
         .preview-stat-card {
-            background: white;
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.07);
             border-radius: 20px;
             padding: 24px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            height: 160px;
+            height: 140px;
             position: relative;
         }
 
@@ -359,9 +360,9 @@
         }
 
         .stat-title {
-            color: #64748b;
-            font-size: 0.9rem;
-            font-weight: 500;
+            color: rgba(255,255,255,0.5);
+            font-size: 0.85rem;
+            font-weight: 400;
         }
 
         .stat-icon {
@@ -375,26 +376,23 @@
         }
 
         .stat-icon.blue-light {
-            background: #eff6ff;
-            color: #3b82f6;
+            background: rgba(59,130,246,0.15);
+            color: #93c5fd;
         }
 
-        /* Email */
         .stat-icon.red-light {
-            background: #fef2f2;
-            color: #ef4444;
+            background: rgba(239,68,68,0.15);
+            color: #fca5a5;
         }
 
-        /* Clock */
         .stat-icon.pink-light {
-            background: #fdf2f8;
-            color: #ec4899;
+            background: rgba(236,72,153,0.15);
+            color: #f9a8d4;
         }
 
-        /* Target */
         .stat-icon.gray-light {
-            background: #f3f4f6;
-            color: #6b7280;
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.5);
         }
 
         /* Edit */
@@ -402,7 +400,7 @@
         .stat-value {
             font-size: 2.2rem;
             font-weight: 800;
-            color: #1e293b;
+            color: #ffffff;
             margin-top: auto;
             margin-bottom: 4px;
             line-height: 1;
@@ -417,11 +415,11 @@
         }
 
         .stat-trend.positive {
-            color: #16a34a;
+            color: #4ade80;
         }
 
         .stat-trend.neutral {
-            color: #9ca3af;
+            color: rgba(255,255,255,0.35);
         }
 
         /* Content Sections */
@@ -1413,55 +1411,31 @@
                                 </div>
 
                                 <div class="preview-nav-item active">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <rect x="3" y="3" width="7" height="7"></rect>
-                                        <rect x="14" y="3" width="7" height="7"></rect>
-                                        <rect x="14" y="14" width="7" height="7"></rect>
-                                        <rect x="3" y="14" width="7" height="7"></rect>
-                                    </svg>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                                     <span>Dashboard</span>
                                 </div>
                                 <div class="preview-nav-item">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path
-                                            d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z">
-                                        </path>
-                                        <polyline points="22,6 12,13 2,6"></polyline>
-                                    </svg>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                                     <span>Emaily</span>
                                 </div>
                                 <div class="preview-nav-item">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                        stroke-linecap="round" stroke-linejoin="round">
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-                                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                                    </svg>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line></svg>
+                                    <span>Datasheety</span>
+                                </div>
+                                <div class="preview-nav-item">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
                                     <span>FAQ</span>
                                 </div>
                                 <div class="preview-nav-item">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <circle cx="12" cy="12" r="3"></circle>
-                                        <path
-                                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-                                        </path>
-                                    </svg>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                                     <span>Nastavení</span>
                                 </div>
-
                                 <div class="preview-nav-item">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <line x1="18" y1="20" x2="18" y2="10"></line>
-                                        <line x1="12" y1="20" x2="12" y2="4"></line>
-                                        <line x1="6" y1="20" x2="6" y2="14"></line>
-                                    </svg>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
                                     <span>Analytika</span>
                                 </div>
                                 <div class="preview-nav-item">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                                    </svg>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
                                     <span>Integrace</span>
                                 </div>
                             </div>
@@ -1469,22 +1443,6 @@
                             <!-- Main Content -->
                             <div class="preview-main">
                                 <div class="preview-topbar">
-                                    <div class="hamburger-menu">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                            stroke-linecap="round" stroke-linejoin="round">
-                                            <line x1="3" y1="12" x2="21" y2="12"></line>
-                                            <line x1="3" y1="6" x2="21" y2="6"></line>
-                                            <line x1="3" y1="18" x2="21" y2="18"></line>
-                                        </svg>
-                                    </div>
-                                    <div class="notification-bell">
-                                        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"
-                                            style="width:20px;height:20px;">
-                                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                                            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                                        </svg>
-                                        <div class="notification-badge">3</div>
-                                    </div>
                                     <div class="user-profile">
                                         <span>Jan Novák</span>
                                         <div class="user-avatar">JN</div>
@@ -1492,38 +1450,33 @@
                                     <button class="logout-btn">Odhlásit se</button>
                                 </div>
 
-                                <div class="preview-stats-row">
+                                <div class="preview-stats-row" style="grid-template-columns:repeat(3,1fr);">
                                     <div class="preview-stat-card">
                                         <div class="stat-header">
                                             <div class="stat-title">Zpracované emaily</div>
-                                            <div class="stat-icon blue-light">📧</div>
+                                            <div class="stat-icon blue-light">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                                            </div>
                                         </div>
-                                        <div class="stat-value">1,247</div>
-                                        <div class="stat-trend positive">↗ +15% tento týden</div>
+                                        <div class="stat-value">967</div>
                                     </div>
                                     <div class="preview-stat-card">
                                         <div class="stat-header">
                                             <div class="stat-title">Ušetřený čas</div>
-                                            <div class="stat-icon red-light">⏰</div>
+                                            <div class="stat-icon red-light">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                            </div>
                                         </div>
-                                        <div class="stat-value">24.5h</div>
-                                        <div class="stat-trend positive">↗ +8% tento měsíc</div>
+                                        <div class="stat-value">80.6h</div>
                                     </div>
                                     <div class="preview-stat-card">
                                         <div class="stat-header">
                                             <div class="stat-title">Úspěšnost AI</div>
-                                            <div class="stat-icon pink-light">🎯</div>
+                                            <div class="stat-icon pink-light">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
+                                            </div>
                                         </div>
-                                        <div class="stat-value">94.2%</div>
-                                        <div class="stat-trend positive">↗ +2.1% dnes</div>
-                                    </div>
-                                    <div class="preview-stat-card">
-                                        <div class="stat-header">
-                                            <div class="stat-title">Aktivní šablony</div>
-                                            <div class="stat-icon gray-light">📝</div>
-                                        </div>
-                                        <div class="stat-value">12</div>
-                                        <div class="stat-trend neutral">→ Beze změny</div>
+                                        <div class="stat-value">97 %</div>
                                     </div>
                                 </div>
 
@@ -1531,45 +1484,28 @@
 
                                 <div class="email-list-container">
                                     <div class="preview-email-item">
-                                        <div class="status-dot green"></div>
+                                        <span style="font-size:0.72rem;font-weight:600;padding:4px 10px;border-radius:20px;background:rgba(34,197,94,0.15);color:#4ade80;white-space:nowrap;flex-shrink:0;border:1px solid rgba(34,197,94,0.25);">Automaticky zodpovězeno</span>
                                         <div class="email-main">
-                                            <div class="email-sender">Petr Svoboda</div>
-                                            <div class="email-subject">Re: Schůzka ohledně projektu<br><span
-                                                    style="font-weight:400; color:#9ca3af; font-size:0.9em;">Děkuji za
-                                                    rychlou odpověď. Termín mi vyhovuje...</span></div>
+                                            <div class="email-sender">Jan Novák</div>
+                                            <div class="email-subject">Dotaz na dostupnost produktu</div>
                                         </div>
-                                        <div class="email-meta">
-                                            <span>15:42</span>
-                                            <span>Odpovězeno AI</span>
-                                        </div>
+                                        <div class="email-meta"><span>15:42</span></div>
                                     </div>
-
                                     <div class="preview-email-item">
-                                        <div class="status-dot orange"></div>
+                                        <span style="font-size:0.72rem;font-weight:600;padding:4px 10px;border-radius:20px;background:rgba(245,158,11,0.18);color:#fbbf24;white-space:nowrap;flex-shrink:0;border:1px solid rgba(245,158,11,0.3);">Čeká na schválení</span>
                                         <div class="email-main">
-                                            <div class="email-sender">Marie Nováková</div>
-                                            <div class="email-subject">Dotaz na vaše služby<br><span
-                                                    style="font-weight:400; color:#9ca3af; font-size:0.9em;">Dobrý den,
-                                                    chtěla bych se zeptat na možnost...</span></div>
+                                            <div class="email-sender">Marie Procházková</div>
+                                            <div class="email-subject">Reklamace objednávky č. 2024-0891</div>
                                         </div>
-                                        <div class="email-meta">
-                                            <span>14:28</span>
-                                            <span>Čeká na schválení</span>
-                                        </div>
+                                        <div class="email-meta"><span>14:28</span></div>
                                     </div>
-
                                     <div class="preview-email-item">
-                                        <div class="status-dot blue"></div>
+                                        <span style="font-size:0.72rem;font-weight:600;padding:4px 10px;border-radius:20px;background:rgba(239,68,68,0.15);color:#f87171;white-space:nowrap;flex-shrink:0;border:1px solid rgba(239,68,68,0.25);">Spam</span>
                                         <div class="email-main">
-                                            <div class="email-sender">Jan Procházka</div>
-                                            <div class="email-subject">Připomínky k návrhu<br><span
-                                                    style="font-weight:400; color:#9ca3af; font-size:0.9em;">Ahoj, mám
-                                                    několik připomínek k tvému návrhu...</span></div>
+                                            <div class="email-sender">newsletter@marketing.cz</div>
+                                            <div class="email-subject">Nejlepší nabídky tento týden – sleva 50%!</div>
                                         </div>
-                                        <div class="email-meta">
-                                            <span>13:15</span>
-                                            <span>Nový</span>
-                                        </div>
+                                        <div class="email-meta"><span>13:15</span></div>
                                     </div>
                                 </div>
                             </div>
@@ -1818,8 +1754,8 @@
                 <div class="footer-section">
                     <h3>Kontakt</h3>
                     <a> Ing. Rostislav Slovák</a>
-                    <a> Hájecká 538, 685 01 Bučovice</a>
-                    <a> IČ: 03739287</a>
+                    <a> 03739287</a>
+                    <p> Hájecká 538, 685 01 Bučovice</p>
                     
                 </div>
             </div>
@@ -2049,6 +1985,3 @@
 </body>
 
 </html>
-
-
-
