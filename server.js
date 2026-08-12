@@ -9,6 +9,7 @@ import { Pool } from 'pg';
 import { google } from 'googleapis';
 import OpenAI from 'openai';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import { ImapFlow } from 'imapflow';
 import fetch from 'node-fetch';
@@ -48,7 +49,20 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL;
 const DATABASE_URL = process.env.DATABASE_URL;
 const CRON_SECRET = process.env.CRON_SECRET;
-console.log("DEBUG: Načtená DATABASE_URL je:", DATABASE_URL);
+// Konfigurace TLS validace (bezpečné výchozí hodnoty; lze přepnout přes ENV).
+// Pošta jde přes veřejný internet -> validace certifikátů zapnuta ve výchozím stavu.
+const MAIL_TLS_REJECT_UNAUTHORIZED = process.env.MAIL_TLS_REJECT_UNAUTHORIZED !== 'false';
+// Databáze běží uvnitř Renderu; strict validace vyžaduje CA cert -> default vypnuto,
+// zapnout lze přes DB_SSL_REJECT_UNAUTHORIZED=true.
+const DB_SSL_REJECT_UNAUTHORIZED = process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true';
+// Tajný klíč pro podepisování JWT. Ideálně nastavit JWT_SECRET v ENV; jinak se
+// deterministicky odvodí ze stávajících tajemství (tokeny přežijí restart serveru).
+const JWT_SECRET = process.env.JWT_SECRET
+  || crypto.createHash('sha256').update(`${CRON_SECRET || ''}|${process.env.GOOGLE_CLIENT_SECRET || ''}`).digest('hex');
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+if (!process.env.JWT_SECRET) {
+  console.warn('[AUTH] JWT_SECRET není nastaven – používám odvozený klíč. Doporučeno nastavit JWT_SECRET v prostředí.');
+}
 const SERVER_URL = process.env.SERVER_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 const REDIRECT_URI = `${SERVER_URL}/api/oauth/google/callback`;
 
@@ -180,7 +194,7 @@ function createImapClient({ host, port = 993, secure = true, auth, servername, .
     auth,
     tls: {
       servername: servername || host,  // SNI = původní hostname (kvůli certifikátu)
-      rejectUnauthorized: false
+      rejectUnauthorized: MAIL_TLS_REJECT_UNAUTHORIZED
     },
     keepalive: {
       interval: 45 * 1000,
@@ -530,7 +544,7 @@ const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-5-nano'; // pro vše ost
 // Nastavení databázového spojení
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // Nutné pro Render
+  ssl: { rejectUnauthorized: DB_SSL_REJECT_UNAUTHORIZED } // Render: default false; DB_SSL_REJECT_UNAUTHORIZED=true pro strict
 });
 
 // === DASHBOARD STATS (Relocated) ===
@@ -843,6 +857,7 @@ async function setupDatabase() {
                 ADD COLUMN IF NOT EXISTS password_hash TEXT,
                 ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false,
                 ADD COLUMN IF NOT EXISTS verification_token TEXT,
+                ADD COLUMN IF NOT EXISTS verification_token_expires TIMESTAMP WITH TIME ZONE,
                 ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user',
                 ADD COLUMN IF NOT EXISTS ai_actions_used INT DEFAULT 0,
                 ADD COLUMN IF NOT EXISTS reset_token TEXT,
@@ -1559,7 +1574,7 @@ app.post('/api/custom-email/connect', async (req, res) => {
       port: Number(smtpPort),
       secure: !!smtpSecure,                // SSL/TLS (465)
       requireTLS: !!starttlsSmtp,           // STARTTLS (587)
-      tls: { rejectUnauthorized: false },   // některé servery mají vlastní cert
+      tls: { rejectUnauthorized: MAIL_TLS_REJECT_UNAUTHORIZED },
       auth: { user: baseUsername, pass: password }
     });
     await transporter.verify();
@@ -2305,7 +2320,6 @@ const oauth2Client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, RE
 
 
 
-console.log('[DEBUG] Server GOOGLE_CLIENT_ID:', GOOGLE_CLIENT_ID);
 
 // ENDPOINT PRO PŘIHLÁŠENÍ
 app.post('/api/auth/google', async (req, res) => {
@@ -2983,34 +2997,34 @@ app.post('/api/auth/register', async (req, res) => {
 
   const client = await pool.connect();
   try {
-    // už existuje social login?
-    const exists = await client.query(
-      'SELECT email FROM dashboard_users WHERE email = $1',
-      [email]
-    );
-    if (exists.rowCount > 0 && !exists.rows[0].password_hash) {
-      // účet existuje jen přes Google – povolíme i heslo
-    }
-
     const passwordHash = await bcrypt.hash(password, 12);
     const verificationToken = crypto.randomBytes(24).toString('hex');
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 h
 
-    await client.query(`
-       INSERT INTO dashboard_users (email, name, plan, password_hash, email_verified, verification_token)
-      VALUES ($1,$2,$3,$4,$5,$6)
-      ON CONFLICT (email) DO UPDATE
-      SET name = EXCLUDED.name,
-          password_hash = EXCLUDED.password_hash,
-          verification_token = EXCLUDED.verification_token
-    `, [email, fullName, 'Starter', passwordHash, /* email_verified: */ false, verificationToken]);
+    // Nikdy nepřepisujeme existující účet (ochrana proti account takeover).
+    // DO NOTHING + kontrola rowCount ošetří i souběžné registrace.
+    const ins = await client.query(`
+       INSERT INTO dashboard_users (email, name, plan, password_hash, email_verified, verification_token, verification_token_expires)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      ON CONFLICT (email) DO NOTHING
+    `, [email, fullName, 'Starter', passwordHash, false, verificationToken, verificationExpires]);
+
+    if (ins.rowCount === 0) {
+      // Účet už existuje – neprozrazujeme detaily, jen nasměrujeme na přihlášení/obnovu.
+      await logActivity(email, 'Registrace', 'error', { reason: 'Účet již existuje' });
+      return res.status(409).json({
+        success: false,
+        message: 'Účet s tímto e-mailem už existuje. Přihlaste se, nebo použijte obnovu hesla.'
+      });
+    }
 
     // Odeslání verifikačního e-mailu
     try {
       await sendVerificationEmail(email, verificationToken);
     } catch (err) {
       console.error('[AUTH] Failed to send verification email:', err);
-      // Smazat nedokončeného uživatele, když nešel odeslat email
-      await client.query('DELETE FROM dashboard_users WHERE email = $1', [email]);
+      // Smazat nedokončeného uživatele, když nešel odeslat email (jen náš právě vložený řádek)
+      await client.query('DELETE FROM dashboard_users WHERE email = $1 AND email_verified = false', [email]);
       return res.status(500).json({ success: false, message: 'Nepodařilo se odeslat ověřovací e-mail. Zkuste to prosím znovu.' });
     }
 
@@ -3037,7 +3051,8 @@ app.get('/api/auth/verify', async (req, res) => {
   const client = await pool.connect();
   try {
     const r = await client.query(
-      'SELECT email, email_verified FROM dashboard_users WHERE verification_token = $1',
+      `SELECT email, email_verified, verification_token_expires
+       FROM dashboard_users WHERE verification_token = $1`,
       [token]
     );
 
@@ -3045,11 +3060,16 @@ app.get('/api/auth/verify', async (req, res) => {
       return res.status(400).send('Neplatný nebo expirovaný verifikační odkaz.');
     }
 
-    const { email, email_verified } = r.rows[0];
+    const { email, email_verified, verification_token_expires } = r.rows[0];
+
+    // Expirace tokenu (pokud je nastavena)
+    if (verification_token_expires && new Date(verification_token_expires).getTime() < Date.now()) {
+      return res.status(400).send('Platnost verifikačního odkazu vypršela. Zaregistrujte se prosím znovu.');
+    }
 
     if (!email_verified) {
       await client.query(
-        'UPDATE dashboard_users SET email_verified = true WHERE email = $1',
+        'UPDATE dashboard_users SET email_verified = true, verification_token = NULL, verification_token_expires = NULL WHERE email = $1',
         [email]
       );
       await logActivity(email, 'Verifikace emailu', 'success');
@@ -3147,6 +3167,9 @@ app.post('/api/auth/reset-password', async (req, res) => {
   if (!token || !newPassword) {
     return res.status(400).json({ success: false, message: 'Neplatný požadavek.' });
   }
+  if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 128) {
+    return res.status(400).json({ success: false, message: 'Heslo musí mít 8 až 128 znaků.' });
+  }
 
   const client = await pool.connect();
   try {
@@ -3159,7 +3182,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
     }
 
     const email = r.rows[0].email;
-    const hash = await bcrypt.hash(newPassword, 10);
+    const hash = await bcrypt.hash(newPassword, 12);
 
     await client.query(
       'UPDATE dashboard_users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL WHERE email = $2',
@@ -4243,28 +4266,8 @@ app.get('/api/custom-email/analyze-email', handleCustomAnalyzeEmail);
 app.post('/api/custom-email/analyze', handleCustomAnalyzeEmail);
 app.get('/api/custom-email/analyze', handleCustomAnalyzeEmail);
 
-// Jednoduchý endpoint pro načtení original_body pending zprávy z DB (bez IMAP)
-app.get('/api/pending-reply/body', async (req, res) => {
-  const { dashboardUserEmail, pendingId } = req.query || {};
-  if (!dashboardUserEmail || !pendingId) {
-    return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo pendingId.' });
-  }
-  let client;
-  try {
-    client = await pool.connect();
-    const { rows } = await client.query(
-      `SELECT original_body FROM pending_replies WHERE id=$1 AND dashboard_user_email=$2 LIMIT 1`,
-      [Number(pendingId), dashboardUserEmail]
-    );
-    if (!rows.length) return res.status(404).json({ success: false, message: 'Zpráva nenalezena.' });
-    return res.json({ success: true, body: rows[0].original_body || '' });
-  } catch (e) {
-    console.error('[pending-reply/body]', e);
-    return res.status(500).json({ success: false, message: 'Chyba při načítání těla zprávy.' });
-  } finally {
-    if (client) client.release();
-  }
-});
+// Pozn.: endpoint GET /api/pending-reply/body je definován níže (bohatší verze
+// vracející i reply_body, summary a sentiment). Duplicitní jednoduchá verze byla odstraněna.
 
 app.get('/api/custom-email/message-body', async (req, res) => {
   try {
@@ -4837,7 +4840,7 @@ async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pe
     port: Number(accountDetails.smtp_port),
     secure: !!accountDetails.smtp_secure,
     auth: { user, pass },
-    tls: { rejectUnauthorized: false }
+    tls: { rejectUnauthorized: MAIL_TLS_REJECT_UNAUTHORIZED }
   });
 
   await transporter.sendMail({ from: fromHeader, to: toHeader, raw: rawMessage });
@@ -5065,7 +5068,7 @@ async function sendCustomReply({
   const rawMessage = rawLines.join('\r\n');
   const transporter = nodemailer.createTransport({
     host: accountDetails.smtp_host, port: Number(accountDetails.smtp_port), secure: !!accountDetails.smtp_secure,
-    auth: { user, pass }, tls: { rejectUnauthorized: false }
+    auth: { user, pass }, tls: { rejectUnauthorized: MAIL_TLS_REJECT_UNAUTHORIZED }
   });
   await transporter.sendMail({ from: fromHeader, to: toHeader, raw: rawMessage });
   console.log(`[OK] Odpověď pro ${toAddr} byla odeslána.`);
@@ -7250,8 +7253,20 @@ async function syncRecentEmails() {
 }
 
 // Endpoint, který lze stále volat ručně pro testování (např. přes UptimeRobot)
+// Časově konstantní porovnání tajemství (ochrana proti timing útokům)
+function safeSecretEqual(a, b) {
+  const bufA = Buffer.from(String(a || ''), 'utf8');
+  const bufB = Buffer.from(String(b || ''), 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 app.get('/api/trigger-worker', (req, res) => {
-  if (req.query.secret !== CRON_SECRET) {
+  // Preferuje se hlavička (tajemství se nedostane do access logů); query zůstává jako fallback.
+  const headerSecret = (req.headers['x-cron-secret']
+    || (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+    || req.query.secret);
+  if (!safeSecretEqual(headerSecret, CRON_SECRET)) {
     return res.status(401).send('Neoprávněný přístup.');
   }
 
