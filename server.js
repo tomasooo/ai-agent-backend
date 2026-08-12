@@ -4444,6 +4444,17 @@ app.get('/api/gmail/pending-replies', async (req, res) => {
   }
 });
 
+// EU AI Act (nařízení (EU) 2024/1689, čl. 50) – transparentnost: příjemce musí být
+// informován, že komunikuje s AI systémem. Připojuje se POUZE k plně automatickým
+// odpovědím (bez lidského schválení).
+const AI_DISCLOSURE_TEXT = 'Tato odpověď byla vygenerována AI asistentem (EU AI Act).';
+
+function appendAiDisclosure(body) {
+  const text = String(body || '').trimEnd();
+  if (text.includes(AI_DISCLOSURE_TEXT)) return text;
+  return `${text}\n\n--\n${AI_DISCLOSURE_TEXT}`;
+}
+
 async function sendGmailReplyMessage({
   gmail,
   email,
@@ -6393,12 +6404,13 @@ ${String(bodyText).slice(0, 3000)}
                 // Fallback -> uložit jako pending
               } else {
                 try {
+                  const autoReplyText = appendAiDisclosure(replyBody);
                   await sendCustomReply({
                     accountDetails: acc,
                     emailAddress: acc.email_address,
                     targetRecipient,
                     subject,
-                    text: replyBody,
+                    text: autoReplyText,
                     fromName: '',
                     origMessageId: messageIdHeader || '',
                     origReferences: referencesHeader || '',
@@ -6434,7 +6446,7 @@ ${String(bodyText).slice(0, 3000)}
                       subject || null,
                       senderHeader || null,
                       firstLineSnippet(bodyText, 280),
-                      replyBody
+                      autoReplyText
                     ]);
                   } catch (dbErr) {
                     console.error('[IMAP worker] Nepodařilo se uložit auto-reply status:', dbErr);
@@ -6868,7 +6880,7 @@ ${String(bodyText).slice(0, 3000)}
         const { targetRecipient } = await sendGmailReplyMessage({
           gmail,
           email: acc.connected_email,
-          replyBody,
+          replyBody: appendAiDisclosure(replyBody),
           threadId: msgResponse.data.threadId || undefined,
           headers,
           fallbackSubject: subject,
