@@ -9290,7 +9290,7 @@ S pozdravem
                 const r = await fetch(dbUrl);
                 const j = await r.json();
                 if (r.ok && j.success) {
-                  // Tělo zprávy
+                  // Tělo zprávy (text jako základ, HTML se zkusí doplnit níže)
                   edBody.textContent = j.body || emailEntry.originalBody || '(tělo zprávy není k dispozici)';
                   // AI karta – aktualizuj pokud jsou data v odpovědi
                   const summaryEl = document.getElementById('ed-ai-summary');
@@ -9305,7 +9305,26 @@ S pozdravem
                 } else {
                   edBody.textContent = '(tělo zprávy není k dispozici)';
                 }
-                return; // Hotovo, nepotřebujeme IMAP/Gmail fetch
+
+                // HTML verze + přílohy: stejný zdroj jako u běžných e-mailů.
+                // U pending záznamů je message_id = Gmail id / IMAP uid.
+                try {
+                  const pendingMsgId = emailEntry?.id || id;
+                  if (pendingMsgId) {
+                    const bodyUrl = isCustom
+                      ? `${window.BACKEND}/api/custom-email/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&emailAddress=${encodeURIComponent(primaryEmail)}&uid=${encodeURIComponent(pendingMsgId)}`
+                      : `${window.BACKEND}/api/gmail/message-body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(primaryEmail)}&messageId=${encodeURIComponent(pendingMsgId)}`;
+                    const rb = await fetch(bodyUrl);
+                    const jb = await rb.json();
+                    if (rb.ok && jb.success) {
+                      if (jb.bodyHtml && jb.bodyHtml.trim()) {
+                        setEmailBody(edBody, jb.body || j.body, jb.bodyHtml);
+                      }
+                      renderAttachmentList(jb.attachments, { isCustom, dashboardUserEmail, primaryEmail, requestId: pendingMsgId });
+                    }
+                  }
+                } catch (htmlErr) { /* HTML verze je bonus – text už je zobrazený */ }
+                return; // Hotovo, nepotřebujeme další fetch
               }
 
               // === Případ 2: Normální email (ne pending) – fetch přes IMAP/Gmail API ===
