@@ -4400,6 +4400,7 @@
                 <!-- Body Area -->
                 <div class="email-body-area">
                   <div id="ed-body" style="white-space: pre-wrap;">Načítám…</div>
+                  <div id="ed-attachments" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid rgba(148,163,184,0.25);"></div>
                 </div>
 
                 <!-- AI Draft Editor Area -->
@@ -9161,6 +9162,59 @@ S pozdravem
               }
             };
 
+            // Vykreslí seznam příloh s možností stažení (fetch přidá auth token, pak blob)
+            const fmtSize = (b) => {
+              const n = Number(b) || 0;
+              if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+              if (n >= 1024) return Math.round(n / 1024) + ' kB';
+              return n + ' B';
+            };
+            const renderAttachmentList = (list, downloadCtx) => {
+              const box = document.getElementById('ed-attachments');
+              if (!box) return;
+              box.innerHTML = '';
+              if (!Array.isArray(list) || !list.length) { box.style.display = 'none'; return; }
+              box.style.display = 'block';
+              const title = document.createElement('div');
+              title.textContent = `📎 Přílohy (${list.length})`;
+              title.style.cssText = 'font-weight:600;font-size:0.85rem;margin-bottom:8px;color:#94a3b8;';
+              box.appendChild(title);
+              list.forEach((a, i) => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.textContent = `${a.filename} (${fmtSize(a.size)})`;
+                chip.title = 'Stáhnout přílohu';
+                chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;margin:0 8px 8px 0;padding:6px 12px;border-radius:999px;border:1px solid rgba(148,163,184,0.35);background:rgba(148,163,184,0.12);color:inherit;font-size:0.85rem;cursor:pointer;';
+                chip.addEventListener('click', async () => {
+                  const origLabel = chip.textContent;
+                  chip.disabled = true;
+                  chip.textContent = 'Stahuji…';
+                  try {
+                    const url = downloadCtx.isCustom
+                      ? `${window.BACKEND}/api/custom-email/attachment?dashboardUserEmail=${encodeURIComponent(downloadCtx.dashboardUserEmail)}&emailAddress=${encodeURIComponent(downloadCtx.primaryEmail)}&uid=${encodeURIComponent(downloadCtx.requestId)}&index=${a.index ?? i}`
+                      : `${window.BACKEND}/api/gmail/attachment?dashboardUserEmail=${encodeURIComponent(downloadCtx.dashboardUserEmail)}&email=${encodeURIComponent(downloadCtx.primaryEmail)}&messageId=${encodeURIComponent(downloadCtx.requestId)}&attachmentId=${encodeURIComponent(a.attachmentId || '')}&filename=${encodeURIComponent(a.filename || '')}`;
+                    const r = await fetch(url);
+                    if (!r.ok) throw new Error('Stažení selhalo.');
+                    const blob = await r.blob();
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = a.filename || 'priloha';
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+                  } catch (err) {
+                    (window.showToast ? showToast(err.message || 'Stažení přílohy selhalo.', 'error') : alert(err.message || 'Stažení přílohy selhalo.'));
+                  } finally {
+                    chip.disabled = false;
+                    chip.textContent = origLabel;
+                  }
+                });
+                box.appendChild(chip);
+              });
+            };
+            renderAttachmentList([], {}); // reset při otevření detailu
+
             edFrom.textContent = safeFrom;
             edFrom.title = (originalFrom && originalFrom !== safeFrom)
               ? `${safeFrom}\nPůvodní From: ${originalFrom}`
@@ -9271,6 +9325,7 @@ S pozdravem
                 const j = await r.json();
                 if (!r.ok || !j.success) throw new Error(j.message || 'Nepodařilo se načíst obsah zprávy.');
                 setEmailBody(edBody, j.body, j.bodyHtml);
+                renderAttachmentList(j.attachments, { isCustom, dashboardUserEmail, primaryEmail, requestId });
               }
             } catch (e) {
               edBody.textContent = e.message || 'Chyba při načítání obsahu zprávy.';
