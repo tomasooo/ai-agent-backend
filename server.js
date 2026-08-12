@@ -1104,7 +1104,18 @@ async function setupDatabase() {
                 PRIMARY KEY (dashboard_user_email, account_email, provider, id)
             );`,
       `ALTER TABLE synced_emails ADD COLUMN IF NOT EXISTS thread_id VARCHAR(255);`,
-      `ALTER TABLE pending_replies ADD COLUMN IF NOT EXISTS thread_id VARCHAR(255);`
+      `ALTER TABLE synced_emails ADD COLUMN IF NOT EXISTS message_id TEXT;`,
+      `ALTER TABLE synced_emails ADD COLUMN IF NOT EXISTS in_reply_to TEXT;`,
+      `ALTER TABLE synced_emails ADD COLUMN IF NOT EXISTS body_text TEXT;`,
+      `ALTER TABLE pending_replies ADD COLUMN IF NOT EXISTS thread_id VARCHAR(255);`,
+      // Blacklist (spam) adres – používán workery i /api spam endpointy
+      `CREATE TABLE IF NOT EXISTS blacklisted_emails (
+                id SERIAL PRIMARY KEY,
+                dashboard_user_email VARCHAR(255) NOT NULL,
+                email_address VARCHAR(255) NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE (dashboard_user_email, email_address)
+            );`
     ];
 
     for (const statement of setupStatements) {
@@ -6716,24 +6727,7 @@ async function processGmailAccount(acc, dbClient) {
     faqContext += '\n---\n\n';
   }
 
-  // RAG: Načti relevantní chunky z datasheet pro Gmail worker
-  let datasheetsContext = '';
-  try {
-    const emailPreview = `${subject || ''}\n${bodyText || ''}`.slice(0, 2000);
-    const ragChunks = await retrieveRelevantChunks({
-      pool,
-      openai,
-      dashboardUserEmail: acc.dashboard_user_email,
-      connectedEmail: acc.connected_email,
-      query: emailPreview,
-    });
-    datasheetsContext = buildDatasheetsContext(ragChunks);
-    if (ragChunks.length > 0) {
-      console.log(`[RAG] Gmail: nalezeno ${ragChunks.length} chunků`);
-    }
-  } catch (ragErr) {
-    console.warn('[RAG] Gmail chyba při hledání v datasheetch:', ragErr.message);
-  }
+  // RAG se počítá per zpráva uvnitř smyčky níže (subject/bodyText tam existují).
 
   const styleProfile = {
     tone: acc.tone || 'Formální',
@@ -6763,7 +6757,7 @@ Pravidla pro tvorbu "suggested_reply":
   - Podpis neduplikuj, pokud už v textu je.
 `;
 
-  const buildTask = (bodyText) => `${datasheetsContext}${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
+  const buildTask = (bodyText, datasheetsContext = '') => `${datasheetsContext}${faqContext}Jsi profesionální e-mailový asistent. Analyzuj e-mail a vrať POUZE VALIDNÍ JSON ve tvaru:
 {
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
@@ -6898,6 +6892,23 @@ ${String(bodyText).slice(0, 3000)}
     if (!consume.ok) {
       console.warn(`         Limit AI akcí dosažen pro ${acc.dashboard_user_email}, zbytek schránky přeskočen.`);
       break;
+    }
+
+    // RAG: relevantní chunky z datasheetů pro tuto konkrétní zprávu
+    let datasheetsContext = '';
+    try {
+      const emailPreview = `${subject || ''}\n${bodyText || ''}`.slice(0, 2000);
+      const ragChunks = await retrieveRelevantChunks({
+        pool,
+        openai,
+        dashboardUserEmail: acc.dashboard_user_email,
+        connectedEmail: acc.connected_email,
+        query: emailPreview,
+      });
+      datasheetsContext = buildDatasheetsContext(ragChunks);
+      if (ragChunks.length > 0) console.log(`[RAG] Gmail: nalezeno ${ragChunks.length} chunků`);
+    } catch (ragErr) {
+      console.warn('[RAG] Gmail chyba při hledání v datasheetch:', ragErr.message);
     }
 
     let raw;
