@@ -528,6 +528,56 @@ app.use(cors({
   optionsSuccessStatus: 204,
 }));
 
+// === AUTENTIZACE (JWT) ===================================================
+// Vydá podepsaný token pro přihlášeného uživatele.
+function issueAuthToken(user) {
+  return jwt.sign(
+    { email: user.email, role: user.role || 'user' },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  );
+}
+
+// Veřejné API cesty (nevyžadují token). Vše ostatní pod /api/ je chráněné.
+const PUBLIC_API_PATHS = new Set([
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/google',
+  '/api/auth/verify',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/oauth/google/callback',
+  '/api/trigger-worker',
+]);
+
+// Brána: chrání všechny /api/ endpointy kromě veřejných. Identitu (dashboardUserEmail)
+// bere výhradně z ověřeného tokenu, nikdy z parametrů requestu.
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') return next();
+  const path = req.path.replace(/\/+$/, '') || req.path;
+  if (!path.startsWith('/api/')) return next();
+  if (PUBLIC_API_PATHS.has(path)) return next();
+
+  const authHeader = req.headers.authorization || '';
+  const m = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!m) {
+    return res.status(401).json({ success: false, message: 'Nepřihlášeno.' });
+  }
+  try {
+    const payload = jwt.verify(m[1], JWT_SECRET);
+    req.authEmail = payload.email;
+    req.authRole = payload.role || 'user';
+    // Vnutíme ověřenou identitu do parametrů, aby stávající handlery používaly
+    // důvěryhodný e-mail místo toho, co poslal klient.
+    if (req.query && typeof req.query === 'object') req.query.dashboardUserEmail = payload.email;
+    if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) req.body.dashboardUserEmail = payload.email;
+    return next();
+  } catch (e) {
+    return res.status(401).json({ success: false, message: 'Neplatná nebo vypršelá relace. Přihlaste se znovu.' });
+  }
+});
+// =========================================================================
+
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL || !CRON_SECRET || !process.env.OPENAI_API_KEY) {
   console.error("Chyba: Chybí potřebné proměnné prostředí!");
   process.exit(1);
@@ -2350,7 +2400,8 @@ app.post('/api/auth/google', async (req, res) => {
       [payload.email]
     );
     await logActivity(emailForLog, 'Přihlášení (Google)', 'success');
-    res.status(200).json({ success: true, user: userResult.rows[0] });
+    const authToken = issueAuthToken(userResult.rows[0]);
+    res.status(200).json({ success: true, user: userResult.rows[0], token: authToken });
   } catch (error) {
     console.error("Chyba při ověřování přihlašovacího tokenu:", error);
     await logActivity(emailForLog, 'Přihlášení (Google)', 'error', { reason: error.message || String(error) });
@@ -2459,7 +2510,7 @@ app.post('/api/faq/save', async (req, res) => {
 
 
 app.get('/api/auth/has-password', async (req, res) => {
-  const email = req.query.email;
+  const email = req.authEmail; // pouze o vlastním účtu
   if (!email) return res.status(400).json({ success: false, message: 'Chybí email.' });
 
   const client = await pool.connect();
@@ -2898,7 +2949,9 @@ function isLikelyPersonName(s = '') {
 
 
 app.post('/api/auth/change-password', async (req, res) => {
-  const { email, currentPassword, newPassword, newPasswordConfirm } = req.body || {};
+  const { currentPassword, newPassword, newPasswordConfirm } = req.body || {};
+  // Identita výhradně z ověřeného tokenu – nikdy nedovolíme měnit heslo cizímu účtu.
+  const email = req.authEmail;
   if (!email || !newPassword || !newPasswordConfirm) {
     return res.status(400).json({ success: false, message: 'Chybí povinná pole.' });
   }
@@ -3118,7 +3171,9 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Nesprávný email nebo heslo.' });
     }
     await logActivity(email, 'Přihlášení (heslo)', 'success');
-    return res.json({ success: true, user: { email: r.rows[0].email, name: r.rows[0].name, role: r.rows[0].role, plan: r.rows[0].plan } });
+    const authUser = { email: r.rows[0].email, name: r.rows[0].name, role: r.rows[0].role, plan: r.rows[0].plan };
+    const authToken = issueAuthToken(authUser);
+    return res.json({ success: true, user: authUser, token: authToken });
   } catch (e) {
     console.error('LOGIN ERROR', e);
     await logActivity(email, 'Přihlášení (heslo)', 'error', { reason: e.message || String(e) });
@@ -3201,6 +3256,37 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
 
 
+// ENDPOINT PRO ZAHÁJENÍ PROPOJENÍ (vydá podepsaný state vázaný na přihlášeného uživatele)
+// Ochrana proti CSRF/account-linking útokům: state je JWT podepsaný serverem.
+app.get('/api/oauth/google/start', (req, res) => {
+  const dashboardUserEmail = req.authEmail; // z ověřeného tokenu
+  if (!dashboardUserEmail) {
+    return res.status(401).json({ success: false, message: 'Nepřihlášeno.' });
+  }
+  const state = jwt.sign({ email: dashboardUserEmail, purpose: 'oauth_link' }, JWT_SECRET, { expiresIn: '10m' });
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    response_type: 'code',
+    scope: 'openid email profile https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
+    access_type: 'offline',
+    prompt: 'consent',
+    include_granted_scopes: 'true',
+    state,
+  });
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  return res.json({ success: true, url });
+});
+
+// Ověří podepsaný state z callbacku a vrátí e-mail iniciátora (nebo null při neplatnosti).
+function verifyOAuthState(rawState) {
+  try {
+    const decoded = jwt.verify(String(rawState || ''), JWT_SECRET);
+    if (decoded && decoded.purpose === 'oauth_link' && decoded.email) return decoded.email;
+  } catch (e) { /* neplatný / expirovaný state */ }
+  return null;
+}
+
 // ENDPOINT PRO ZPRACOVÁNÍ SOUHLASU OD GOOGLE (PROPOJENÍ)
 app.get('/api/oauth/google/callback', async (req, res) => {
   let client;
@@ -3208,8 +3294,11 @@ app.get('/api/oauth/google/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) throw new Error('Autorizační kód chybí.');
 
-    // přihlášený uživatel (majitel dashboardu) – poslali jsme ho ve state
-    const dashboardUserEmail = decodeURIComponent(req.query.state || '');
+    // přihlášený uživatel (majitel dashboardu) – z PODEPSANÉHO state
+    const dashboardUserEmail = verifyOAuthState(req.query.state);
+    if (!dashboardUserEmail) {
+      return res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=error&reason=invalid_state`);
+    }
 
     const { tokens } = await oauth2Client.getToken(code);
     // email propojené schránky vyčteme z id_token
@@ -3268,7 +3357,7 @@ app.get('/api/oauth/google/callback', async (req, res) => {
     res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success&new-email=${encodeURIComponent(connectedEmail)}`);
   } catch (error) {
     console.error("Chyba při zpracování OAuth callbacku:", error.message);
-    const dashboardUserEmail = decodeURIComponent(req.query.state || '') || null;
+    const dashboardUserEmail = verifyOAuthState(req.query.state);
     const fallbackEmail = extractEmailFromIdToken(req.query.id_token || req.body?.id_token) || dashboardUserEmail;
     await logActivity(fallbackEmail || dashboardUserEmail, 'Připojení Gmail účtu', 'error', { reason: error.message });
     res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=error`);
@@ -3279,7 +3368,7 @@ app.get('/api/oauth/google/callback', async (req, res) => {
 
 
 app.get('/api/user/plan', async (req, res) => {
-  const { email } = req.query;
+  const email = req.authEmail; // pouze vlastní tarif
   if (!email) return res.status(400).json({ success: false, message: "Chybí email." });
   const client = await pool.connect();
   try {
@@ -3301,7 +3390,8 @@ app.get('/api/user/plan', async (req, res) => {
 
 
 app.post('/api/user/plan', async (req, res) => {
-  const { email, plan } = req.body;
+  const { plan } = req.body;
+  const email = req.authEmail; // pouze vlastní tarif
   if (!email || !plan) return res.status(400).json({ success: false, message: "Chybí email nebo plán." });
   const client = await pool.connect();
   try {
@@ -7288,17 +7378,17 @@ cron.schedule('*/5 * * * *', () => {
 // --- ADMIN SEKCE ---
 // Middleware pro ověření, zda je uživatel admin
 const isAdmin = async (req, res, next) => {
-  // V reálné aplikaci byste ověřovali JWT token z hlavičky Authorization
-  // Pro jednoduchost teď budeme kontrolovat roli podle emailu v query
-  const { dashboardUserEmail } = req.query;
-  if (!dashboardUserEmail) {
+  // Identita pochází z ověřeného JWT (nastaveno v auth bráně), ne z parametrů requestu.
+  // Roli navíc ověříme aktuálně v DB (obrana do hloubky proti zastaralému tokenu).
+  const authEmail = req.authEmail;
+  if (!authEmail) {
     return res.status(401).json({ success: false, message: 'Chybí autentizace.' });
   }
 
   let client;
   try {
     client = await pool.connect();
-    const r = await client.query('SELECT role FROM dashboard_users WHERE email = $1', [dashboardUserEmail]);
+    const r = await client.query('SELECT role FROM dashboard_users WHERE email = $1', [authEmail]);
     if (r.rowCount > 0 && r.rows[0].role === 'admin') {
       next(); // Uživatel je admin, pokračuj
     } else {
