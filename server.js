@@ -786,10 +786,8 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
   }
 
   try {
-    const db = await pool.connect();
-
-    // Načtení přímo z tabulky synchronizovaných emailů
-    const result = await db.query(`
+    // Jednorázový dotaz -> pool.query se sám postará o uvolnění spojení (žádný leak).
+    const result = await pool.query(`
       WITH ThreadDates AS (
         SELECT COALESCE(thread_id, id) as thread_group, MAX(date) as last_activity
         FROM synced_emails
@@ -821,7 +819,6 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
       LIMIT $3 OFFSET $4
     `, [dashboardUserEmail, email, Number(limit), Number(offset)]);
 
-    db.release();
     const emails = result.rows.map(row => {
       let emailStatus = null;
       if (row.pending_status === 'pending') emailStatus = 'pending';
@@ -1175,6 +1172,19 @@ function extractPlainText(payload) {
 
 
 
+// Vytvoří ČERSTVÝ OAuth2 klient (bez sdíleného stavu) – zabraňuje race condition
+// mezi souběžnými požadavky a workery, které by jinak přepisovaly credentials globálního klienta.
+function createOAuthClient() {
+  return new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, REDIRECT_URI);
+}
+
+// Gmail klient pro daný refresh token nad vlastní izolovanou OAuth instancí.
+function gmailForRefreshToken(refreshToken) {
+  const client = createOAuthClient();
+  client.setCredentials({ refresh_token: refreshToken });
+  return google.gmail({ version: 'v1', auth: client });
+}
+
 async function getGmailClientFor(dashboardUserEmail, email) {
   const db = await pool.connect();
   try {
@@ -1184,8 +1194,7 @@ async function getGmailClientFor(dashboardUserEmail, email) {
     );
     const refreshToken = r.rows[0]?.refresh_token;
     if (!refreshToken) throw new Error('Refresh token nenalezen');
-    oauth2Client.setCredentials({ refresh_token: refreshToken });
-    return google.gmail({ version: 'v1', auth: oauth2Client });
+    return gmailForRefreshToken(refreshToken);
   } finally {
     db.release();
   }
@@ -3697,13 +3706,14 @@ app.post('/api/oauth/google/revoke', async (req, res) => {
 
 // === NOVÝ ENDPOINT PRO ODESLÁNÍ ODPOVĚDI ===
 app.post('/api/gmail/send-reply', async (req, res) => {
+  let db = null;
   try {
     const { dashboardUserEmail, email, messageId, replyBody } = req.body;
     if (!dashboardUserEmail || !email || !messageId || !replyBody) {
       return res.status(400).json({ success: false, message: "Chybí povinná data." });
     }
 
-    const db = await pool.connect();
+    db = await pool.connect();
 
 
 
@@ -3734,12 +3744,12 @@ app.post('/api/gmail/send-reply', async (req, res) => {
     }
 
     db.release();
+    db = null;
 
     const refreshToken = r.rows[0]?.refresh_token;
     if (!refreshToken) return res.status(404).json({ success: false, message: "Token nenalezen." });
 
-    oauth2Client.setCredentials({ refresh_token: refreshToken });
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const gmail = gmailForRefreshToken(refreshToken);
 
     const msgResponse = await gmail.users.messages.get({ userId: 'me', id: messageId });
     const originalHeaders = msgResponse.data.payload.headers;
@@ -3819,6 +3829,8 @@ app.post('/api/gmail/send-reply', async (req, res) => {
       success: false,
       message: apiMessage || plainMessage || "Nepodařilo se odeslat email."
     });
+  } finally {
+    if (db) db.release();
   }
 });
 
@@ -4065,13 +4077,14 @@ app.get('/api/gmail/thread/:threadId', async (req, res) => {
 
 
 app.get('/api/gmail/message-body', async (req, res) => {
+  let db = null;
   try {
     const { dashboardUserEmail, email, messageId } = req.query || {};
     if (!dashboardUserEmail || !email || !messageId) {
       return res.status(400).json({ success: false, message: 'Chybí data (dashboardUserEmail, email, messageId).' });
     }
 
-    const db = await pool.connect();
+    db = await pool.connect();
 
     // === Cache-first: zkus načíst tělo z DB ===
     try {
@@ -4082,6 +4095,7 @@ app.get('/api/gmail/message-body', async (req, res) => {
       );
       if (cached.rowCount > 0 && cached.rows[0].body_text) {
         db.release();
+        db = null;
         console.log(`[gmail/message-body] Cache HIT pro ${messageId}`);
         return res.json({ success: true, body: cached.rows[0].body_text });
       }
@@ -4098,11 +4112,11 @@ app.get('/api/gmail/message-body', async (req, res) => {
     const refreshToken = rTok.rows[0]?.refresh_token;
     if (!refreshToken) {
       db.release();
+      db = null;
       return res.status(404).json({ success: false, message: 'Token nenalezen.' });
     }
 
-    oauth2Client.setCredentials({ refresh_token: refreshToken });
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const gmail = gmailForRefreshToken(refreshToken);
 
     const msg = await gmail.users.messages.get({ userId: 'me', id: messageId });
     // vytáhnout text/plain nebo převést html na text
@@ -4146,10 +4160,13 @@ app.get('/api/gmail/message-body', async (req, res) => {
     }
 
     db.release();
+    db = null;
     return res.json({ success: true, body });
   } catch (e) {
     console.error('[gmail/message-body] error:', e);
     return res.status(500).json({ success: false, message: 'Načtení těla zprávy selhalo.' });
+  } finally {
+    if (db) db.release();
   }
 });
 
@@ -4371,13 +4388,14 @@ app.get('/api/custom-email/analyze', handleCustomAnalyzeEmail);
 // vracející i reply_body, summary a sentiment). Duplicitní jednoduchá verze byla odstraněna.
 
 app.get('/api/custom-email/message-body', async (req, res) => {
+  let db = null;
   try {
     const { dashboardUserEmail, emailAddress, uid } = req.query || {};
     if (!dashboardUserEmail || !emailAddress || !uid) {
       return res.status(400).json({ success: false, message: 'Chybí data (dashboardUserEmail, emailAddress, uid).' });
     }
 
-    const db = await pool.connect();
+    db = await pool.connect();
 
     // === Cache-first: zkus načíst tělo z DB ===
     try {
@@ -4388,6 +4406,7 @@ app.get('/api/custom-email/message-body', async (req, res) => {
       );
       if (cached.rowCount > 0 && cached.rows[0].body_text) {
         db.release();
+        db = null;
         console.log(`[custom-email/message-body] Cache HIT pro uid ${uid}`);
         return res.json({ success: true, body: cached.rows[0].body_text });
       }
@@ -4405,10 +4424,12 @@ app.get('/api/custom-email/message-body', async (req, res) => {
 
     if (!rAcc.rowCount) {
       db.release();
+      db = null;
       return res.status(404).json({ success: false, message: 'Custom účet nenalezen.' });
     }
     if (rAcc.rows[0].active === false) {
       db.release();
+      db = null;
       return res.status(403).json({ success: false, message: 'Tento účet je neaktivní.' });
     }
 
@@ -4448,10 +4469,13 @@ app.get('/api/custom-email/message-body', async (req, res) => {
     }
 
     db.release();
+    db = null;
     return res.json({ success: true, body: bodyText });
   } catch (e) {
     console.error('[custom-email/message-body] error:', e);
     return res.status(500).json({ success: false, message: 'Načtení těla zprávy selhalo.' });
+  } finally {
+    if (db) db.release();
   }
 });
 
@@ -4466,8 +4490,7 @@ app.post('/api/gmail/approval/approve', async (req, res) => {
     const db = await pool.connect();
     const rt = await db.query('SELECT refresh_token FROM connected_accounts WHERE email=$1 AND dashboard_user_email=$2', [email, dashboardUserEmail]);
     db.release();
-    oauth2Client.setCredentials({ refresh_token: rt.rows[0]?.refresh_token });
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const gmail = gmailForRefreshToken(rt.rows[0]?.refresh_token);
 
     const labelsList = await gmail.users.labels.list({ userId: 'me' });
     const approvalLabel = labelsList.data.labels.find(l => l.name === 'ceka-na-schvaleni');
@@ -4496,8 +4519,7 @@ app.post('/api/gmail/approval/reject', async (req, res) => {
     const db = await pool.connect();
     const rt = await db.query('SELECT refresh_token FROM connected_accounts WHERE email=$1 AND dashboard_user_email=$2', [email, dashboardUserEmail]);
     db.release();
-    oauth2Client.setCredentials({ refresh_token: rt.rows[0]?.refresh_token });
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const gmail = gmailForRefreshToken(rt.rows[0]?.refresh_token);
 
     const labelsList = await gmail.users.labels.list({ userId: 'me' });
     const approvalLabel = labelsList.data.labels.find(l => l.name === 'ceka-na-schvaleni');
@@ -5306,17 +5328,19 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
     return handleCustomAnalyzeEmail(req, res);
   }
 
+  let db = null;
   try {
 
     if (!dashboardUserEmail || !email || !messageId) {
       return res.status(400).json({ success: false, message: "Chybí data." });
     }
 
-    const db = await pool.connect();
+    db = await pool.connect();
 
     const consume = await tryConsumeAiAction(db, dashboardUserEmail);
     if (!consume.ok) {
       db.release();
+      db = null;
       return res.status(429).json({
         success: false,
         message: `Vyčerpán měsíční limit AI akcí (${consume.limit}). Zvažte navýšení tarifu.`
@@ -5340,6 +5364,7 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
     );
 
     db.release();
+    db = null;
 
     const refreshToken = rTok.rows[0]?.refresh_token;
     const settings = rSet.rows[0];
@@ -5347,8 +5372,7 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
       return res.status(404).json({ success: false, message: "Token nebo nastavení nenalezeno." });
     }
 
-    oauth2Client.setCredentials({ refresh_token: refreshToken });
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const gmail = gmailForRefreshToken(refreshToken);
     const msgResponse = await gmail.users.messages.get({ userId: 'me', id: messageId });
     const headerValue = (name) => {
       const headers = msgResponse.data?.payload?.headers || [];
@@ -5457,6 +5481,8 @@ ${String(emailBody).slice(0, 3000)}
     console.error("Chyba při analýze emailu:", error);
     await logActivity(dashboardUserEmail, 'Chyba AI analýzy', 'error', { account: email, error: error.message });
     return res.status(500).json({ success: false, message: "Nepodařilo se analyzovat email." });
+  } finally {
+    if (db) db.release();
   }
 });
 
@@ -5640,16 +5666,18 @@ app.delete('/api/faq/:id', async (req, res) => {
 
 
 app.post('/api/faq/regenerate', async (req, res) => {
+  let db = null;
   try {
     const { dashboardUserEmail, email, limit = 120 } = req.body || {};
     if (!dashboardUserEmail || !email) {
       return res.status(400).json({ success: false, message: 'Chybí parametry.' });
     }
 
-    const db = await pool.connect();
+    db = await pool.connect();
     const consume = await tryConsumeAiAction(db, dashboardUserEmail);
     if (!consume.ok) {
       db.release();
+      db = null;
       return res.status(429).json({ success: false, message: `Vyčerpán měsíční limit AI akcí (${consume.limit}).` });
     }
 
@@ -5664,6 +5692,7 @@ app.post('/api/faq/regenerate', async (req, res) => {
     );
     const examples = ex.rows || [];
     db.release();
+    db = null;
 
     if (!examples.length) {
       return res.json({ success: true, created: 0, faqs: [] });
@@ -5732,6 +5761,8 @@ ${examples.map(e => JSON.stringify(e)).join('\n').slice(0, 15000)}
   } catch (e) {
     console.error(e);
     res.status(500).json({ success: false, message: 'Regenerace FAQ selhala.' });
+  } finally {
+    if (db) db.release();
   }
 });
 
@@ -6011,6 +6042,8 @@ app.delete('/api/spamlist/:id', async (req, res) => {
 // ===================================================================
 
 let imapWorkerRunning = false;
+let emailWorkerRunning = false;
+let syncRunning = false;
 
 async function runImapWorker() {
   if (imapWorkerRunning) {
@@ -6671,8 +6704,7 @@ ${String(bodyText).slice(0, 3000)}
 
 async function processGmailAccount(acc, dbClient) {
   console.log(`   -> Zpracovávám: ${acc.connected_email}`);
-  oauth2Client.setCredentials({ refresh_token: acc.refresh_token });
-  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+  const gmail = gmailForRefreshToken(acc.refresh_token);
 
   const labelsRes = await gmail.users.labels.list({ userId: 'me' });
   let approvalLabel = labelsRes.data.labels.find(l => l.name === 'ceka-na-schvaleni');
@@ -7107,6 +7139,11 @@ async function runEmailWorker() {
     console.log('⚠️  runEmailWorker() je zakázaný (DISABLE_AI_WORKER).');
     return;
   }
+  if (emailWorkerRunning) {
+    console.warn('⚠️  Gmail worker už běží, aktuální spuštění přeskočeno.');
+    return;
+  }
+  emailWorkerRunning = true;
   console.log('🤖 Spouštím automatickou kontrolu emailů...');
   let dbClient;
   try {
@@ -7138,6 +7175,7 @@ async function runEmailWorker() {
   } catch (err) {
     console.error('Došlo k chybě v automatickém workeru:', err);
   } finally {
+    emailWorkerRunning = false;
     if (dbClient) dbClient.release();
     console.log('✅ Automatická kontrola dokončena.');
   }
@@ -7145,6 +7183,11 @@ async function runEmailWorker() {
 
 // === NEW: BACKGROUND SYNC FOR RECENT EMAILS (PAGINATION) ===
 async function syncRecentEmails() {
+  if (syncRunning) {
+    console.warn('⚠️  Sync už běží, aktuální spuštění přeskočeno.');
+    return;
+  }
+  syncRunning = true;
   console.log('🔄 Spouštím synchronizaci nedávných emailů pro dashboard...');
   let dbClient;
   try {
@@ -7348,6 +7391,7 @@ async function syncRecentEmails() {
   } catch (err) {
     console.error('Došlo k chybě v syncRecentEmails:', err);
   } finally {
+    syncRunning = false;
     if (dbClient) dbClient.release();
     console.log('✅ Synchronizace nedávných emailů dokončena.');
   }
