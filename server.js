@@ -845,28 +845,28 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
         WHERE se.dashboard_user_email = $1 AND se.account_email = $2
         ORDER BY COALESCE(se.thread_id, se.id), se.date ASC
       )
+      , PendingByThread AS (
+        SELECT
+          COALESCE(s3.thread_id, s3.id, pr2.thread_id, pr2.message_id) as thread_group,
+          pr2.status,
+          ROW_NUMBER() OVER (
+            PARTITION BY COALESCE(s3.thread_id, s3.id, pr2.thread_id, pr2.message_id)
+            ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC
+          ) as rn
+        FROM pending_replies pr2
+        LEFT JOIN synced_emails s3
+          ON s3.dashboard_user_email = $1
+         AND s3.account_email = $2
+         AND s3.id = pr2.message_id
+        WHERE pr2.dashboard_user_email = $1
+          AND pr2.connected_email = $2
+      )
       SELECT
         f.id, f.provider, f.subject, f.from, f.date, f.snippet, f."isRead", f.thread_group as thread_id,
         (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count,
-        pr.status as pending_status
+        pb.status as pending_status
       FROM FilteredThreads f
-      LEFT JOIN LATERAL (
-        SELECT pr2.status
-          FROM pending_replies pr2
-          LEFT JOIN synced_emails s3
-            ON s3.dashboard_user_email = $1
-           AND s3.account_email = $2
-           AND s3.id = pr2.message_id
-         WHERE pr2.dashboard_user_email = $1
-           AND pr2.connected_email = $2
-           AND (
-             COALESCE(s3.thread_id, s3.id) = f.thread_group
-             OR pr2.thread_id = f.thread_group
-             OR pr2.message_id = f.id
-           )
-         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC
-         LIMIT 1
-      ) pr ON true
+      LEFT JOIN PendingByThread pb ON pb.thread_group = f.thread_group AND pb.rn = 1
       ORDER BY f.last_activity DESC
       LIMIT $3 OFFSET $4
     `, [dashboardUserEmail, email, Number(limit), Number(offset)]);
@@ -1172,13 +1172,24 @@ async function setupDatabase() {
                  ON synced_emails ((COALESCE(thread_id, id)));`,
       `CREATE INDEX IF NOT EXISTS idx_pending_replies_message
                  ON pending_replies (message_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_synced_emails_user_acct_id
+                 ON synced_emails (dashboard_user_email, account_email, id);`,
       `CREATE INDEX IF NOT EXISTS idx_activity_log_user_action
                  ON activity_log (dashboard_user_email, action);`
     ];
 
+    // Zámek max 10 s: kdyby DDL čekalo na zámek (souběžný worker/starý deploy),
+    // nesmí zablokovat start serveru.
+    await client.query(`SET lock_timeout = '10s'`);
     for (const statement of setupStatements) {
-      await client.query(statement);
+      try {
+        await client.query(statement);
+      } catch (stmtErr) {
+        // Jeden selhavší příkaz nesmí zastavit zbylé migrace.
+        console.error('[DB setup] Příkaz selhal (pokračuji):', stmtErr.message);
+      }
     }
+    await client.query(`SET lock_timeout = DEFAULT`);
 
     console.log("✅ Databázové tabulky pro víceuživatelský provoz jsou připraveny.");
   } catch (err) {
@@ -4013,32 +4024,34 @@ app.get('/api/gmail/emails', async (req, res) => {
         ${whereString}
         ORDER BY COALESCE(se.thread_id, se.id), se.date ASC
       )
+      , PendingByThread AS (
+        -- Mapování pending odpovědí na vlákna se spočítá JEDNOU (ne per řádek výpisu).
+        -- Klíč vlákna: primárně přes dohledaný e-mail (s3), fallback thread_id/message_id.
+        SELECT
+          COALESCE(s3.thread_id, s3.id, pr2.thread_id, pr2.message_id) as thread_group,
+          pr2.status, pr2.reply_body, pr2.summary, pr2.sentiment, pr2.id,
+          ROW_NUMBER() OVER (
+            PARTITION BY COALESCE(s3.thread_id, s3.id, pr2.thread_id, pr2.message_id)
+            ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC
+          ) as rn
+        FROM pending_replies pr2
+        LEFT JOIN synced_emails s3
+          ON s3.dashboard_user_email = $1
+         AND s3.account_email = $2
+         AND s3.id = pr2.message_id
+        WHERE pr2.dashboard_user_email = $1
+          AND pr2.connected_email = $2
+      )
       SELECT
         f.id, f.provider, f.subject, f.sender, f.snippet, f.date, f."isRead", f.thread_group as thread_id,
         (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count,
-        pr.status as pending_status,
-        pr.reply_body as pending_reply_body,
-        pr.summary as pending_summary,
-        pr.sentiment as pending_sentiment,
-        pr.id as pending_id
+        pb.status as pending_status,
+        pb.reply_body as pending_reply_body,
+        pb.summary as pending_summary,
+        pb.sentiment as pending_sentiment,
+        pb.id as pending_id
       FROM FilteredThreads f
-      LEFT JOIN LATERAL (
-        SELECT pr2.status, pr2.reply_body, pr2.summary, pr2.sentiment, pr2.id
-          FROM pending_replies pr2
-          LEFT JOIN synced_emails s3
-            ON s3.dashboard_user_email = $1
-           AND s3.account_email = $2
-           AND s3.id = pr2.message_id
-         WHERE pr2.dashboard_user_email = $1
-           AND pr2.connected_email = $2
-           AND (
-             COALESCE(s3.thread_id, s3.id) = f.thread_group
-             OR pr2.thread_id = f.thread_group
-             OR pr2.message_id = f.id
-           )
-         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC
-         LIMIT 1
-      ) pr ON true
+      LEFT JOIN PendingByThread pb ON pb.thread_group = f.thread_group AND pb.rn = 1
       ORDER BY f.last_activity DESC
       LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `, queryArgs);
