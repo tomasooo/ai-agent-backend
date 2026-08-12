@@ -1062,6 +1062,7 @@
                 .then(r => r.json())
                 .then(data => {
                     if (!data.success) throw new Error(data.message || 'Ověření selhalo.');
+                    if (data.token) localStorage.setItem('authToken', data.token);
                     localStorage.setItem('userName', data.user.name);
                     localStorage.setItem('userEmail', data.user.email);
                     localStorage.setItem('userRole', data.user.role);
@@ -1188,6 +1189,7 @@
                 const data = await r.json();
                 if (!r.ok || !data.success) throw new Error(data.message || 'Přihlášení selhalo.');
 
+                if (data.token) localStorage.setItem('authToken', data.token);
                 localStorage.setItem('userName', data.user.name);
                 localStorage.setItem('userEmail', data.user.email);
                 localStorage.setItem('userRole', data.user.role);

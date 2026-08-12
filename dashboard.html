@@ -5542,6 +5542,40 @@
     // === BACKEND BASE ===
     window.BACKEND = 'https://ai-email-server-stejdesign.onrender.com';
 
+    // === AUTENTIZACE: token guard + fetch wrapper ===
+    // Bez platného tokenu nemá smysl dashboard zobrazovat -> rovnou na login.
+    (function () {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        window.location.replace('login.html');
+        return;
+      }
+
+      // Přebalíme fetch tak, aby ke každému požadavku na backend přidal Bearer token
+      // a při vypršení relace (401) odhlásil uživatele.
+      const nativeFetch = window.fetch.bind(window);
+      window.fetch = async function (input, init = {}) {
+        try {
+          const url = typeof input === 'string' ? input : (input && input.url) || '';
+          const isBackend = url.startsWith(window.BACKEND) || url.startsWith('/api/');
+          if (isBackend) {
+            const t = localStorage.getItem('authToken');
+            const headers = new Headers((init && init.headers) || (typeof input !== 'string' && input.headers) || {});
+            if (t && !headers.has('Authorization')) headers.set('Authorization', 'Bearer ' + t);
+            init = { ...init, headers };
+          }
+          const res = await nativeFetch(input, init);
+          if (isBackend && res.status === 401) {
+            localStorage.removeItem('authToken');
+            window.location.replace('login.html');
+          }
+          return res;
+        } catch (e) {
+          return nativeFetch(input, init);
+        }
+      };
+    })();
+
     // === Helpery na window ===
     window.fetchSentReplies = async function (dashboardUserEmail, email, limit = 200) {
       const url = `${window.BACKEND}/api/gmail/sent-replies?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&email=${encodeURIComponent(email)}&limit=${limit}`;
@@ -6690,24 +6724,19 @@ S pozdravem
       document.body.style.overflow = '';
     }
 
-    function connectGoogleAccount() {
-      const GOOGLE_CLIENT_ID = "990614891314-kugic255rq68tt1m7uqg4rdp9jdig5lb.apps.googleusercontent.com";
-      const REDIRECT_URI = "https://ai-email-server-stejdesign.onrender.com/api/oauth/google/callback";
-      const oauth2Endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
-
-      // Přidáme email přihlášeného uživatele do state
-      const loggedUserEmail = localStorage.getItem('userEmail');
-      const params = {
-        client_id: GOOGLE_CLIENT_ID,
-        redirect_uri: REDIRECT_URI,
-        response_type: 'code',
-        scope: 'openid email profile https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send',
-        access_type: 'offline',
-        prompt: 'consent',
-        include_granted_scopes: 'true',
-        state: encodeURIComponent(loggedUserEmail || '')
-      };
-      window.location.href = `${oauth2Endpoint}?${new URLSearchParams(params)}`;
+    async function connectGoogleAccount() {
+      // Consent URL i podepsaný state generuje backend (ochrana proti CSRF/account-linking).
+      try {
+        const r = await fetch(`${window.BACKEND}/api/oauth/google/start`, { cache: 'no-store' });
+        const data = await r.json();
+        if (!r.ok || !data.success || !data.url) {
+          throw new Error(data.message || 'Nepodařilo se zahájit propojení účtu.');
+        }
+        window.location.href = data.url;
+      } catch (err) {
+        console.error(err);
+        (window.showToast ? showToast(err.message || 'Chyba při propojení účtu.', 'error') : alert(err.message || 'Chyba při propojení účtu.'));
+      }
     }
 
     // === CUSTOM EMAIL: otevřít modal s formulářem a zavolat /api/custom-email/connect ===
@@ -10063,7 +10092,7 @@ S pozdravem
           const emailToDelete = row.dataset.email;
 
           try {
-            const res = await fetch(`${window.BACKEND}/api/admin/users/${emailToDelete}?dashboardUserEmail=${dashboardUserEmail}`, { method: 'DELETE' });
+            const res = await fetch(`${window.BACKEND}/api/admin/users/${encodeURIComponent(emailToDelete)}?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`, { method: 'DELETE' });
             const data = await res.json();
             if (!data.success) throw new Error(data.message);
             showToast('Uživatel smazán.', 'success');
