@@ -845,18 +845,28 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
         WHERE se.dashboard_user_email = $1 AND se.account_email = $2
         ORDER BY COALESCE(se.thread_id, se.id), se.date ASC
       )
-      SELECT 
+      SELECT
         f.id, f.provider, f.subject, f.from, f.date, f.snippet, f."isRead", f.thread_group as thread_id,
         (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count,
-        (SELECT pr2.status 
-         FROM pending_replies pr2 
-         LEFT JOIN synced_emails s3 ON s3.id = pr2.message_id
-         WHERE COALESCE(s3.thread_id, s3.id) = f.thread_group
-           AND pr2.dashboard_user_email = $1
-           AND pr2.connected_email = $2
-         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC LIMIT 1
-        ) as pending_status
+        pr.status as pending_status
       FROM FilteredThreads f
+      LEFT JOIN LATERAL (
+        SELECT pr2.status
+          FROM pending_replies pr2
+          LEFT JOIN synced_emails s3
+            ON s3.dashboard_user_email = $1
+           AND s3.account_email = $2
+           AND s3.id = pr2.message_id
+         WHERE pr2.dashboard_user_email = $1
+           AND pr2.connected_email = $2
+           AND (
+             COALESCE(s3.thread_id, s3.id) = f.thread_group
+             OR pr2.thread_id = f.thread_group
+             OR pr2.message_id = f.id
+           )
+         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC
+         LIMIT 1
+      ) pr ON true
       ORDER BY f.last_activity DESC
       LIMIT $3 OFFSET $4
     `, [dashboardUserEmail, email, Number(limit), Number(offset)]);
@@ -4003,50 +4013,32 @@ app.get('/api/gmail/emails', async (req, res) => {
         ${whereString}
         ORDER BY COALESCE(se.thread_id, se.id), se.date ASC
       )
-      SELECT 
+      SELECT
         f.id, f.provider, f.subject, f.sender, f.snippet, f.date, f."isRead", f.thread_group as thread_id,
         (SELECT COUNT(*) FROM synced_emails s2 WHERE COALESCE(s2.thread_id, s2.id) = f.thread_group) as thread_count,
-        (SELECT pr2.status 
-         FROM pending_replies pr2 
-         LEFT JOIN synced_emails s3 ON s3.id = pr2.message_id
-         WHERE COALESCE(s3.thread_id, s3.id) = f.thread_group
-           AND pr2.dashboard_user_email = $1
-           AND pr2.connected_email = $2
-         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC LIMIT 1
-        ) as pending_status,
-        (SELECT pr2.reply_body 
-         FROM pending_replies pr2 
-         LEFT JOIN synced_emails s3 ON s3.id = pr2.message_id
-         WHERE COALESCE(s3.thread_id, s3.id) = f.thread_group
-           AND pr2.dashboard_user_email = $1
-           AND pr2.connected_email = $2
-         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC LIMIT 1
-        ) as pending_reply_body,
-        (SELECT pr2.summary 
-         FROM pending_replies pr2 
-         LEFT JOIN synced_emails s3 ON s3.id = pr2.message_id
-         WHERE COALESCE(s3.thread_id, s3.id) = f.thread_group
-           AND pr2.dashboard_user_email = $1
-           AND pr2.connected_email = $2
-         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC LIMIT 1
-        ) as pending_summary,
-        (SELECT pr2.sentiment 
-         FROM pending_replies pr2 
-         LEFT JOIN synced_emails s3 ON s3.id = pr2.message_id
-         WHERE COALESCE(s3.thread_id, s3.id) = f.thread_group
-           AND pr2.dashboard_user_email = $1
-           AND pr2.connected_email = $2
-         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC LIMIT 1
-        ) as pending_sentiment,
-        (SELECT pr2.id 
-         FROM pending_replies pr2 
-         LEFT JOIN synced_emails s3 ON s3.id = pr2.message_id
-         WHERE COALESCE(s3.thread_id, s3.id) = f.thread_group
-           AND pr2.dashboard_user_email = $1
-           AND pr2.connected_email = $2
-         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC LIMIT 1
-        ) as pending_id
+        pr.status as pending_status,
+        pr.reply_body as pending_reply_body,
+        pr.summary as pending_summary,
+        pr.sentiment as pending_sentiment,
+        pr.id as pending_id
       FROM FilteredThreads f
+      LEFT JOIN LATERAL (
+        SELECT pr2.status, pr2.reply_body, pr2.summary, pr2.sentiment, pr2.id
+          FROM pending_replies pr2
+          LEFT JOIN synced_emails s3
+            ON s3.dashboard_user_email = $1
+           AND s3.account_email = $2
+           AND s3.id = pr2.message_id
+         WHERE pr2.dashboard_user_email = $1
+           AND pr2.connected_email = $2
+           AND (
+             COALESCE(s3.thread_id, s3.id) = f.thread_group
+             OR pr2.thread_id = f.thread_group
+             OR pr2.message_id = f.id
+           )
+         ORDER BY pr2.sent_at DESC NULLS LAST, pr2.id DESC
+         LIMIT 1
+      ) pr ON true
       ORDER BY f.last_activity DESC
       LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `, queryArgs);
