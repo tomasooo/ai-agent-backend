@@ -5556,7 +5556,11 @@
       const nativeFetch = window.fetch.bind(window);
       window.fetch = async function (input, init = {}) {
         try {
-          const url = typeof input === 'string' ? input : (input && input.url) || '';
+          // Podpora všech tvarů vstupu: string, URL objekt i Request objekt.
+          let url = '';
+          if (typeof input === 'string') url = input;
+          else if (input instanceof URL) url = input.href;
+          else if (input && typeof input.url === 'string') url = input.url;
           const isBackend = url.startsWith(window.BACKEND) || url.startsWith('/api/');
           if (isBackend) {
             const t = localStorage.getItem('authToken');
