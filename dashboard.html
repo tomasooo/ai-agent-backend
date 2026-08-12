@@ -6948,9 +6948,15 @@ S pozdravem
       } catch (err) { }
     }
 
+    // Pořadové číslo požadavku na výpis e-mailů. Výsledek smí vykreslit jen NEJNOVĚJŠÍ
+    // požadavek – starší (pomalejší) odpovědi se zahodí, aby po přepnutí záložky
+    // nepřepsaly seznam daty z předchozího filtru (např. doručená pošta v "Čekající").
+    let emailFetchSeq = 0;
+
     // ZMĚNA: Funkce nyní načítá emaily pro primární účet z localStorage a neblokuje přes innerHTML loading okno
     async function fetchEmails(options = {}) {
       const { resetPage = false, targetPage = null } = options || {};
+      const requestSeq = ++emailFetchSeq;
       const primaryEmail = localStorage.getItem('primaryEmail');
       if (!primaryEmail) {
         if (emailListContainer) emailListContainer.innerHTML = `<div class="empty-state"><h3>Vyberte hlavní emailový účet</h3></div>`;
@@ -6991,6 +6997,9 @@ S pozdravem
 
       try {
         let res = await fetchEmailsFromDb(primaryEmail, status, period, searchQuery, pageToRequest, EMAILS_PER_PAGE);
+
+        // Mezitím odešel novější požadavek (uživatel přepnul záložku/filtr) -> tento výsledek zahodíme.
+        if (requestSeq !== emailFetchSeq) return;
 
         if (!res || !Array.isArray(res.emails)) {
           throw new Error('Nepodařilo se načíst emaily z databáze.');
@@ -7062,6 +7071,8 @@ S pozdravem
 
         renderEmailList(allEmails, lastEmailTotal);
       } catch (e) {
+        // Chybu zobrazíme jen pokud jde stále o nejnovější požadavek.
+        if (requestSeq !== emailFetchSeq) return;
         emailListContainer.innerHTML = `<div class="empty-state"><h3>${e.message || 'Chyba načítání'}</h3></div>`;
       }
     }
