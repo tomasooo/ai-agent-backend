@@ -4145,10 +4145,13 @@ app.get('/api/gmail/message-body', async (req, res) => {
 
     // === Cache-first: zkus načíst tělo z DB ===
     try {
+      // Cache HIT jen pokud už proběhl fetch včetně HTML (body_html IS NOT NULL;
+      // prázdný string = e-mail HTML část nemá). Starší text-only záznamy se
+      // jednorázově doplní z API.
       const cached = await db.query(
         `SELECT body_text, body_html FROM synced_emails
           WHERE dashboard_user_email=$1 AND account_email=$2 AND id=$3
-            AND (body_text IS NOT NULL OR body_html IS NOT NULL)`,
+            AND body_html IS NOT NULL`,
         [dashboardUserEmail, email, messageId]
       );
       if (cached.rowCount > 0 && (cached.rows[0].body_text || cached.rows[0].body_html)) {
@@ -4224,7 +4227,7 @@ app.get('/api/gmail/message-body', async (req, res) => {
         await db.query(
           `UPDATE synced_emails SET body_text=$1, body_html=$2
             WHERE dashboard_user_email=$3 AND account_email=$4 AND id=$5`,
-          [body, bodyHtml || null, dashboardUserEmail, email, messageId]
+          [body, bodyHtml, dashboardUserEmail, email, messageId]
         );
       } catch (saveErr) {
         console.warn('[gmail/message-body] Nepodařilo se uložit body do cache:', saveErr.message);
@@ -4471,10 +4474,11 @@ app.get('/api/custom-email/message-body', async (req, res) => {
 
     // === Cache-first: zkus načíst tělo z DB ===
     try {
+      // Cache HIT jen pokud už proběhl fetch včetně HTML (viz gmail/message-body)
       const cached = await db.query(
         `SELECT body_text, body_html FROM synced_emails
           WHERE dashboard_user_email=$1 AND account_email=$2 AND id=$3
-            AND (body_text IS NOT NULL OR body_html IS NOT NULL)`,
+            AND body_html IS NOT NULL`,
         [dashboardUserEmail, emailAddress, String(uid)]
       );
       if (cached.rowCount > 0 && (cached.rows[0].body_text || cached.rows[0].body_html)) {
@@ -4536,7 +4540,7 @@ app.get('/api/custom-email/message-body', async (req, res) => {
         await db.query(
           `UPDATE synced_emails SET body_text=$1, body_html=$2
             WHERE dashboard_user_email=$3 AND account_email=$4 AND id=$5`,
-          [bodyText, bodyHtml || null, dashboardUserEmail, emailAddress, String(uid)]
+          [bodyText, bodyHtml, dashboardUserEmail, emailAddress, String(uid)]
         );
       } catch (saveErr) {
         console.warn('[custom-email/message-body] Nepodařilo se uložit body do cache:', saveErr.message);
