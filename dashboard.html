@@ -9138,6 +9138,29 @@ S pozdravem
             const safeSubject = subject || '(bez předmětu)';
             const safeDate = dateTxt || '';
 
+            // Vykreslí tělo e-mailu: HTML verzi bezpečně v sandboxovaném iframe
+            // (žádné skripty, žádný přístup k aplikaci), jinak čistý text.
+            const setEmailBody = (el, text, html) => {
+              if (!el) return;
+              if (html && html.trim()) {
+                el.textContent = '';
+                const iframe = document.createElement('iframe');
+                // allow-same-origin BEZ allow-scripts = skripty zablokované, ale lze měřit výšku obsahu
+                iframe.setAttribute('sandbox', 'allow-same-origin allow-popups allow-popups-to-escape-sandbox');
+                iframe.style.cssText = 'width:100%;min-height:340px;border:none;background:#fff;border-radius:8px;';
+                iframe.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>body{margin:12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#1e293b;word-break:break-word;}img{max-width:100%;height:auto;}</style></head><body>${html}</body></html>`;
+                iframe.addEventListener('load', () => {
+                  try {
+                    const h = iframe.contentDocument?.body?.scrollHeight;
+                    if (h) iframe.style.height = Math.min(h + 30, 1200) + 'px';
+                  } catch (err) { /* sandboxed bez allow-same-origin výšku nedá – ponecháme min-height */ }
+                });
+                el.appendChild(iframe);
+              } else {
+                el.textContent = text || '(tělo zprávy je prázdné)';
+              }
+            };
+
             edFrom.textContent = safeFrom;
             edFrom.title = (originalFrom && originalFrom !== safeFrom)
               ? `${safeFrom}\nPůvodní From: ${originalFrom}`
@@ -9247,7 +9270,7 @@ S pozdravem
                 const r = await fetch(url);
                 const j = await r.json();
                 if (!r.ok || !j.success) throw new Error(j.message || 'Nepodařilo se načíst obsah zprávy.');
-                edBody.textContent = j.body || '(tělo zprávy je prázdné)';
+                setEmailBody(edBody, j.body, j.bodyHtml);
               }
             } catch (e) {
               edBody.textContent = e.message || 'Chyba při načítání obsahu zprávy.';

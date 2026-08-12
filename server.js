@@ -1156,6 +1156,7 @@ async function setupDatabase() {
       `ALTER TABLE synced_emails ADD COLUMN IF NOT EXISTS message_id TEXT;`,
       `ALTER TABLE synced_emails ADD COLUMN IF NOT EXISTS in_reply_to TEXT;`,
       `ALTER TABLE synced_emails ADD COLUMN IF NOT EXISTS body_text TEXT;`,
+      `ALTER TABLE synced_emails ADD COLUMN IF NOT EXISTS body_html TEXT;`,
       `ALTER TABLE pending_replies ADD COLUMN IF NOT EXISTS thread_id VARCHAR(255);`,
       // Blacklist (spam) adres – používán workery i /api spam endpointy
       `CREATE TABLE IF NOT EXISTS blacklisted_emails (
@@ -4145,15 +4146,16 @@ app.get('/api/gmail/message-body', async (req, res) => {
     // === Cache-first: zkus načíst tělo z DB ===
     try {
       const cached = await db.query(
-        `SELECT body_text FROM synced_emails
-          WHERE dashboard_user_email=$1 AND account_email=$2 AND id=$3 AND body_text IS NOT NULL`,
+        `SELECT body_text, body_html FROM synced_emails
+          WHERE dashboard_user_email=$1 AND account_email=$2 AND id=$3
+            AND (body_text IS NOT NULL OR body_html IS NOT NULL)`,
         [dashboardUserEmail, email, messageId]
       );
-      if (cached.rowCount > 0 && cached.rows[0].body_text) {
+      if (cached.rowCount > 0 && (cached.rows[0].body_text || cached.rows[0].body_html)) {
         db.release();
         db = null;
         console.log(`[gmail/message-body] Cache HIT pro ${messageId}`);
-        return res.json({ success: true, body: cached.rows[0].body_text });
+        return res.json({ success: true, body: cached.rows[0].body_text || '', bodyHtml: cached.rows[0].body_html || '' });
       }
     } catch (cacheErr) {
       console.warn('[gmail/message-body] Cache check selhal:', cacheErr.message);
@@ -4200,15 +4202,29 @@ app.get('/api/gmail/message-body', async (req, res) => {
     };
 
     const body = getText(msg.data.payload) || '';
-    console.log(`[gmail/message-body] Cache MISS, fetched from API, messageId: ${messageId}, délka: ${body.length}`);
+
+    // HTML verze e-mailu (pro věrné zobrazení v UI) – rekurzivně najdi text/html část
+    const getHtml = (payload) => {
+      const b64 = (d) => Buffer.from(d.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+      if (payload.mimeType === 'text/html' && payload.body?.data) return b64(payload.body.data);
+      if (payload.parts && Array.isArray(payload.parts)) {
+        for (const p of payload.parts) {
+          const h = getHtml(p);
+          if (h) return h;
+        }
+      }
+      return '';
+    };
+    const bodyHtml = getHtml(msg.data.payload) || '';
+    console.log(`[gmail/message-body] Cache MISS, fetched from API, messageId: ${messageId}, text: ${body.length}, html: ${bodyHtml.length}`);
 
     // === Uložit do cache pro příště ===
-    if (body) {
+    if (body || bodyHtml) {
       try {
         await db.query(
-          `UPDATE synced_emails SET body_text=$1
-            WHERE dashboard_user_email=$2 AND account_email=$3 AND id=$4`,
-          [body, dashboardUserEmail, email, messageId]
+          `UPDATE synced_emails SET body_text=$1, body_html=$2
+            WHERE dashboard_user_email=$3 AND account_email=$4 AND id=$5`,
+          [body, bodyHtml || null, dashboardUserEmail, email, messageId]
         );
       } catch (saveErr) {
         console.warn('[gmail/message-body] Nepodařilo se uložit body do cache:', saveErr.message);
@@ -4217,7 +4233,7 @@ app.get('/api/gmail/message-body', async (req, res) => {
 
     db.release();
     db = null;
-    return res.json({ success: true, body });
+    return res.json({ success: true, body, bodyHtml });
   } catch (e) {
     console.error('[gmail/message-body] error:', e);
     return res.status(500).json({ success: false, message: 'Načtení těla zprávy selhalo.' });
@@ -4456,15 +4472,16 @@ app.get('/api/custom-email/message-body', async (req, res) => {
     // === Cache-first: zkus načíst tělo z DB ===
     try {
       const cached = await db.query(
-        `SELECT body_text FROM synced_emails
-          WHERE dashboard_user_email=$1 AND account_email=$2 AND id=$3 AND body_text IS NOT NULL`,
+        `SELECT body_text, body_html FROM synced_emails
+          WHERE dashboard_user_email=$1 AND account_email=$2 AND id=$3
+            AND (body_text IS NOT NULL OR body_html IS NOT NULL)`,
         [dashboardUserEmail, emailAddress, String(uid)]
       );
-      if (cached.rowCount > 0 && cached.rows[0].body_text) {
+      if (cached.rowCount > 0 && (cached.rows[0].body_text || cached.rows[0].body_html)) {
         db.release();
         db = null;
         console.log(`[custom-email/message-body] Cache HIT pro uid ${uid}`);
-        return res.json({ success: true, body: cached.rows[0].body_text });
+        return res.json({ success: true, body: cached.rows[0].body_text || '', bodyHtml: cached.rows[0].body_html || '' });
       }
     } catch (cacheErr) {
       console.warn('[custom-email/message-body] Cache check selhal:', cacheErr.message);
@@ -4509,15 +4526,17 @@ app.get('/api/custom-email/message-body', async (req, res) => {
     const parsed = await simpleParser(Buffer.concat(chunks));
     // preferuj text; když chybí, stripni html
     const bodyText = parsed.text || (parsed.html ? parsed.html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : '') || '';
-    console.log(`[custom-email/message-body] Cache MISS, fetched from IMAP, uid: ${uid}, délka: ${bodyText.length}`);
+    // HTML verze pro věrné zobrazení v UI (mailparser vrací false, když HTML část chybí)
+    const bodyHtml = (typeof parsed.html === 'string' && parsed.html) ? parsed.html : '';
+    console.log(`[custom-email/message-body] Cache MISS, fetched from IMAP, uid: ${uid}, text: ${bodyText.length}, html: ${bodyHtml.length}`);
 
     // === Uložit do cache pro příště ===
-    if (bodyText) {
+    if (bodyText || bodyHtml) {
       try {
         await db.query(
-          `UPDATE synced_emails SET body_text=$1
-            WHERE dashboard_user_email=$2 AND account_email=$3 AND id=$4`,
-          [bodyText, dashboardUserEmail, emailAddress, String(uid)]
+          `UPDATE synced_emails SET body_text=$1, body_html=$2
+            WHERE dashboard_user_email=$3 AND account_email=$4 AND id=$5`,
+          [bodyText, bodyHtml || null, dashboardUserEmail, emailAddress, String(uid)]
         );
       } catch (saveErr) {
         console.warn('[custom-email/message-body] Nepodařilo se uložit body do cache:', saveErr.message);
@@ -4526,7 +4545,7 @@ app.get('/api/custom-email/message-body', async (req, res) => {
 
     db.release();
     db = null;
-    return res.json({ success: true, body: bodyText });
+    return res.json({ success: true, body: bodyText, bodyHtml });
   } catch (e) {
     console.error('[custom-email/message-body] error:', e);
     return res.status(500).json({ success: false, message: 'Načtení těla zprávy selhalo.' });
