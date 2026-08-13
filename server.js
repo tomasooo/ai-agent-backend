@@ -649,7 +649,7 @@ async function applyTeamAccess(req, res, next) {
   try {
     const requester = req.authEmail;
     const src = { ...(req.query || {}), ...(req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) };
-    const acct = src.email || src.emailAddress || src.accountEmail || src.account;
+    const acct = src.email || src.emailAddress || src.accountEmail || src.account || src.connectedEmail;
     if (!requester || !acct || typeof acct !== 'string' || !acct.includes('@')) return next();
 
     const owner = await resolveMailboxOwner(requester, acct);
@@ -688,6 +688,13 @@ app.use([
   '/api/dashboard/recent-emails',
   '/api/email/forward',
   '/api/emails/status-counts',
+  // Statistiky, analytika, FAQ a datasheety sdílené schránky
+  '/api/dashboard/stats',
+  '/api/analytics',
+  '/api/faq',
+  '/api/datasheets',
+  '/api/style/get',
+  '/api/gmail/sent-replies',
 ], applyTeamAccess);
 
 // Poznámka k akcím člena týmu v audit logu
