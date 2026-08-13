@@ -6845,8 +6845,39 @@ async function runImapWorker() {
                 console.warn('[IMAP worker] Chybí Message-ID, auto-odpověď přeskočena.');
                 // Fallback -> uložit jako pending
               } else {
+                const autoReplyText = appendAiDisclosure(replyBody);
+
+                // IDEMPOTENTNÍ CLAIM: rezervuj zprávu v DB PŘED odesláním.
+                // ON CONFLICT DO NOTHING + rowCount ochrání i proti souběhu více
+                // instancí serveru - odešle jen ta, která claim vyhrála.
+                let claimed = false;
                 try {
-                  const autoReplyText = appendAiDisclosure(replyBody);
+                  const claim = await dbClient.query(`
+                    INSERT INTO pending_replies
+                      (dashboard_user_email, connected_email, provider, message_id, thread_id, subject, sender, snippet, reply_body, status)
+                    VALUES ($1, $2, 'custom', $3, $4, $5, $6, $7, $8, 'sending')
+                    ON CONFLICT (dashboard_user_email, connected_email, provider, message_id) DO NOTHING
+                  `, [
+                    acc.dashboard_user_email,
+                    acc.email_address,
+                    pendingKey,
+                    threadId,
+                    subject || null,
+                    senderHeader || null,
+                    firstLineSnippet(bodyText, 280),
+                    autoReplyText
+                  ]);
+                  claimed = claim.rowCount > 0;
+                } catch (claimErr) {
+                  console.error('[IMAP worker] Claim selhal:', claimErr?.message);
+                }
+
+                if (!claimed) {
+                  console.log(`[IMAP Worker] UID: ${msg.uid} - Zprávu už zpracovává/zpracovala jiná instance, přeskočeno.`);
+                  continue;
+                }
+
+                try {
                   await sendCustomReply({
                     accountDetails: acc,
                     emailAddress: acc.email_address,
@@ -6872,24 +6903,12 @@ async function runImapWorker() {
                     console.error('[IMAP worker] failed to update is_read for auto-reply:', dbErr);
                   }
 
-                  // Uložit záznam do pending_replies se status='sent', aby se zobrazil badge "Automaticky zodpovězeno"
+                  // Claim -> 'sent' (zobrazí badge "Automaticky zodpovězeno")
                   try {
                     await dbClient.query(`
-                      INSERT INTO pending_replies
-                        (dashboard_user_email, connected_email, provider, message_id, thread_id, subject, sender, snippet, reply_body, status, sent_at)
-                      VALUES ($1, $2, 'custom', $3, $4, $5, $6, $7, $8, 'sent', NOW())
-                      ON CONFLICT (dashboard_user_email, connected_email, provider, message_id)
-                      DO UPDATE SET status = 'sent', sent_at = NOW()
-                    `, [
-                      acc.dashboard_user_email,
-                      acc.email_address,
-                      pendingKey,
-                      threadId,
-                      subject || null,
-                      senderHeader || null,
-                      firstLineSnippet(bodyText, 280),
-                      autoReplyText
-                    ]);
+                      UPDATE pending_replies SET status='sent', sent_at=NOW()
+                       WHERE dashboard_user_email=$1 AND connected_email=$2 AND provider='custom' AND message_id=$3
+                    `, [acc.dashboard_user_email, acc.email_address, pendingKey]);
                   } catch (dbErr) {
                     console.error('[IMAP worker] Nepodařilo se uložit auto-reply status:', dbErr);
                   }
@@ -6898,7 +6917,13 @@ async function runImapWorker() {
                   continue;
                 } catch (sendErr) {
                   console.error('[IMAP worker] Odeslání auto-odpovědi selhalo:', sendErr?.message || sendErr);
-                  // Pokud selže odeslání, uložíme do pending, aby se to neztratilo
+                  // Odeslání selhalo -> claim uvolníme, aby fallback níže uložil pending ke schválení
+                  try {
+                    await dbClient.query(`
+                      DELETE FROM pending_replies
+                       WHERE dashboard_user_email=$1 AND connected_email=$2 AND provider='custom' AND message_id=$3 AND status='sending'
+                    `, [acc.dashboard_user_email, acc.email_address, pendingKey]);
+                  } catch (delErr) { /* nechme fallbacku šanci přes ON CONFLICT */ }
                 }
               }
             }
@@ -7284,11 +7309,42 @@ async function processGmailAccount(acc, dbClient) {
 
     // 2. AUTO REPLY
     if (shouldAutoReply && action === 'auto_reply') {
+      const gmailAutoReplyText = appendAiDisclosure(replyBody);
+
+      // IDEMPOTENTNÍ CLAIM: rezervace zprávy v DB před odesláním (chrání
+      // i proti souběhu více instancí serveru).
+      let claimed = false;
+      try {
+        const claim = await dbClient.query(`
+          INSERT INTO pending_replies
+            (dashboard_user_email, connected_email, provider, message_id, thread_id, subject, sender, snippet, reply_body, status)
+          VALUES ($1, $2, 'gmail', $3, $4, $5, $6, $7, $8, 'sending')
+          ON CONFLICT (dashboard_user_email, connected_email, provider, message_id) DO NOTHING
+        `, [
+          acc.dashboard_user_email,
+          acc.connected_email,
+          msg.id,
+          msgResponse.data.threadId || null,
+          subject || null,
+          fromHdr || from || null,
+          (bodyText || '').slice(0, 280),
+          gmailAutoReplyText
+        ]);
+        claimed = claim.rowCount > 0;
+      } catch (claimErr) {
+        console.error('[Gmail Worker] Claim selhal:', claimErr?.message);
+      }
+
+      if (!claimed) {
+        console.log(`[Gmail Worker] Msg ${msg.id} - Zprávu už zpracovává/zpracovala jiná instance, přeskočeno.`);
+        continue;
+      }
+
       try {
         const { targetRecipient } = await sendGmailReplyMessage({
           gmail,
           email: acc.connected_email,
-          replyBody: appendAiDisclosure(replyBody),
+          replyBody: gmailAutoReplyText,
           threadId: msgResponse.data.threadId || undefined,
           headers,
           fallbackSubject: subject,
@@ -7318,10 +7374,26 @@ async function processGmailAccount(acc, dbClient) {
           console.error('         Failed to update is_read in synced_emails:', dbErr);
         }
 
+        // Claim -> 'sent' (badge "Automaticky zodpovězeno" i pro Gmail)
+        try {
+          await dbClient.query(`
+            UPDATE pending_replies SET status='sent', sent_at=NOW()
+             WHERE dashboard_user_email=$1 AND connected_email=$2 AND provider='gmail' AND message_id=$3
+          `, [acc.dashboard_user_email, acc.connected_email, msg.id]);
+        } catch (dbErr) {
+          console.error('         Nepodařilo se uložit auto-reply status:', dbErr);
+        }
+
         continue;
       } catch (sendErr) {
         console.error('         Auto-odpověď se nepodařila odeslat:', sendErr?.message || sendErr);
-        // Fallback -> uložíme do pending
+        // Odeslání selhalo -> claim uvolníme, fallback níže uloží pending ke schválení
+        try {
+          await dbClient.query(`
+            DELETE FROM pending_replies
+             WHERE dashboard_user_email=$1 AND connected_email=$2 AND provider='gmail' AND message_id=$3 AND status='sending'
+          `, [acc.dashboard_user_email, acc.connected_email, msg.id]);
+        } catch (delErr) { /* fallback má ON CONFLICT DO UPDATE */ }
       }
     }
 
@@ -7699,6 +7771,93 @@ cron.schedule('*/5 * * * *', () => {
   runImapWorker();
   syncRecentEmails();
 });
+
+// ============================================================================
+// === DENNÍ PŘEHLED E-MAILEM ================================================
+// ============================================================================
+async function sendDailyDigests() {
+  if (process.env.DAILY_DIGEST === 'off') return;
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    console.warn('[Digest] SMTP není nakonfigurováno, přehled se neposílá.');
+    return;
+  }
+
+  let db;
+  try {
+    db = await pool.connect();
+
+    // Uživatelé s alespoň jednou připojenou schránkou
+    const { rows: users } = await db.query(`
+      SELECT DISTINCT u.email, u.name
+        FROM dashboard_users u
+       WHERE EXISTS (SELECT 1 FROM connected_accounts ca WHERE ca.dashboard_user_email = u.email AND ca.active = true)
+          OR EXISTS (SELECT 1 FROM custom_accounts cu WHERE cu.dashboard_user_email = u.email AND cu.active = true)
+    `);
+
+    for (const u of users) {
+      try {
+        const stats = await db.query(`
+          SELECT
+            COUNT(*) FILTER (WHERE action LIKE 'Odeslání automatické odpovědi%') AS auto_sent,
+            COUNT(*) FILTER (WHERE action LIKE 'Odeslání odpovědi%')             AS approved_sent,
+            COUNT(*) FILTER (WHERE action ILIKE '%ignorov%')                     AS ignored
+          FROM activity_log
+          WHERE dashboard_user_email = $1
+            AND created_at >= NOW() - INTERVAL '24 hours'
+        `, [u.email]);
+        const pending = await db.query(
+          `SELECT COUNT(*) AS c FROM pending_replies WHERE dashboard_user_email = $1 AND status = 'pending'`,
+          [u.email]
+        );
+
+        const s = stats.rows[0] || {};
+        const autoSent = Number(s.auto_sent) || 0;
+        const approvedSent = Number(s.approved_sent) || 0;
+        const ignored = Number(s.ignored) || 0;
+        const pendingCount = Number(pending.rows[0]?.c) || 0;
+
+        // Nic se nedělo a nic nečeká -> neotravujeme
+        if (autoSent + approvedSent + ignored + pendingCount === 0) continue;
+
+        const transporter = nodemailer.createTransport({
+          host: SMTP_HOST, port: Number(SMTP_PORT), secure: SMTP_SECURE,
+          auth: { user: SMTP_USER, pass: SMTP_PASS },
+        });
+
+        const rows = [
+          autoSent ? `<tr><td style="padding:6px 12px;">🤖 Automaticky odesláno</td><td style="padding:6px 12px;text-align:right;font-weight:600;">${autoSent}</td></tr>` : '',
+          approvedSent ? `<tr><td style="padding:6px 12px;">✅ Schváleno a odesláno</td><td style="padding:6px 12px;text-align:right;font-weight:600;">${approvedSent}</td></tr>` : '',
+          ignored ? `<tr><td style="padding:6px 12px;">🗑️ Spam / ignorováno</td><td style="padding:6px 12px;text-align:right;font-weight:600;">${ignored}</td></tr>` : '',
+          `<tr><td style="padding:6px 12px;">⏳ Čeká na schválení</td><td style="padding:6px 12px;text-align:right;font-weight:600;">${pendingCount}</td></tr>`,
+        ].filter(Boolean).join('');
+
+        await transporter.sendMail({
+          from: `"AI Agent" <${SMTP_USER}>`,
+          to: u.email,
+          subject: `Denní přehled AI asistenta${pendingCount ? ` – ${pendingCount} čeká na schválení` : ''}`,
+          html: `
+            <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+              <h2 style="margin-bottom:4px;">Denní přehled</h2>
+              <p style="color:#64748b;margin-top:0;">Co váš AI asistent udělal za posledních 24 hodin:</p>
+              <table style="width:100%;border-collapse:collapse;background:#f8fafc;border-radius:8px;">${rows}</table>
+              ${pendingCount ? `<p style="margin-top:16px;"><a href="${FRONTEND_URL}/dashboard.html" style="background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Otevřít dashboard a schválit</a></p>` : ''}
+              <p style="color:#94a3b8;font-size:12px;margin-top:20px;">Přehled lze vypnout nastavením DAILY_DIGEST=off na serveru.</p>
+            </div>`,
+        });
+        console.log(`[Digest] Odesláno pro ${u.email}`);
+      } catch (userErr) {
+        console.error(`[Digest] Selhalo pro ${u.email}:`, userErr?.message);
+      }
+    }
+  } catch (e) {
+    console.error('[Digest] Chyba:', e?.message || e);
+  } finally {
+    if (db) db.release();
+  }
+}
+
+// Každý den v 7:00 českého času
+cron.schedule('0 7 * * *', () => { sendDailyDigests(); }, { timezone: 'Europe/Prague' });
 
 
 
