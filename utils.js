@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 // EU AI Act (nařízení (EU) 2024/1689, čl. 50) – transparentnost: příjemce musí být
 // informován, že komunikuje s AI systémem. Připojuje se POUZE k plně automatickým
 // odpovědím (bez lidského schválení).
-export const AI_DISCLOSURE_TEXT = 'Tato odpověď byla vygenerována AI asistentem (EU AI Act).';
+export const AI_DISCLOSURE_TEXT = 'Tato odpověď byla vygenerována AI asistentem.';
 
 export function appendAiDisclosure(body) {
   const text = String(body || '').trimEnd();
