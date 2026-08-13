@@ -693,15 +693,17 @@
                   <textarea class="form-control" id="signature-textarea"
                     placeholder="S pozdravem,&#10;Jan Novák..."></textarea>
                 </div>
-                <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
-                  <div>
+                <div class="form-group"
+                  style="flex-direction: row; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                  <div style="text-align: left;">
                     <strong>Osobní styl psaní</strong>
                     <div style="color: #64748b; font-size: 0.9rem;">
                       AI se naučí váš styl z odeslaných e-mailů — fráze, pozdravy a tón.
                       <span id="learn-style-status"></span>
                     </div>
                   </div>
-                  <button type="button" class="btn btn-secondary" id="learn-style-btn" style="white-space: nowrap;">Naučit se z historie</button>
+                  <button type="button" class="btn btn-secondary" id="learn-style-btn"
+                    style="white-space: nowrap; flex-shrink: 0;">Naučit se z historie</button>
                 </div>
               </div>
 
