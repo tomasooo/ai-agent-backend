@@ -21,6 +21,7 @@ import { XMLParser } from 'fast-xml-parser';
 import libmime from 'libmime';
 import dns from 'dns';
 import { setupDatasheetsDB, registerDatasheetsRoutes, retrieveRelevantChunks, buildDatasheetsContext } from './datasheets.js';
+import { AI_DISCLOSURE_TEXT, appendAiDisclosure, safeSecretEqual, mapWithConcurrency, firstLineSnippet, stripJsonFence } from './utils.js';
 const { decodeWords } = libmime;
 const DISABLE_AI_WORKER = process.env.DISABLE_AI_WORKER === '1' || false; // false = výchozí běží
 
@@ -173,20 +174,6 @@ async function sendPasswordResetEmail(toEmail, token) {
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Spustí async mapovací funkci nad polem s omezenou souběžností (např. Gmail API volání).
-async function mapWithConcurrency(items, limit, fn) {
-  const arr = Array.from(items || []);
-  const results = new Array(arr.length);
-  let idx = 0;
-  const workers = Array.from({ length: Math.min(limit, arr.length) }, async () => {
-    while (idx < arr.length) {
-      const cur = idx++;
-      results[cur] = await fn(arr[cur], cur);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
 
 async function runWithRetry(fn, retries = 3, delay = 2000) {
   for (let i = 0; i < retries; i++) {
@@ -1729,12 +1716,6 @@ function isSpamByHeadersMap(headers, subject = '') {
 }
 
 
-function firstLineSnippet(text = '', max = 280) {
-  return String(text || '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, Math.max(0, max));
-}
 
 function toMetadataObject(metadata) {
   if (!metadata) return {};
@@ -3126,9 +3107,6 @@ Odpověz pouze textem, bez vysvětlivek a bez markdownu.`;
 
 /* ===== Pomocné funkce ===== */
 
-function stripJsonFence(s = '') {
-  return String(s).replace(/^\s*```json\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-}
 
 function escapeRegExp(s = '') {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -4906,13 +4884,6 @@ app.get('/api/gmail/pending-replies', async (req, res) => {
 // EU AI Act (nařízení (EU) 2024/1689, čl. 50) – transparentnost: příjemce musí být
 // informován, že komunikuje s AI systémem. Připojuje se POUZE k plně automatickým
 // odpovědím (bez lidského schválení).
-const AI_DISCLOSURE_TEXT = 'Tato odpověď byla vygenerována AI asistentem (EU AI Act).';
-
-function appendAiDisclosure(body) {
-  const text = String(body || '').trimEnd();
-  if (text.includes(AI_DISCLOSURE_TEXT)) return text;
-  return `${text}\n\n--\n${AI_DISCLOSURE_TEXT}`;
-}
 
 async function sendGmailReplyMessage({
   gmail,
@@ -7742,13 +7713,6 @@ async function syncRecentEmails() {
 }
 
 // Endpoint, který lze stále volat ručně pro testování (např. přes UptimeRobot)
-// Časově konstantní porovnání tajemství (ochrana proti timing útokům)
-function safeSecretEqual(a, b) {
-  const bufA = Buffer.from(String(a || ''), 'utf8');
-  const bufB = Buffer.from(String(b || ''), 'utf8');
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
 
 app.get('/api/trigger-worker', (req, res) => {
   // Preferuje se hlavička (tajemství se nedostane do access logů); query zůstává jako fallback.
