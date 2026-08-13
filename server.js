@@ -71,7 +71,7 @@ const JWT_SECRET = process.env.JWT_SECRET
   || crypto.createHash('sha256').update(`${CRON_SECRET || ''}|${process.env.GOOGLE_CLIENT_SECRET || ''}`).digest('hex');
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 // Povolené akce, které smí AI vrátit; cokoli mimo whitelist se bere jako require_approval.
-const ALLOWED_AI_ACTIONS = new Set(['auto_reply', 'require_approval', 'ignore']);
+const ALLOWED_AI_ACTIONS = new Set(['auto_reply', 'require_approval', 'ignore', 'spam']);
 if (!process.env.JWT_SECRET) {
   console.warn('[AUTH] JWT_SECRET není nastaven – používám odvozený klíč. Doporučeno nastavit JWT_SECRET v prostředí.');
 }
@@ -978,7 +978,7 @@ function buildEmailAnalysisTask({
   "summary": "stručné shrnutí",
   "sentiment": "pozitivní|neutrální|negativní",
   "category": "Objednávka|Poptávka|Dotaz|Stížnost|Fakturace|Ostatní",
-  "action": "auto_reply|require_approval|ignore",
+  "action": "auto_reply|require_approval|ignore|spam",
   "suggested_reply": "plný text odpovědi splňující STYLE_PROFILE a pravidla výše"
 }`
     : `{
@@ -1000,9 +1000,16 @@ Kategorie:
 - Ostatní: Cokoliv jiného.
 
 Pravidla pro 'action':
-- "ignore": Pokud je e-mail spam, reklama, newsletter, nabídka služeb (SEO, App Dev), automatická notifikace bez nutnosti reakce.
-  POZOR - NENÍ spam: dotaz zákazníka na slevu, akci či dostupnost zboží, reklamace, vrácení zboží,
-  ani jakýkoli osobně psaný e-mail od zákazníka. Když si nejsi jistý, zvol "require_approval", nikdy "ignore".
+- "spam": Nevyžádané obchodní nabídky adresované NÁM - někdo nám nabízí SVOJE služby nebo produkty:
+  výroba, dodávky, subdodávky, SEO, marketing, vývoj aplikací, "můžeme pro vás vyrábět/dodávat",
+  prodej databází kontaktů, hromadná reklama, newsletter.
+- "ignore": Automatická notifikace bez nutnosti reakce (potvrzení systému, doručenky).
+- KLÍČOVÝ ROZDÍL: Když někdo chce NAKUPOVAT, PRODÁVAT či DISTRIBUOVAT NAŠE produkty
+  (zájemce o zboží, reseller, velkoobchod, "rádi bychom prodávali vaše produkty"),
+  je to OBCHODNÍ PŘÍLEŽITOST - nikdy ne spam! Zvol "auto_reply" nebo "require_approval".
+  Rozhoduje SMĚR nabídky: oni nabízejí nám = spam; oni chtějí naše = poptávka.
+  POZOR - NENÍ spam ani: dotaz zákazníka na slevu, akci či dostupnost zboží, reklamace, vrácení zboží,
+  ani jakýkoli osobně psaný e-mail od zákazníka. Když si nejsi jistý, zvol "require_approval".
 - "require_approval":
   - Pokud je sentiment "negativní" (stížnost, nespokojenost, hrozba).
   - Pokud e-mail obsahuje sériová čísla (pxnv..., punv..., pwnv...).
@@ -6782,8 +6789,8 @@ async function runImapWorker() {
             }
 
             // 1. IGNORE
-            if (action === 'ignore') {
-              console.log(`[IMAP Worker] AI rozhodla IGNOROVAT (spam/reklama/nezajímavé).`);
+            if (action === 'ignore' || action === 'spam') {
+              console.log(`[IMAP Worker] AI rozhodla: ${action === 'spam' ? 'SPAM (nevyžádaná nabídka/reklama)' : 'IGNOROVAT (notifikace)'}.`);
               // Označíme jako přečtené, aby to už neotravovalo
               await runWithRetry(() => actionImap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true })).catch(() => { });
 
@@ -6816,10 +6823,10 @@ async function runImapWorker() {
                 console.warn('[IMAP Worker] Nepodařilo se uložit AI spam záznam:', spamSaveErr?.message || spamSaveErr);
               }
 
-              await logActivity(acc.dashboard_user_email, 'AI Ignorovalo', 'success', {
+              await logActivity(acc.dashboard_user_email, action === 'spam' ? 'AI Spam (nabídka/reklama)' : 'AI Ignorovalo', 'success', {
                 account: acc.email_address,
                 subject: subject,
-                reason: 'action_ignore'
+                reason: `action_${action}`
               });
               continue;
             }
@@ -7287,17 +7294,27 @@ async function processGmailAccount(acc, dbClient) {
     console.log(`[Gmail Worker] Msg ID: ${msg.id} - AI Action: "${action}"`);
 
     // 1. IGNORE
-    if (action === 'ignore') {
-      console.log(`[Gmail Worker] AI rozhodla IGNOROVAT (spam/reklama/nezajímavé).`);
-      await gmail.users.messages.modify({
-        userId: 'me',
-        id: msg.id,
-        requestBody: { removeLabelIds: ['UNREAD'] }
-      });
-      await logActivity(acc.dashboard_user_email, 'AI Ignorovalo (Gmail)', 'success', {
+    if (action === 'ignore' || action === 'spam') {
+      const isAiSpam = action === 'spam';
+      console.log(`[Gmail Worker] AI rozhodla: ${isAiSpam ? 'SPAM (nevyžádaná nabídka/reklama)' : 'IGNOROVAT (notifikace)'}.`);
+      if (isAiSpam && acc.spam_filter) {
+        // Nevyžádanou nabídku přesuň rovnou do SPAMu
+        await gmail.users.messages.modify({
+          userId: 'me',
+          id: msg.id,
+          requestBody: { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX', 'UNREAD'] }
+        });
+      } else {
+        await gmail.users.messages.modify({
+          userId: 'me',
+          id: msg.id,
+          requestBody: { removeLabelIds: ['UNREAD'] }
+        });
+      }
+      await logActivity(acc.dashboard_user_email, isAiSpam ? 'AI Spam (nabídka/reklama)' : 'AI Ignorovalo (Gmail)', 'success', {
         account: acc.connected_email,
         subject: subject,
-        reason: 'action_ignore'
+        reason: `action_${action}`
       });
       continue;
     }
