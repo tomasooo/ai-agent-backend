@@ -947,6 +947,15 @@ Pravidla pro tvorbu "suggested_reply":
   - "Střední" = 1 odstavec (cca 3–6 vět).
   - "Dlouhá" = více odstavců, podrobnější.
 - ${LANGUAGE_RULE}
+- ÚPLNOST: Nejprve si v duchu vypiš VŠECHNY otázky a požadavky z e-mailu a odpověz na KAŽDOU z nich.
+  Polovičatá odpověď (zodpovězena jen část dotazů) je chyba.
+- OSLOVENÍ: Pokud znáš jméno odesílatele (z podpisu nebo hlavičky From), oslov ho jménem
+  („Dobrý den, pane Nováku,"). Pokud jméno neznáš, použij neutrální „Dobrý den,".
+- EMPATIE: U stížnosti nebo reklamace začni uznáním problému a omluvou (např. „mrzí nás, že…"),
+  teprve potom řeš věcné kroky. Nikdy nezačínej suchým „děkujeme za zprávu".
+- PRAVDIVOST FAKT: Ceny, termíny dodání, technické parametry, dostupnost a obchodní podmínky uváděj
+  POUZE tehdy, když jsou uvedené ve FAQ, v dokumentech, v historii vlákna nebo v samotném e-mailu.
+  NIKDY si žádný takový údaj nevymýšlej. Pokud informaci nemáš, napiš, že ji ověříš a doplníš.
 - Nikdy nevyzývej příjemce, aby nás kontaktoval e-mailem nebo jiným kanálem, protože odpověď posíláš ty.
 - Pokud STYLE_PROFILE.signature není prázdný:
   - Připoj podpis na konec odpovědi (dvě nové řádky před podpisem).
@@ -1013,6 +1022,8 @@ Pravidla pro 'action':
 - "require_approval":
   - Pokud je sentiment "negativní" (stížnost, nespokojenost, hrozba).
   - Pokud e-mail obsahuje sériová čísla (pxnv..., punv..., pwnv...).
+  - Pokud se zákazník ptá na konkrétní fakta (cenu, termín, parametry, dostupnost),
+    která NEJSOU ve FAQ, dokumentech ani historii vlákna - odpověď bez faktů nesmí odejít automaticky.
   - Pokud si nejsi jistý odpovědí nebo jde o citlivé téma.
 - "auto_reply": Všechny ostatní validní e-maily (dotazy, objednávky), na které lze bezpečně odpovědět.
 ` : '';
@@ -1055,6 +1066,36 @@ async function buildThreadContext(dbClient, { dashboardUserEmail, accountEmail, 
     console.warn('[thread-context] načtení selhalo:', e?.message);
     return '';
   }
+}
+
+// Hlas uživatele: ukázky jeho SKUTEČNÝCH odeslaných e-mailů (style_examples, role='outgoing').
+// AI z nich přebírá fráze, pozdravy a rytmus - píše "jako on", ne genericky.
+async function buildVoiceExamplesBlock(dbClient, { dashboardUserEmail, connectedEmail, limit = 3 }) {
+  try {
+    const r = await dbClient.query(`
+      SELECT subject, body
+        FROM style_examples
+       WHERE dashboard_user_email = $1 AND connected_email = $2 AND role = 'outgoing'
+         AND LENGTH(body) BETWEEN 80 AND 4000
+       ORDER BY created_at DESC
+       LIMIT $3
+    `, [dashboardUserEmail, connectedEmail, limit]);
+    if (!r.rowCount) return '';
+    const items = r.rows.map((row, i) =>
+      `Ukázka ${i + 1}${row.subject ? ` (předmět: ${String(row.subject).slice(0, 80)})` : ''}:\n${String(row.body).slice(0, 700)}`);
+    return `Takhle skutečně píše uživatel, jehož jménem odpovídáš. Převezmi jeho hlas - typické fráze, pozdravy, rytmus vět (obsah ukázek NEpoužívej jako fakta):\n---\n${items.join('\n\n')}\n---\n\n`;
+  } catch (e) {
+    return '';
+  }
+}
+
+// Kombinovaný blok příkladů: hlas ze sent mailu + poučení z oprav uživatele
+async function buildExamplesBlock(dbClient, { dashboardUserEmail, connectedEmail }) {
+  const [voice, edits] = await Promise.all([
+    buildVoiceExamplesBlock(dbClient, { dashboardUserEmail, connectedEmail }),
+    buildEditExamplesBlock(dbClient, { dashboardUserEmail, connectedEmail }),
+  ]);
+  return `${voice}${edits}`;
 }
 
 // Příklady oprav uživatele (učení z korekcí): posledních pár dvojic návrh->finální verze.
@@ -4575,7 +4616,7 @@ Tvůj úkol: uprav tento text tak, aby byl plynulý, profesionální a odpovída
       dashboardUserEmail, accountEmail: emailAddress,
       threadId: rThread.rows[0]?.tg, excludeId: String(uid)
     });
-    const examplesBlock = await buildEditExamplesBlock(db, { dashboardUserEmail, connectedEmail: emailAddress });
+    const examplesBlock = await buildExamplesBlock(db, { dashboardUserEmail, connectedEmail: emailAddress });
 
     const task = buildEmailAnalysisTask({
       bodyText: emailBody,
@@ -5730,7 +5771,7 @@ app.post('/api/gmail/analyze-email', async (req, res) => {
       dashboardUserEmail, accountEmail: email,
       threadId: rThread.rows[0]?.tg, excludeId: String(messageId)
     });
-    const examplesBlock = await buildEditExamplesBlock(db, { dashboardUserEmail, connectedEmail: email });
+    const examplesBlock = await buildExamplesBlock(db, { dashboardUserEmail, connectedEmail: email });
 
     db.release();
     db = null;
@@ -6469,7 +6510,7 @@ async function runImapWorker() {
         };
 
         // Příklady oprav uživatele (per účet, jednou za běh)
-        const workerExamplesBlock = await buildEditExamplesBlock(dbClient, {
+        const workerExamplesBlock = await buildExamplesBlock(dbClient, {
           dashboardUserEmail: acc.dashboard_user_email,
           connectedEmail: acc.email_address
         });
@@ -7093,7 +7134,7 @@ async function processGmailAccount(acc, dbClient) {
   const systemInstruction = buildStyleSystemInstruction(styleProfile);
 
   // Příklady oprav uživatele (per účet, jednou za běh)
-  const workerExamplesBlock = await buildEditExamplesBlock(dbClient, {
+  const workerExamplesBlock = await buildExamplesBlock(dbClient, {
     dashboardUserEmail: acc.dashboard_user_email,
     connectedEmail: acc.connected_email
   });
