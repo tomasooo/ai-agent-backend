@@ -16,6 +16,7 @@ import crypto from 'node:crypto';
 import { ImapFlow } from 'imapflow';
 import fetch from 'node-fetch';
 import nodemailer from 'nodemailer';
+import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import { simpleParser } from 'mailparser';
 import { XMLParser } from 'fast-xml-parser';
 import libmime from 'libmime';
@@ -4946,6 +4947,129 @@ app.get('/api/custom-email/attachment', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Stažení přílohy selhalo.' });
   } finally {
     if (db) db.release();
+  }
+});
+
+// === PŘEPOSLÁNÍ E-MAILU (Gmail i custom IMAP, včetně příloh) ===
+app.post('/api/email/forward', async (req, res) => {
+  const { dashboardUserEmail, accountEmail, id, isCustom, to, note } = req.body || {};
+  if (!dashboardUserEmail || !accountEmail || !id || !to) {
+    return res.status(400).json({ success: false, message: 'Chybí povinná data (accountEmail, id, to).' });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to))) {
+    return res.status(400).json({ success: false, message: 'Neplatná cílová adresa.' });
+  }
+
+  const buildForwardText = (origFrom, origDate, origSubject, origText) => {
+    const notePart = note && String(note).trim() ? `${String(note).trim()}\n\n` : '';
+    const when = origDate ? new Date(origDate).toLocaleString('cs-CZ') : '';
+    return `${notePart}---------- Přeposlaná zpráva ----------\nOd: ${origFrom || '?'}\nDatum: ${when}\nPředmět: ${origSubject || '(bez předmětu)'}\n\n${origText || ''}`;
+  };
+  const fwdSubject = (s) => /^fwd:/i.test(String(s || '')) ? s : `Fwd: ${s || '(bez předmětu)'}`;
+
+  try {
+    if (isCustom) {
+      // --- Custom IMAP/SMTP účet ---
+      const rAcc = await pool.query(`
+        SELECT imap_host, imap_port, imap_secure, smtp_host, smtp_port, smtp_secure, enc_username, enc_password
+          FROM custom_accounts
+         WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
+         LIMIT 1`,
+        [dashboardUserEmail, accountEmail]
+      );
+      if (!rAcc.rowCount) return res.status(404).json({ success: false, message: 'Účet nenalezen.' });
+      const acc = rAcc.rows[0];
+      const user = decSecret(acc.enc_username);
+      const pass = decSecret(acc.enc_password);
+
+      const imap = createImapClient({
+        host: acc.imap_host, port: Number(acc.imap_port), secure: !!acc.imap_secure,
+        auth: { user, pass }
+      });
+      await imap.connect();
+      let parsed;
+      try {
+        await imap.mailboxOpen('INBOX');
+        const { content } = await imap.download(Number(id), null, { uid: true });
+        const chunks = [];
+        for await (const c of content) chunks.push(c);
+        parsed = await simpleParser(Buffer.concat(chunks));
+      } finally {
+        await imap.logout().catch(() => { });
+      }
+
+      const origText = parsed.text || (parsed.html ? String(parsed.html).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim() : '');
+      const transporter = nodemailer.createTransport({
+        host: acc.smtp_host, port: Number(acc.smtp_port), secure: !!acc.smtp_secure,
+        auth: { user, pass }, tls: { rejectUnauthorized: MAIL_TLS_REJECT_UNAUTHORIZED }
+      });
+      await transporter.sendMail({
+        from: accountEmail,
+        to,
+        subject: fwdSubject(parsed.subject),
+        text: buildForwardText(parsed.from?.text, parsed.date, parsed.subject, origText),
+        attachments: (parsed.attachments || []).filter(a => !a.related).map((a, i) => ({
+          filename: a.filename || `priloha-${i + 1}`,
+          content: a.content,
+          contentType: a.contentType || 'application/octet-stream'
+        }))
+      });
+    } else {
+      // --- Gmail účet ---
+      const gmail = await getGmailClientFor(dashboardUserEmail, accountEmail);
+      const msg = await gmail.users.messages.get({ userId: 'me', id: String(id), format: 'full' });
+      const headers = msg.data.payload?.headers || [];
+      const hVal = (n) => headers.find(h => h.name?.toLowerCase() === n.toLowerCase())?.value || '';
+      const origSubject = hVal('Subject');
+      const origFrom = hVal('From');
+      const origDate = hVal('Date');
+      const origText = extractPlainText(msg.data.payload) || msg.data.snippet || '';
+
+      // Stáhni přílohy původní zprávy
+      const attParts = [];
+      const walk = (p) => {
+        if (!p) return;
+        const disposition = (p.headers || []).find(h => h.name?.toLowerCase() === 'content-disposition')?.value || '';
+        if (p.filename && p.body?.attachmentId && !/inline/i.test(disposition)) attParts.push(p);
+        (p.parts || []).forEach(walk);
+      };
+      walk(msg.data.payload);
+      const attachments = [];
+      for (const p of attParts) {
+        try {
+          const att = await gmail.users.messages.attachments.get({ userId: 'me', messageId: String(id), id: p.body.attachmentId });
+          attachments.push({
+            filename: p.filename,
+            content: Buffer.from(String(att.data.data || ''), 'base64'),
+            contentType: p.mimeType || 'application/octet-stream'
+          });
+        } catch (attErr) {
+          console.warn('[forward] příloha se nepodařila stáhnout:', p.filename, attErr?.message);
+        }
+      }
+
+      const composer = new MailComposer({
+        from: accountEmail,
+        to,
+        subject: fwdSubject(origSubject),
+        text: buildForwardText(origFrom, origDate, origSubject, origText),
+        attachments
+      });
+      const raw = await composer.compile().build();
+      await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: { raw: raw.toString('base64url') }
+      });
+    }
+
+    await logActivity(dashboardUserEmail, 'Přeposlání e-mailu', 'success', { account: accountEmail, to });
+    return res.json({ success: true, message: 'E-mail byl přeposlán.' });
+  } catch (e) {
+    console.error('[email/forward] error:', e?.message || e);
+    await logActivity(dashboardUserEmail, 'Přeposlání e-mailu', 'error', {
+      account: accountEmail, to, reason: e?.message || String(e) || 'Neznámá chyba'
+    }).catch(() => { });
+    return res.status(500).json({ success: false, message: 'Přeposlání selhalo: ' + (e?.message || 'neznámá chyba') });
   }
 });
 

@@ -539,6 +539,7 @@
                 <button class="btn btn-danger" id="ed-reject-bottom"
                   style="display:none; background-color: #ef4444; border-color: #ef4444; color: white;">❌
                   Zamítnout</button>
+                <button class="btn btn-secondary" id="ed-forward-bottom">↪ Přeposlat</button>
                 <button class="btn btn-primary" id="ed-reply-bottom" style="display:none;">Odpovědět</button>
               </div>
             </div>
@@ -5394,6 +5395,15 @@ S pozdravem
               const isPendingEmail = !!(emailEntry && emailEntry._pending && (emailEntry.pendingId || pendingId));
               const effectivePendingId = isPendingEmail ? (emailEntry?.pendingId || pendingId || '') : '';
 
+              // Kontext pro tlačítko Přeposlat
+              window.__forwardCtx = {
+                isCustom,
+                accountEmail: primaryEmail,
+                id: emailEntry?.messageId || emailEntry?.id || ctx?.id || id,
+                subject: safeSubject,
+                from: safeFrom,
+              };
+
               // === Případ 1: Pending email – načti tělo přímo z DB přes pendingId ===
               if (isPendingEmail && effectivePendingId) {
                 const dbUrl = `${window.BACKEND}/api/pending-reply/body?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}&pendingId=${encodeURIComponent(effectivePendingId)}`;
@@ -5464,6 +5474,74 @@ S pozdravem
         };
 
         emailListContainer.addEventListener('click', window.handleEmailRowClick);
+
+        // === PŘEPOSLÁNÍ E-MAILU ===
+        function showForwardDialog() {
+          const fctx = window.__forwardCtx;
+          if (!fctx || !fctx.id) {
+            (window.showToast ? showToast('Nejdříve otevřete e-mail.', 'warning') : alert('Nejdříve otevřete e-mail.'));
+            return;
+          }
+          const old = document.getElementById('forward-overlay');
+          if (old) old.remove();
+
+          const overlay = document.createElement('div');
+          overlay.id = 'forward-overlay';
+          overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;';
+          overlay.innerHTML = `
+            <div style="background:#1e293b;color:#f1f5f9;border-radius:14px;max-width:480px;width:100%;padding:22px;border:1px solid rgba(148,163,184,0.25);box-shadow:0 20px 60px rgba(0,0,0,0.45);">
+              <h3 style="margin:0 0 4px 0;font-size:1.05rem;">↪ Přeposlat e-mail</h3>
+              <div style="color:#94a3b8;font-size:0.85rem;margin-bottom:14px;">${escapeHtml(fctx.subject || '(bez předmětu)')}</div>
+              <label style="display:block;font-size:0.85rem;color:#cbd5e1;margin-bottom:4px;">Komu (e-mail)</label>
+              <input type="email" id="fwd-to" class="form-control" placeholder="kolega@firma.cz" style="width:100%;margin-bottom:12px;">
+              <label style="display:block;font-size:0.85rem;color:#cbd5e1;margin-bottom:4px;">Zpráva (nepovinné)</label>
+              <textarea id="fwd-note" class="form-control" rows="3" placeholder="Ahoj, mrkni na to prosím…" style="width:100%;margin-bottom:16px;"></textarea>
+              <div style="display:flex;justify-content:flex-end;gap:10px;">
+                <button class="btn btn-secondary" id="fwd-cancel">Zrušit</button>
+                <button class="btn btn-primary" id="fwd-send">Přeposlat</button>
+              </div>
+            </div>`;
+
+          overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+          overlay.querySelector('#fwd-cancel').addEventListener('click', () => overlay.remove());
+          overlay.querySelector('#fwd-send').addEventListener('click', async () => {
+            const to = overlay.querySelector('#fwd-to').value.trim();
+            const note = overlay.querySelector('#fwd-note').value.trim();
+            if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+              (window.showToast ? showToast('Zadejte platnou e-mailovou adresu.', 'warning') : alert('Zadejte platnou e-mailovou adresu.'));
+              return;
+            }
+            const sendBtn = overlay.querySelector('#fwd-send');
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Odesílám…';
+            try {
+              const r = await fetch(`${window.BACKEND}/api/email/forward`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  accountEmail: fctx.accountEmail,
+                  id: fctx.id,
+                  isCustom: fctx.isCustom,
+                  to,
+                  note,
+                }),
+              });
+              const j = await r.json();
+              if (!r.ok || !j.success) throw new Error(j.message || 'Přeposlání selhalo.');
+              overlay.remove();
+              (window.showToast ? showToast(`E-mail přeposlán na ${to}.`, 'success') : alert('Přeposláno.'));
+            } catch (e) {
+              sendBtn.disabled = false;
+              sendBtn.textContent = 'Přeposlat';
+              (window.showToast ? showToast(e.message || 'Přeposlání selhalo.', 'error') : alert(e.message || 'Přeposlání selhalo.'));
+            }
+          });
+
+          document.body.appendChild(overlay);
+          overlay.querySelector('#fwd-to').focus();
+        }
+
+        document.getElementById('ed-forward-bottom')?.addEventListener('click', showForwardDialog);
         const recContainer = document.getElementById('recent-emails-container');
         if (recContainer) {
           recContainer.addEventListener('click', window.handleEmailRowClick);
