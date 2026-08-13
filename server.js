@@ -608,6 +608,95 @@ app.use((req, res, next) => {
 });
 // =========================================================================
 
+// ============================================================================
+// === TÝMY: přístup ke sdíleným schránkám ====================================
+// ============================================================================
+// Vrátí e-mail VLASTNÍKA schránky, pokud k ní má requester přístup:
+// buď je to jeho vlastní schránka, nebo mu ji někdo nasdílel přes tým.
+// Jinak vrací null. Dotazy nad daty schránky pak běží pod identitou vlastníka.
+async function resolveMailboxOwner(requesterEmail, accountEmail) {
+  if (!requesterEmail || !accountEmail) return null;
+  const acct = String(accountEmail).trim().toLowerCase();
+
+  // 1) Vlastní schránka
+  const own = await pool.query(
+    `SELECT 1 FROM connected_accounts WHERE dashboard_user_email=$1 AND LOWER(email)=$2
+     UNION ALL
+     SELECT 1 FROM custom_accounts WHERE dashboard_user_email=$1 AND LOWER(email_address)=$2
+     LIMIT 1`,
+    [requesterEmail, acct]
+  );
+  if (own.rowCount > 0) return requesterEmail;
+
+  // 2) Schránka sdílená přes tým (requester je člen týmu nebo jeho zakladatel)
+  const shared = await pool.query(
+    `SELECT tm.owner_email
+       FROM team_mailboxes tm
+       JOIN teams t ON t.id = tm.team_id
+       LEFT JOIN team_members m ON m.team_id = tm.team_id AND m.member_email = $1
+      WHERE LOWER(tm.account_email) = $2
+        AND (m.member_email IS NOT NULL OR t.owner_email = $1)
+      LIMIT 1`,
+    [requesterEmail, acct]
+  );
+  return shared.rows[0]?.owner_email || null;
+}
+
+// Middleware pro datové endpointy schránek: ověří přístup (vlastní/sdílená)
+// a přepne dashboardUserEmail na vlastníka schránky, aby stávající handlery
+// fungovaly beze změny. Skutečný aktér zůstává v req.actorEmail (pro audit).
+async function applyTeamAccess(req, res, next) {
+  try {
+    const requester = req.authEmail;
+    const src = { ...(req.query || {}), ...(req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) };
+    const acct = src.email || src.emailAddress || src.accountEmail || src.account;
+    if (!requester || !acct || typeof acct !== 'string' || !acct.includes('@')) return next();
+
+    const owner = await resolveMailboxOwner(requester, acct);
+    if (!owner) {
+      return res.status(403).json({ success: false, message: 'K této schránce nemáte přístup.' });
+    }
+    req.actorEmail = requester;
+    req.mailboxOwner = owner;
+    if (req.query && typeof req.query === 'object') req.query.dashboardUserEmail = owner;
+    if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) req.body.dashboardUserEmail = owner;
+    return next();
+  } catch (e) {
+    console.error('[team-access] chyba:', e?.message || e);
+    return res.status(500).json({ success: false, message: 'Ověření přístupu ke schránce selhalo.' });
+  }
+}
+
+// Datové endpointy schránek, kde platí týmový přístup (čtení + operativa).
+// Konfigurace (nastavení AI, FAQ, dokumenty, odpojení) zůstává jen vlastníkovi.
+app.use([
+  '/api/gmail/emails',
+  '/api/gmail/thread',
+  '/api/gmail/message-body',
+  '/api/gmail/attachment',
+  '/api/gmail/send-reply',
+  '/api/gmail/analyze-email',
+  '/api/gmail/approval',
+  '/api/gmail/pending-replies',
+  '/api/custom-email/emails',
+  '/api/custom-email/message-body',
+  '/api/custom-email/attachment',
+  '/api/custom-email/send-reply',
+  '/api/custom-email/analyze-email',
+  '/api/custom-email/analyze',
+  '/api/custom-email/pending-replies',
+  '/api/dashboard/recent-emails',
+  '/api/email/forward',
+  '/api/emails/status-counts',
+], applyTeamAccess);
+
+// Poznámka k akcím člena týmu v audit logu
+function actorNote(req) {
+  return (req?.actorEmail && req?.mailboxOwner && req.actorEmail !== req.mailboxOwner)
+    ? { actor: req.actorEmail }
+    : {};
+}
+
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !FRONTEND_URL || !DATABASE_URL || !CRON_SECRET || !process.env.OPENAI_API_KEY) {
   console.error("Chyba: Chybí potřebné proměnné prostředí!");
   process.exit(1);
@@ -1371,6 +1460,29 @@ async function setupDatabase() {
             );`,
       `CREATE INDEX IF NOT EXISTS idx_reply_edits_user_acct
                  ON reply_edits (dashboard_user_email, connected_email, created_at DESC);`,
+      // === TÝMY: sdílení schránek v rámci firmy ===
+      `CREATE TABLE IF NOT EXISTS teams (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(120) NOT NULL,
+                owner_email VARCHAR(255) NOT NULL REFERENCES dashboard_users(email) ON DELETE CASCADE,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );`,
+      `CREATE TABLE IF NOT EXISTS team_members (
+                team_id INT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+                member_email VARCHAR(255) NOT NULL,
+                role VARCHAR(20) DEFAULT 'member',
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (team_id, member_email)
+            );`,
+      `CREATE TABLE IF NOT EXISTS team_mailboxes (
+                team_id INT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+                owner_email VARCHAR(255) NOT NULL,
+                account_email VARCHAR(255) NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (team_id, owner_email, account_email)
+            );`,
+      `CREATE INDEX IF NOT EXISTS idx_team_members_member ON team_members (member_email);`,
+      `CREATE INDEX IF NOT EXISTS idx_team_mailboxes_account ON team_mailboxes (account_email);`,
       `CREATE INDEX IF NOT EXISTS idx_activity_log_user_action
                  ON activity_log (dashboard_user_email, action);`
     ];
@@ -3962,6 +4074,32 @@ async function listConnectedAccountsHandler(req, res) {
       type: row.type,             // 'gmail' | 'custom' (FE může ignorovat, pokud ho nepotřebuje)
     }));
 
+    // Schránky sdílené s uživatelem přes týmy (nejsou jeho vlastní)
+    try {
+      const shared = await client.query(`
+        SELECT DISTINCT tm.account_email, tm.owner_email, t.name AS team_name
+          FROM team_mailboxes tm
+          JOIN teams t ON t.id = tm.team_id
+          LEFT JOIN team_members m ON m.team_id = tm.team_id AND m.member_email = $1
+         WHERE (m.member_email IS NOT NULL OR t.owner_email = $1)
+           AND tm.owner_email <> $1
+      `, [dashboardUserEmail]);
+      for (const row of shared.rows) {
+        if (!accounts.some(a => a.email.toLowerCase() === row.account_email.toLowerCase())) {
+          accounts.push({
+            email: row.account_email,
+            active: true,
+            type: 'shared',
+            shared: true,
+            ownerEmail: row.owner_email,
+            teamName: row.team_name,
+          });
+        }
+      }
+    } catch (teamErr) {
+      console.warn('[accounts] načtení sdílených schránek selhalo:', teamErr?.message);
+    }
+
     // fallback endpoint udrž: /api/accounts/list → vrací jen pole emailů
     if (req.path.endsWith('/list')) {
       return res.json({ success: true, emails: accounts.map(a => a.email) });
@@ -4162,7 +4300,7 @@ app.post('/api/gmail/send-reply', async (req, res) => {
       lines.splice(3, 0, `In-Reply-To: ${originalMessageId}`, `References: ${refs}`);
     }
 
-    await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Gmail)', 'success', { to: targetRecipient, account: email });
+    await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Gmail)', 'success', { to: targetRecipient, account: email, ...actorNote(req) });
     const raw = Buffer.from(lines.join('\n')).toString('base64url');
 
     await gmail.users.messages.send({
@@ -5064,7 +5202,7 @@ app.post('/api/email/forward', async (req, res) => {
       });
     }
 
-    await logActivity(dashboardUserEmail, 'Přeposlání e-mailu', 'success', { account: accountEmail, to });
+    await logActivity(dashboardUserEmail, 'Přeposlání e-mailu', 'success', { account: accountEmail, to, ...actorNote(req) });
     return res.json({ success: true, message: 'E-mail byl přeposlán.' });
   } catch (e) {
     console.error('[email/forward] error:', e?.message || e);
@@ -5238,7 +5376,7 @@ async function sendGmailReplyMessage({
   return { targetRecipient };
 }
 
-async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending }) {
+async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending, actor = null }) {
   const gmail = await getGmailClientFor(dashboardUserEmail, email);
   const msgResponse = await gmail.users.messages.get({ userId: 'me', id: pending.message_id, format: 'full' });
   const headers = msgResponse.data.payload?.headers || [];
@@ -5278,7 +5416,7 @@ async function sendGmailReplyFromPending({ dashboardUserEmail, email, pending })
     db.release();
   }
 
-  await logActivity(dashboardUserEmail, 'Odeslání odpovědi (schváleno)', 'success', { account: email, to: targetRecipient });
+  await logActivity(dashboardUserEmail, 'Odeslání odpovědi (schváleno)', 'success', { account: email, to: targetRecipient, ...(actor ? { actor } : {}) });
 }
 
 // GET /api/pending-reply/body – vrátí tělo (original_body), AI odpověď (reply_body), summary a sentiment
@@ -5290,13 +5428,20 @@ app.get('/api/pending-reply/body', async (req, res) => {
   const client = await pool.connect();
   try {
     const { rows } = await client.query(`
-      SELECT original_body, reply_body, summary, sentiment
+      SELECT original_body, reply_body, summary, sentiment, dashboard_user_email, connected_email
         FROM pending_replies
-       WHERE id=$1 AND dashboard_user_email=$2
+       WHERE id=$1
        LIMIT 1
-    `, [Number(pendingId), dashboardUserEmail]);
+    `, [Number(pendingId)]);
     if (!rows.length) {
       return res.status(404).json({ success: false, message: 'Záznam nenalezen.' });
+    }
+    // Přístup: vlastník záznamu, nebo člen týmu se sdílenou schránkou
+    if (rows[0].dashboard_user_email !== req.authEmail) {
+      const owner = await resolveMailboxOwner(req.authEmail, rows[0].connected_email);
+      if (owner !== rows[0].dashboard_user_email) {
+        return res.status(404).json({ success: false, message: 'Záznam nenalezen.' });
+      }
     }
     const r = rows[0];
     return res.json({
@@ -5353,7 +5498,7 @@ app.post('/api/gmail/pending-replies/:id/approve', async (req, res) => {
       await client.query(`UPDATE pending_replies SET reply_body=$1 WHERE id=$2`, [customReplyBody, id]);
     }
 
-    await sendGmailReplyFromPending({ dashboardUserEmail, email, pending });
+    await sendGmailReplyFromPending({ dashboardUserEmail, email, pending, actor: actorNote(req).actor || null });
 
     await client.query(`
       UPDATE pending_replies
@@ -5484,7 +5629,7 @@ app.get('/api/custom-email/pending-replies', async (req, res) => {
   }
 });
 
-async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pending }) {
+async function sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pending, actor = null }) {
   const db = await pool.connect();
   let accountDetails;
   try {
@@ -5654,7 +5799,7 @@ app.post('/api/custom-email/pending-replies/:id/approve', async (req, res) => {
       await client.query(`UPDATE pending_replies SET reply_body=$1 WHERE id=$2`, [customReplyBody, id]);
     }
 
-    await sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pending });
+    await sendCustomReplyFromPending({ dashboardUserEmail, emailAddress, pending, actor: actorNote(req).actor || null });
 
     await client.query(`
       UPDATE pending_replies
@@ -8144,6 +8289,184 @@ async function sendDailyDigests() {
 cron.schedule('0 7 * * *', () => { sendDailyDigests(); }, { timezone: 'Europe/Prague' });
 
 
+
+// ============================================================================
+// === TÝMY: MANAGEMENT API ===================================================
+// ============================================================================
+
+// Výpis týmů uživatele (založené i ty, kde je členem), včetně členů a schránek
+app.get('/api/teams', async (req, res) => {
+  const me = req.authEmail;
+  try {
+    const teams = await pool.query(`
+      SELECT DISTINCT t.id, t.name, t.owner_email, t.created_at
+        FROM teams t
+        LEFT JOIN team_members m ON m.team_id = t.id
+       WHERE t.owner_email = $1 OR m.member_email = $1
+       ORDER BY t.created_at ASC
+    `, [me]);
+
+    const result = [];
+    for (const t of teams.rows) {
+      const [members, mailboxes] = await Promise.all([
+        pool.query(`SELECT member_email, role, created_at FROM team_members WHERE team_id=$1 ORDER BY created_at`, [t.id]),
+        pool.query(`SELECT owner_email, account_email, created_at FROM team_mailboxes WHERE team_id=$1 ORDER BY created_at`, [t.id]),
+      ]);
+      result.push({
+        id: t.id,
+        name: t.name,
+        ownerEmail: t.owner_email,
+        isOwner: t.owner_email === me,
+        members: members.rows.map(m => ({ email: m.member_email, role: m.role })),
+        mailboxes: mailboxes.rows.map(b => ({ email: b.account_email, ownerEmail: b.owner_email })),
+      });
+    }
+    return res.json({ success: true, teams: result });
+  } catch (e) {
+    console.error('[teams] list error:', e?.message || e);
+    return res.status(500).json({ success: false, message: 'Načtení týmů selhalo.' });
+  }
+});
+
+// Založení týmu
+app.post('/api/teams', async (req, res) => {
+  const me = req.authEmail;
+  const name = String(req.body?.name || '').trim().slice(0, 120);
+  if (!name) return res.status(400).json({ success: false, message: 'Zadejte název týmu.' });
+  try {
+    const r = await pool.query(
+      `INSERT INTO teams (name, owner_email) VALUES ($1, $2) RETURNING id, name`,
+      [name, me]
+    );
+    await logActivity(me, 'Založení týmu', 'success', { team: name });
+    return res.json({ success: true, team: { id: r.rows[0].id, name: r.rows[0].name, ownerEmail: me, isOwner: true, members: [], mailboxes: [] } });
+  } catch (e) {
+    console.error('[teams] create error:', e?.message || e);
+    return res.status(500).json({ success: false, message: 'Založení týmu selhalo.' });
+  }
+});
+
+// Helper: ověř, že tým existuje a requester je jeho zakladatel
+async function requireTeamOwner(teamId, me) {
+  const r = await pool.query(`SELECT id, name, owner_email FROM teams WHERE id=$1`, [Number(teamId)]);
+  if (!r.rowCount) return { error: { code: 404, message: 'Tým nenalezen.' } };
+  if (r.rows[0].owner_email !== me) return { error: { code: 403, message: 'Tým může spravovat jen jeho zakladatel.' } };
+  return { team: r.rows[0] };
+}
+
+// Smazání týmu (jen zakladatel)
+app.delete('/api/teams/:id', async (req, res) => {
+  const me = req.authEmail;
+  try {
+    const { team, error } = await requireTeamOwner(req.params.id, me);
+    if (error) return res.status(error.code).json({ success: false, message: error.message });
+    await pool.query(`DELETE FROM teams WHERE id=$1`, [team.id]);
+    await logActivity(me, 'Smazání týmu', 'success', { team: team.name });
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: 'Smazání týmu selhalo.' });
+  }
+});
+
+// Přidání člena (jen zakladatel; člen musí mít účet v aplikaci)
+app.post('/api/teams/:id/members', async (req, res) => {
+  const me = req.authEmail;
+  const memberEmail = String(req.body?.memberEmail || '').trim().toLowerCase();
+  if (!memberEmail || !memberEmail.includes('@')) {
+    return res.status(400).json({ success: false, message: 'Zadejte platný e-mail člena.' });
+  }
+  try {
+    const { team, error } = await requireTeamOwner(req.params.id, me);
+    if (error) return res.status(error.code).json({ success: false, message: error.message });
+    if (memberEmail === me.toLowerCase()) {
+      return res.status(400).json({ success: false, message: 'Zakladatel je členem automaticky.' });
+    }
+    const exists = await pool.query(`SELECT 1 FROM dashboard_users WHERE LOWER(email)=$1`, [memberEmail]);
+    if (!exists.rowCount) {
+      return res.status(404).json({ success: false, message: 'Uživatel s tímto e-mailem nemá účet v aplikaci. Požádejte ho nejdřív o registraci.' });
+    }
+    const ins = await pool.query(
+      `INSERT INTO team_members (team_id, member_email) VALUES ($1, $2)
+       ON CONFLICT (team_id, member_email) DO NOTHING`,
+      [team.id, memberEmail]
+    );
+    if (!ins.rowCount) return res.status(409).json({ success: false, message: 'Tento uživatel už je členem týmu.' });
+    await logActivity(me, 'Přidání člena týmu', 'success', { team: team.name, member: memberEmail });
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[teams] add member error:', e?.message || e);
+    return res.status(500).json({ success: false, message: 'Přidání člena selhalo.' });
+  }
+});
+
+// Odebrání člena (zakladatel kohokoli; člen může odejít sám)
+app.delete('/api/teams/:id/members/:email', async (req, res) => {
+  const me = req.authEmail;
+  const target = String(req.params.email || '').trim().toLowerCase();
+  try {
+    const r = await pool.query(`SELECT id, name, owner_email FROM teams WHERE id=$1`, [Number(req.params.id)]);
+    if (!r.rowCount) return res.status(404).json({ success: false, message: 'Tým nenalezen.' });
+    const team = r.rows[0];
+    const isOwner = team.owner_email === me;
+    const isSelf = target === me.toLowerCase();
+    if (!isOwner && !isSelf) {
+      return res.status(403).json({ success: false, message: 'Členy může odebírat jen zakladatel.' });
+    }
+    await pool.query(`DELETE FROM team_members WHERE team_id=$1 AND LOWER(member_email)=$2`, [team.id, target]);
+    await logActivity(me, isSelf && !isOwner ? 'Odchod z týmu' : 'Odebrání člena týmu', 'success', { team: team.name, member: target });
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: 'Odebrání člena selhalo.' });
+  }
+});
+
+// Nasdílení schránky do týmu — POUZE vlastní schránky zakladatele
+app.post('/api/teams/:id/mailboxes', async (req, res) => {
+  const me = req.authEmail;
+  const accountEmail = String(req.body?.accountEmail || '').trim();
+  if (!accountEmail || !accountEmail.includes('@')) {
+    return res.status(400).json({ success: false, message: 'Zadejte platnou schránku.' });
+  }
+  try {
+    const { team, error } = await requireTeamOwner(req.params.id, me);
+    if (error) return res.status(error.code).json({ success: false, message: error.message });
+
+    // Bezpečnostní jádro: sdílet jde JEN schránka, kterou vlastní requester
+    const owner = await resolveMailboxOwner(me, accountEmail);
+    if (owner !== me) {
+      return res.status(403).json({ success: false, message: 'Sdílet můžete pouze schránky, které jste sám připojil.' });
+    }
+
+    const ins = await pool.query(
+      `INSERT INTO team_mailboxes (team_id, owner_email, account_email) VALUES ($1, $2, $3)
+       ON CONFLICT (team_id, owner_email, account_email) DO NOTHING`,
+      [team.id, me, accountEmail]
+    );
+    if (!ins.rowCount) return res.status(409).json({ success: false, message: 'Tato schránka už je v týmu nasdílená.' });
+    await logActivity(me, 'Nasdílení schránky týmu', 'success', { team: team.name, account: accountEmail });
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('[teams] share mailbox error:', e?.message || e);
+    return res.status(500).json({ success: false, message: 'Nasdílení schránky selhalo.' });
+  }
+});
+
+// Odebrání schránky z týmu (jen zakladatel)
+app.delete('/api/teams/:id/mailboxes/:account', async (req, res) => {
+  const me = req.authEmail;
+  try {
+    const { team, error } = await requireTeamOwner(req.params.id, me);
+    if (error) return res.status(error.code).json({ success: false, message: error.message });
+    await pool.query(
+      `DELETE FROM team_mailboxes WHERE team_id=$1 AND LOWER(account_email)=$2`,
+      [team.id, String(req.params.account || '').trim().toLowerCase()]
+    );
+    await logActivity(me, 'Odebrání schránky z týmu', 'success', { team: team.name, account: req.params.account });
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: 'Odebrání schránky selhalo.' });
+  }
+});
 
 // --- ADMIN SEKCE ---
 // Middleware pro ověření, zda je uživatel admin
