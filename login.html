@@ -1063,6 +1063,11 @@
                 .then(data => {
                     if (!data.success) throw new Error(data.message || 'Ověření selhalo.');
                     if (data.token) localStorage.setItem('authToken', data.token);
+                    // Přihlášení jiného uživatele -> vyčistit stav předchozí relace
+                    if (localStorage.getItem('userEmail') !== data.user.email) {
+                      localStorage.removeItem('primaryEmail');
+                      localStorage.removeItem('connectedEmails');
+                    }
                     localStorage.setItem('userName', data.user.name);
                     localStorage.setItem('userEmail', data.user.email);
                     localStorage.setItem('userRole', data.user.role);
@@ -1190,6 +1195,11 @@
                 if (!r.ok || !data.success) throw new Error(data.message || 'Přihlášení selhalo.');
 
                 if (data.token) localStorage.setItem('authToken', data.token);
+                // Přihlášení jiného uživatele -> vyčistit stav předchozí relace
+                if (localStorage.getItem('userEmail') !== data.user.email) {
+                  localStorage.removeItem('primaryEmail');
+                  localStorage.removeItem('connectedEmails');
+                }
                 localStorage.setItem('userName', data.user.name);
                 localStorage.setItem('userEmail', data.user.email);
                 localStorage.setItem('userRole', data.user.role);

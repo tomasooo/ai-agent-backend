@@ -713,7 +713,7 @@ const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-5-nano'; // pro vše ost
 // Nastavení databázového spojení
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: DB_SSL_REJECT_UNAUTHORIZED } // Render: default false; DB_SSL_REJECT_UNAUTHORIZED=true pro strict
+  ssl: process.env.DB_SSL === 'off' ? false : { rejectUnauthorized: DB_SSL_REJECT_UNAUTHORIZED } // Render: default false; DB_SSL=off pro lokální vývoj
 });
 
 // === DASHBOARD STATS (Relocated) ===
@@ -1511,7 +1511,11 @@ async function setupDatabase() {
 }
 
 await setupDatabase();
-await setupDatasheetsDB(pool);
+try {
+  await setupDatasheetsDB(pool);
+} catch (e) {
+  console.error('Datasheets DB setup selhal (RAG bude nedostupný):', e?.message || e);
+}
 registerDatasheetsRoutes(app, pool, openai);
 
 

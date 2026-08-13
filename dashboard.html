@@ -3231,15 +3231,31 @@ S pozdravem
     async function fetchEmails(options = {}) {
       const { resetPage = false, targetPage = null } = options || {};
       const requestSeq = ++emailFetchSeq;
-      const primaryEmail = localStorage.getItem('primaryEmail');
+      let primaryEmail = localStorage.getItem('primaryEmail');
       if (!primaryEmail) {
-        if (emailListContainer) emailListContainer.innerHTML = `<div class="empty-state"><h3>Vyberte hlavní emailový účet</h3></div>`;
-        if (emailCountHeader) emailCountHeader.textContent = 'Emaily';
-        return;
+        // Žádná vybraná schránka (čerstvé přihlášení) -> zvol první dostupnou
+        const bootAccs = getConnectedAccounts().length ? getConnectedAccounts() : await syncConnectedEmails();
+        const first = bootAccs.find(a => a.active) || bootAccs[0];
+        if (first) {
+          setPrimaryEmail(first.email);
+          primaryEmail = first.email;
+        } else {
+          if (emailListContainer) emailListContainer.innerHTML = `<div class="empty-state"><h3>Vyberte hlavní emailový účet</h3></div>`;
+          if (emailCountHeader) emailCountHeader.textContent = 'Emaily';
+          return;
+        }
       }
 
       const accs = getConnectedAccounts().length ? getConnectedAccounts() : await syncConnectedEmails();
-      const prim = accs.find(a => a.email === primaryEmail);
+      let prim = accs.find(a => a.email === primaryEmail);
+      // Samoléčba: vybraná schránka neexistuje (jiný uživatel, odpojený účet)
+      // -> automaticky přepni na první dostupnou (vlastní nebo sdílenou)
+      if (!prim && accs.length) {
+        prim = accs.find(a => a.active) || accs[0];
+        setPrimaryEmail(prim.email);
+        console.log('[fetchEmails] primaryEmail neplatný, přepínám na:', prim.email);
+        return fetchEmails(options);
+      }
       if (!prim || !prim.active) {
         if (emailListContainer) emailListContainer.innerHTML = `<div class="empty-state"><h3>Primární účet je neaktivní</h3></div>`;
         if (emailCountHeader) emailCountHeader.textContent = `Emaily pro: ${primaryEmail} (neaktivní)`;
