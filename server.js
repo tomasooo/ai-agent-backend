@@ -2080,6 +2080,8 @@ app.post('/api/custom-email/connect', async (req, res) => {
       encSecret(baseUsername), encSecret(password)
     ]);
     await logActivity(dashboardUserEmail, 'Připojení Custom účtu', 'success', { connectedEmail: emailAddress });
+    // Automaticky na pozadí: naučit styl z odeslané pošty + vygenerovat FAQ
+    autoSetupAccount(dashboardUserEmail, emailAddress);
     return res.json({ success: true, message: 'Účet připojen.' });
   } catch (e) {
     console.error(e);
@@ -2906,58 +2908,29 @@ async function harvestImapSentExamples(acc, maxCount = 50) {
   return items;
 }
 
-app.post('/api/style/learn', async (req, res) => {
-  try {
-    const { dashboardUserEmail, email, limit = 200 } = req.body || req.query || {};
-    if (!dashboardUserEmail || !email) {
-      return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo email.' });
-    }
+// Naučí styl psaní pro daný účet (custom IMAP i Gmail). Vrací {saved}.
+// Používá se z endpointu, automaticky po připojení schránky a týdenním cronem.
+async function learnStyleForAccount(dashboardUserEmail, email, { maxGmail = 200 } = {}) {
+  // Custom (IMAP) účet: načti odeslanou poštu přes IMAP místo Gmail API
+  const rCustom = await pool.query(
+    `SELECT imap_host, imap_port, imap_secure, enc_username, enc_password
+       FROM custom_accounts
+      WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
+      LIMIT 1`,
+    [dashboardUserEmail, email]
+  );
 
-    // Custom (IMAP) účet: načti odeslanou poštu přes IMAP místo Gmail API
-    const rCustom = await pool.query(
-      `SELECT imap_host, imap_port, imap_secure, enc_username, enc_password
-         FROM custom_accounts
-        WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
-        LIMIT 1`,
-      [dashboardUserEmail, email]
-    );
-    if (rCustom.rowCount > 0) {
-      const items = await harvestImapSentExamples(rCustom.rows[0], 50);
-      if (!items.length) {
-        return res.json({ success: true, saved: 0, message: 'Ve složce odeslané pošty nebyly nalezeny žádné použitelné e-maily.' });
-      }
-      const db = await pool.connect();
-      try {
-        // Nahradit staré příklady novými (ať se stejné e-maily nehromadí při opakovaném kliknutí)
-        await db.query(
-          `DELETE FROM style_examples WHERE dashboard_user_email=$1 AND connected_email=$2 AND role='outgoing'`,
-          [dashboardUserEmail, email]
-        );
-        for (const it of items) {
-          await db.query(
-            `INSERT INTO style_examples (dashboard_user_email, connected_email, role, subject, body)
-             VALUES ($1,$2,$3,$4,$5)`,
-            [dashboardUserEmail, email, it.role, it.subject || '', it.body || '']
-          );
-        }
-      } finally {
-        db.release();
-      }
-      return res.json({ success: true, saved: items.length });
-    }
-
+  let items = [];
+  if (rCustom.rowCount > 0) {
+    items = await harvestImapSentExamples(rCustom.rows[0], 50);
+  } else {
     const gmail = await getGmailClientFor(dashboardUserEmail, email);
-    const max = Math.min(Number(limit) || 200, 500);
-
-    // načti seznamy zpráv
+    const max = Math.min(Number(maxGmail) || 200, 500);
     const [sentList, inboxList] = await Promise.all([
       gmail.users.messages.list({ userId: 'me', labelIds: ['SENT'], maxResults: max }),
       gmail.users.messages.list({ userId: 'me', labelIds: ['INBOX'], q: '-from:me -in:spam -in:trash', maxResults: max }),
     ]);
-
-    // helper na stažení obsahu jednotlivých zpráv
     const loadItems = async (msgs = [], role = 'incoming') => {
-      // Paralelně (s limitem 8 souběžných volání) místo sériového stahování stovek zpráv.
       const loaded = await mapWithConcurrency(msgs || [], 8, async (m) => {
         const msg = await gmail.users.messages.get({ userId: 'me', id: m.id });
         const payload = msg.data.payload;
@@ -2968,28 +2941,67 @@ app.post('/api/style/learn', async (req, res) => {
       });
       return loaded.filter(Boolean);
     };
-
     const sentItems = await loadItems(sentList.data.messages, 'outgoing');
     const inboxItems = await loadItems(inboxList.data.messages, 'incoming');
-    const items = [...sentItems, ...inboxItems];
+    items = [...sentItems, ...inboxItems];
+  }
 
-    // ulož do DB
-    if (!items.length) return res.json({ success: true, saved: 0 });
+  if (!items.length) return { saved: 0 };
 
-    const db = await pool.connect();
-    try {
-      const sql = `
-        INSERT INTO style_examples (dashboard_user_email, connected_email, role, subject, body)
-        VALUES ($1,$2,$3,$4,$5)
-      `;
-      for (const it of items) {
-        await db.query(sql, [dashboardUserEmail, email, it.role, it.subject || '', it.body || '']);
-      }
-    } finally {
-      db.release();
+  const db = await pool.connect();
+  try {
+    // Nahradit staré příklady novými (nehromadí se při opakovaném učení)
+    await db.query(
+      `DELETE FROM style_examples WHERE dashboard_user_email=$1 AND connected_email=$2`,
+      [dashboardUserEmail, email]
+    );
+    for (const it of items) {
+      await db.query(
+        `INSERT INTO style_examples (dashboard_user_email, connected_email, role, subject, body)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [dashboardUserEmail, email, it.role, it.subject || '', it.body || '']
+      );
     }
+  } finally {
+    db.release();
+  }
+  return { saved: items.length };
+}
 
-    return res.json({ success: true, saved: items.length });
+// Automatické nastavení po připojení schránky: naučit styl a (pokud chybí)
+// vygenerovat FAQ. Fire-and-forget - nesmí blokovat ani shodit připojení.
+function autoSetupAccount(dashboardUserEmail, email) {
+  setImmediate(async () => {
+    try {
+      const r = await learnStyleForAccount(dashboardUserEmail, email);
+      console.log(`[auto-setup] ${email}: naučeno ${r.saved} příkladů stylu.`);
+      if (r.saved > 0) {
+        const f = await pool.query(
+          `SELECT 1 FROM faqs WHERE dashboard_user_email=$1 AND connected_email=$2 LIMIT 1`,
+          [dashboardUserEmail, email]
+        );
+        if (!f.rowCount) {
+          const faq = await regenerateFaqForAccount(dashboardUserEmail, email);
+          console.log(`[auto-setup] ${email}: vygenerováno ${faq.created} FAQ položek.`);
+        }
+      }
+    } catch (e) {
+      console.warn(`[auto-setup] ${email} selhalo:`, e?.message || e);
+    }
+  });
+}
+
+app.post('/api/style/learn', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, limit = 200 } = req.body || req.query || {};
+    if (!dashboardUserEmail || !email) {
+      return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo email.' });
+    }
+    const r = await learnStyleForAccount(dashboardUserEmail, email, { maxGmail: limit });
+    if (!r.saved) {
+      return res.json({ success: true, saved: 0, message: 'Nebyly nalezeny žádné použitelné e-maily.' });
+    }
+    return res.json({ success: true, saved: r.saved });
   } catch (e) {
     console.error('[/api/style/learn] error', e);
     return res.status(500).json({ success: false, message: 'Učení z historie selhalo.' });
@@ -3865,6 +3877,8 @@ app.get('/api/oauth/google/callback', async (req, res) => {
     );
 
     await logActivity(dashboardUserEmail || connectedEmail, 'Připojení Gmail účtu', 'success', { connectedEmail });
+    // Automaticky na pozadí: naučit styl z odeslané pošty + vygenerovat FAQ
+    autoSetupAccount(dashboardUserEmail || connectedEmail, connectedEmail);
     // zpět do FE
     res.redirect(`${FRONTEND_URL}/dashboard.html?account-linked=success&new-email=${encodeURIComponent(connectedEmail)}`);
   } catch (error) {
@@ -6414,23 +6428,18 @@ app.delete('/api/faq/:id', async (req, res) => {
 
 
 
-app.post('/api/faq/regenerate', async (req, res) => {
-  let db = null;
+// Vygeneruje FAQ z naučených příkladů komunikace. Vrací {created, faqs}.
+// Vyhodí chybu s .code='limit' při vyčerpaném limitu AI akcí.
+async function regenerateFaqForAccount(dashboardUserEmail, email, { limit = 120 } = {}) {
+  let db = await pool.connect();
+  let examples;
   try {
-    const { dashboardUserEmail, email, limit = 120 } = req.body || {};
-    if (!dashboardUserEmail || !email) {
-      return res.status(400).json({ success: false, message: 'Chybí parametry.' });
-    }
-
-    db = await pool.connect();
     const consume = await tryConsumeAiAction(db, dashboardUserEmail);
     if (!consume.ok) {
-      db.release();
-      db = null;
-      return res.status(429).json({ success: false, message: `Vyčerpán měsíční limit AI akcí (${consume.limit}).` });
+      const err = new Error(`Vyčerpán měsíční limit AI akcí (${consume.limit}).`);
+      err.code = 'limit';
+      throw err;
     }
-
-    // Vytáhni poslední N příkladů pro tento účet
     const ex = await db.query(
       `SELECT role, subject, body
          FROM style_examples
@@ -6439,16 +6448,14 @@ app.post('/api/faq/regenerate', async (req, res) => {
         LIMIT $3`,
       [dashboardUserEmail, email, Math.min(Number(limit) || 120, 300)]
     );
-    const examples = ex.rows || [];
+    examples = ex.rows || [];
+  } finally {
     db.release();
-    db = null;
+  }
 
-    if (!examples.length) {
-      return res.json({ success: true, created: 0, faqs: [] });
-    }
+  if (!examples.length) return { created: 0, faqs: [] };
 
-    // Prompt: ze vzorků udělej 8–15 FAQ (Q/A) jako JSON
-    const prompt = `
+  const prompt = `
 Jsi e-mailový asistent. Z následujících vzorků e-mailové komunikace vytvoř seznam FAQ pro daný účet.
 FAQ má zachytit NEJČASTĚJŠÍ dotazy a typické odpovědi firmy. Vrať POUZE validní JSON objekt:
 {
@@ -6460,58 +6467,66 @@ FAQ má zachytit NEJČASTĚJŠÍ dotazy a typické odpovědi firmy. Vrať POUZE 
 Počet 8–15, bez duplicit, česky, krátké a praktické.
 Vzorky (JSON řádky):
 ${examples.map(e => JSON.stringify(e)).join('\n').slice(0, 15000)}
-    `.trim();
+  `.trim();
 
-    const raw = await chatJson({ model: DEFAULT_MODEL, user: prompt });
+  const raw = await chatJson({ model: DEFAULT_MODEL, user: prompt });
 
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (parseErr) {
-      console.error('FAQ regenerate - invalid JSON response:', parseErr, raw);
-      throw new Error('AI nevrátila validní JSON.');
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (parseErr) {
+    console.error('FAQ regenerate - invalid JSON response:', parseErr, raw);
+    throw new Error('AI nevrátila validní JSON.');
+  }
+
+  const faqs = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed?.faqs)
+      ? parsed.faqs
+      : Array.isArray(parsed?.data)
+        ? parsed.data
+        : Array.isArray(parsed?.items)
+          ? parsed.items
+          : null;
+
+  if (!Array.isArray(faqs)) throw new Error('AI nevrátila pole FAQ.');
+
+  const cleanedFaqs = faqs
+    .map(qa => ({
+      question: typeof qa?.question === 'string' ? qa.question.trim() : '',
+      answer: typeof qa?.answer === 'string' ? qa.answer.trim() : ''
+    }))
+    .filter(qa => qa.question && qa.answer);
+
+  const db2 = await pool.connect();
+  try {
+    await db2.query(`DELETE FROM faqs WHERE dashboard_user_email=$1 AND connected_email=$2`, [dashboardUserEmail, email]);
+    for (const qa of cleanedFaqs) {
+      await db2.query(
+        `INSERT INTO faqs (dashboard_user_email, connected_email, question, answer)
+         VALUES ($1,$2,$3,$4)`,
+        [dashboardUserEmail, email, qa.question, qa.answer]
+      );
     }
+  } finally { db2.release(); }
 
-    const faqs = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray(parsed?.faqs)
-        ? parsed.faqs
-        : Array.isArray(parsed?.data)
-          ? parsed.data
-          : Array.isArray(parsed?.items)
-            ? parsed.items
-            : null;
+  return { created: cleanedFaqs.length, faqs: cleanedFaqs };
+}
 
-    if (!Array.isArray(faqs)) {
-      throw new Error('AI nevrátila pole FAQ.');
+app.post('/api/faq/regenerate', async (req, res) => {
+  try {
+    const { dashboardUserEmail, email, limit = 120 } = req.body || {};
+    if (!dashboardUserEmail || !email) {
+      return res.status(400).json({ success: false, message: 'Chybí parametry.' });
     }
-
-    const cleanedFaqs = faqs
-      .map(qa => ({
-        question: typeof qa?.question === 'string' ? qa.question.trim() : '',
-        answer: typeof qa?.answer === 'string' ? qa.answer.trim() : ''
-      }))
-      .filter(qa => qa.question && qa.answer);
-
-    // Ulož: smaž staré a vlož nové (pro daný účet)
-    const db2 = await pool.connect();
-    try {
-      await db2.query(`DELETE FROM faqs WHERE dashboard_user_email=$1 AND connected_email=$2`, [dashboardUserEmail, email]);
-      for (const qa of cleanedFaqs) {
-        await db2.query(
-          `INSERT INTO faqs (dashboard_user_email, connected_email, question, answer)
-           VALUES ($1,$2,$3,$4)`,
-          [dashboardUserEmail, email, qa.question, qa.answer]
-        );
-      }
-    } finally { db2.release(); }
-
-    res.json({ success: true, created: cleanedFaqs.length, faqs: cleanedFaqs });
+    const r = await regenerateFaqForAccount(dashboardUserEmail, email, { limit });
+    res.json({ success: true, created: r.created, faqs: r.faqs });
   } catch (e) {
+    if (e?.code === 'limit') {
+      return res.status(429).json({ success: false, message: e.message });
+    }
     console.error(e);
     res.status(500).json({ success: false, message: 'Regenerace FAQ selhala.' });
-  } finally {
-    if (db) db.release();
   }
 });
 
@@ -8298,6 +8313,42 @@ async function sendDailyDigests() {
 
 // Každý den v 7:00 českého času
 cron.schedule('0 7 * * *', () => { sendDailyDigests(); }, { timezone: 'Europe/Prague' });
+
+// ============================================================================
+// === TÝDENNÍ AUTO-OBNOVA NAUČENÉHO STYLU ===================================
+// ============================================================================
+// AI se průběžně učí z čerstvé pošty - uživatel nemusí na nic klikat.
+async function refreshAllStyles() {
+  if (process.env.AUTO_STYLE_REFRESH === 'off') return;
+  let db;
+  try {
+    db = await pool.connect();
+    const { rows: accounts } = await db.query(`
+      SELECT dashboard_user_email, email AS account_email FROM connected_accounts WHERE active = true
+      UNION ALL
+      SELECT dashboard_user_email, email_address AS account_email FROM custom_accounts WHERE active = true
+    `);
+    db.release();
+    db = null;
+
+    console.log(`[auto-style] Týdenní obnova stylu pro ${accounts.length} účtů...`);
+    for (const acc of accounts) {
+      try {
+        const r = await learnStyleForAccount(acc.dashboard_user_email, acc.account_email);
+        console.log(`[auto-style] ${acc.account_email}: ${r.saved} příkladů.`);
+      } catch (e) {
+        console.warn(`[auto-style] ${acc.account_email} selhalo:`, e?.message);
+      }
+    }
+  } catch (e) {
+    console.error('[auto-style] chyba:', e?.message || e);
+  } finally {
+    if (db) db.release();
+  }
+}
+
+// Neděle 03:00 českého času
+cron.schedule('0 3 * * 0', () => { refreshAllStyles(); }, { timezone: 'Europe/Prague' });
 
 
 
