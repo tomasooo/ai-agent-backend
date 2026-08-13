@@ -696,16 +696,13 @@
                     placeholder="S pozdravem,&#10;Jan Novák..."></textarea>
                 </div>
                 <div class="form-group"
-                  style="flex-direction: row; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid rgba(255, 255, 255, 0.1);">
-                  <div style="text-align: left;">
-                    <strong>Osobní styl psaní</strong>
-                    <div style="color: #64748b; font-size: 0.9rem;">
-                      AI se naučí váš styl z odeslaných e-mailů — fráze, pozdravy a tón.
-                      <span id="learn-style-status"></span>
-                    </div>
+                  style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                  <div style="color: #64748b; font-size: 0.9rem;">
+                    ✨ <strong style="color:#94a3b8;">Osobní styl psaní se učí automaticky</strong> — z odeslané
+                    pošty po připojení schránky a průběžně každý týden. AI píše vašimi frázemi a tónem
+                    bez jakéhokoli nastavování.
+                    <span id="learn-style-status"></span>
                   </div>
-                  <button type="button" class="btn btn-secondary" id="learn-style-btn"
-                    style="white-space: nowrap; flex-shrink: 0;">Naučit se z historie</button>
                 </div>
               </div>
 
@@ -788,14 +785,6 @@
                   <div style="display: flex; align-items: center; gap: 20px;">
                     <div style="font-size: 14px; color: #a5b4fc; font-weight: 500;">
                       📝 Nastavuji: <span id="currentConfigEmail"></span>
-                    </div>
-                    <div class="bulk-actions">
-                      <button class="bulk-btn enable-all" onclick="enableAllAccounts()"
-                        style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3);">Aktivovat
-                        vše</button>
-                      <button class="bulk-btn disable-all" onclick="disableAllAccounts()"
-                        style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);">Deaktivovat
-                        vše</button>
                     </div>
                   </div>
                 </div>
@@ -5974,7 +5963,7 @@ S pozdravem
         }));
 
         if (!items.length) {
-          listEl.innerHTML = `<div class="banner info">Zatím žádné položky. Klikni na „Přidat FAQ položku“ nebo „Naučit se z historie“.</div>`;
+          listEl.innerHTML = `<div class="banner info">Zatím žádné položky. FAQ se vytvoří automaticky krátce po připojení schránky — nebo je přidejte ručně tlačítkem „Přidat FAQ položku“.</div>`;
           return;
         }
 
