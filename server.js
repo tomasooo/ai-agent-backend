@@ -21,7 +21,7 @@ import { XMLParser } from 'fast-xml-parser';
 import libmime from 'libmime';
 import dns from 'dns';
 import { setupDatasheetsDB, registerDatasheetsRoutes, retrieveRelevantChunks, buildDatasheetsContext } from './datasheets.js';
-import { AI_DISCLOSURE_TEXT, appendAiDisclosure, safeSecretEqual, mapWithConcurrency, firstLineSnippet, stripJsonFence } from './utils.js';
+import { AI_DISCLOSURE_TEXT, appendAiDisclosure, safeSecretEqual, mapWithConcurrency, firstLineSnippet, stripJsonFence, evaluateSpamSignals } from './utils.js';
 const { decodeWords } = libmime;
 const DISABLE_AI_WORKER = process.env.DISABLE_AI_WORKER === '1' || false; // false = výchozí běží
 
@@ -1001,6 +1001,8 @@ Kategorie:
 
 Pravidla pro 'action':
 - "ignore": Pokud je e-mail spam, reklama, newsletter, nabídka služeb (SEO, App Dev), automatická notifikace bez nutnosti reakce.
+  POZOR - NENÍ spam: dotaz zákazníka na slevu, akci či dostupnost zboží, reklamace, vrácení zboží,
+  ani jakýkoli osobně psaný e-mail od zákazníka. Když si nejsi jistý, zvol "require_approval", nikdy "ignore".
 - "require_approval":
   - Pokud je sentiment "negativní" (stížnost, nespokojenost, hrozba).
   - Pokud e-mail obsahuje sériová čísla (pxnv..., punv..., pwnv...).
@@ -1690,16 +1692,11 @@ function htmlToPlainText(html = '') {
     .trim();
 }
 
+// EXPLICITNÍ spam podle hlaviček (server/filtr už e-mail označil).
+// Bulk signály (List-Unsubscribe, Precedence) už samy o sobě NEznamenají spam -
+// vyhodnocují se skórovacím systémem evaluateSpamSignals (viz utils.js),
+// protože je mají i legitimní firemní e-maily.
 function isSpamByHeadersMap(headers, subject = '') {
-  const listUnsub = headerMapValue(headers, 'List-Unsubscribe');
-  if (listUnsub) return true;
-
-  const precedence = headerMapValue(headers, 'Precedence').toLowerCase();
-  if (precedence.includes('bulk') || precedence.includes('list')) return true;
-
-  const autoSubmitted = headerMapValue(headers, 'Auto-Submitted').toLowerCase();
-  if (autoSubmitted && autoSubmitted !== 'no') return true;
-
   const spamFlag = headerMapValue(headers, 'X-Spam-Flag').toLowerCase();
   if (spamFlag.includes('yes')) return true;
 
@@ -1713,6 +1710,35 @@ function isSpamByHeadersMap(headers, subject = '') {
   if (isSubjectTaggedSpam) return true;
 
   return false;
+}
+
+// Slabé (bulk) signály z hlaviček pro skórování
+function bulkSignalsFromHeadersMap(headers) {
+  const autoSubmitted = headerMapValue(headers, 'Auto-Submitted').toLowerCase();
+  const precedence = headerMapValue(headers, 'Precedence').toLowerCase();
+  return {
+    listUnsubscribe: !!headerMapValue(headers, 'List-Unsubscribe'),
+    precedenceBulk: precedence.includes('bulk') || precedence.includes('list'),
+    autoSubmitted: !!autoSubmitted && autoSubmitted !== 'no',
+  };
+}
+
+// Odesílatel, kterému jsme už někdy odpověděli (auto i schváleně) -> nefiltrovat heuristikou
+async function isKnownSender(dbClient, dashboardUserEmail, connectedEmail, senderAddress) {
+  const addr = String(senderAddress || '').trim().toLowerCase();
+  if (!addr) return false;
+  try {
+    const r = await dbClient.query(
+      `SELECT 1 FROM pending_replies
+        WHERE dashboard_user_email=$1 AND connected_email=$2
+          AND status='sent' AND LOWER(sender) LIKE '%' || $3 || '%'
+        LIMIT 1`,
+      [dashboardUserEmail, connectedEmail, addr]
+    );
+    return r.rowCount > 0;
+  } catch (e) {
+    return false;
+  }
 }
 
 
@@ -6493,23 +6519,8 @@ async function runImapWorker() {
 
             console.log(`[IMAP Worker] UID: ${msg.uid} | Subject: "${subject}" | HeaderSpam: ${isHeaderSpam} | AutoReply: ${acc.auto_reply}`);
 
-            // Pokud je zapnuto auto_reply, chceme odpovídat i na newslettery a hromadné emaily (které isSpamByHeadersMap chytá).
-            // Ale nechceme odpovídat na opravdový SPAM (označený serverem).
-            if (isHeaderSpam && acc.auto_reply) {
-              const spamFlag = headerMapValue(msg.headers, 'X-Spam-Flag').toLowerCase();
-              const spamStatus = headerMapValue(msg.headers, 'X-Spam-Status').toLowerCase();
-              const subjectLower = subject.toLowerCase();
-              const isTaggedSpam = /^(?:\s*\*+\s*)?spam(?:\s*\*+)?\b/.test(subjectLower) || /^\s*\[spam\]/.test(subjectLower);
-
-              // Pokud to NENÍ explicitně označený spam, považujeme to za OK (byl to asi jen newsletter).
-              if (!spamFlag.includes('yes') && !spamStatus.startsWith('yes') && !isTaggedSpam) {
-                isHeaderSpam = false;
-                console.log(`         "${subject}" → Povoleno pro auto-odpověď (ignoruji bulk/list detekci).`);
-              } else {
-                console.log(`[IMAP Worker] UID: ${msg.uid} blocked as explicit spam.`);
-              }
-            }
-
+            // isHeaderSpam nyní znamená EXPLICITNÍ spam (X-Spam hlavičky / [SPAM] v předmětu).
+            // Bulk signály (newslettery apod.) se vyhodnocují skórovacím systémem níže.
             if (isHeaderSpam) {
               console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/bulk.`);
               if (acc.spam_filter || acc.auto_reply) {
@@ -6565,13 +6576,21 @@ async function runImapWorker() {
               const parsed = await simpleParser(source);
               const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
 
-              // --- LATE SPAM CHECK (Body) ---
-              const subjectBodyLower = `${subject} ${bodyText}`.toLowerCase();
-              const promoTokens = ['benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'sleva', 'newsletter', 'reklama', 'akce', 'google play developer program', 'seo audit', 'ranking on google', 'mobile app development services', 'app development', 'everbot'];
-              const looksLikeAd = promoTokens.some(t => subjectBodyLower.includes(t));
+              // --- LATE SPAM CHECK (Body): skórovací systém místo podřetězců ---
+              const knownSender = await isKnownSender(dbClient, acc.dashboard_user_email, acc.email_address, fromAddr);
+              const spamEval = evaluateSpamSignals({
+                subject,
+                body: bodyText,
+                ...bulkSignalsFromHeadersMap(msg.headers),
+                knownSender,
+              });
+              if (spamEval.verdict === 'suspect') {
+                console.log(`[IMAP Worker] UID: ${msg.uid} - slabý spam signál (${spamEval.reasons.join('+')}), rozhodne AI.`);
+              }
+              const looksLikeAd = spamEval.verdict === 'spam';
 
               if (looksLikeAd) {
-                console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/ad based on body content.`);
+                console.log(`[IMAP Worker] UID: ${msg.uid} skipped as spam/ad (score ${spamEval.score}: ${spamEval.reasons.join('+')}).`);
                 if (acc.spam_filter || acc.auto_reply) {
                   console.log(`[IMAP Worker] Marking UID ${msg.uid} as SEEN (body spam/ad) via actionImap...`);
                   await runWithRetry(() => actionImap.messageFlagsAdd(String(msg.uid), ['\\Seen'], { uid: true }))
@@ -7087,14 +7106,8 @@ async function processGmailAccount(acc, dbClient) {
     const v = headerVal(headers, 'precedence').toLowerCase();
     return /bulk|list|bulkmail/.test(v);
   };
-  const looksLikeSpam = (subject, snippet, headers) => {
-    const s = `${subject} ${snippet}`.toLowerCase();
-    const promoTokens = ['unsubscribe', 'newsletter', 'promo', 'reklama', 'sleva', 'akce', 'kup nyní', '% sleva', 'sale', 'benefit klub', 'inzerce', 'jobstip', 'supermax', 'teamiu', 'google play developer program', 'seo audit', 'ranking on google', 'mobile app development services', 'app development', 'everbot', 'avaya users list', 'technologies users list', 'mitel', 'verint', 'contact details of users'];
-    if (promoTokens.some(t => s.includes(t))) return true;
-    if (hasListUnsub(headers)) return true;
-    if (hasPrecedenceBulk(headers)) return true;
-    return false;
-  };
+  // Pozn.: dřívější looksLikeSpam (podřetězce + jediný signál = spam) nahrazena
+  // skórovacím evaluateSpamSignals - viz utils.js.
   const extractEmail = (addr) => {
     const m = String(addr || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     return m ? m[0] : (addr || '');
@@ -7129,10 +7142,21 @@ async function processGmailAccount(acc, dbClient) {
       continue;
     }
 
-    // Modifikace: VŽDY kontrolujeme spam/reklamu. 
-    // Dříve se to přeskakovalo, pokud bylo auto_reply = true. 
-    // Teď chceme, aby se i při auto_reply filtroval zjevný balast (app dev, seo, google play notice).
-    if (looksLikeSpam(subject, snippet, headers)) {
+    // Skórovací spam kontrola (viz utils.evaluateSpamSignals):
+    // jeden slabý signál nestačí, celá slova místo podřetězců, známý korespondent se nefiltruje.
+    const gmailKnownSender = await isKnownSender(dbClient, acc.dashboard_user_email, acc.connected_email, from);
+    const gmailSpamEval = evaluateSpamSignals({
+      subject,
+      body: snippet,
+      listUnsubscribe: hasListUnsub(headers),
+      precedenceBulk: hasPrecedenceBulk(headers),
+      autoSubmitted: /^(?!no$).+/.test(headerVal(headers, 'Auto-Submitted').toLowerCase()),
+      knownSender: gmailKnownSender,
+    });
+    if (gmailSpamEval.verdict === 'suspect') {
+      console.log(`         "${subject}" → slabý spam signál (${gmailSpamEval.reasons.join('+')}), rozhodne AI.`);
+    }
+    if (gmailSpamEval.verdict === 'spam') {
       if (acc.spam_filter) {
         await gmail.users.messages.modify({
           userId: 'me',
