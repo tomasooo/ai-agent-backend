@@ -118,6 +118,14 @@ test('spam: explicitní X-Spam hlavička = spam vždy', () => {
   assert.equal(r.verdict, 'spam');
 });
 
+test('spam: SEO cold outreach s falešným Re: v předmětu = spam', () => {
+  const r = evaluateSpamSignals({
+    subject: 'Re: SEO Proposal..',
+    body: 'Just following up on my previous message about SEO services. Would you be interested in discussing how I can help improve your Google rankings and organic traffic? We can get your website on the front page of Google.',
+  });
+  assert.equal(r.verdict, 'spam');
+});
+
 test('spam: známý korespondent se heuristikou nefiltruje', () => {
   const r = evaluateSpamSignals({
     subject: 'Náš newsletter pro vás',

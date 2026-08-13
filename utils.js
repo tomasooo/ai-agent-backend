@@ -57,7 +57,9 @@ export function stripJsonFence(s = '') {
 
 // Cílené fráze cold-outreach spamu (vysoká přesnost) - 2 body
 export const SPAM_STRONG_PHRASES = [
-  'seo audit', 'ranking on google', 'mobile app development services',
+  'seo audit', 'seo services', 'seo proposal', 'ranking on google',
+  'google rankings', 'google ranking', 'front page of google', 'first page of google',
+  'organic traffic', 'mobile app development services',
   'app development services', 'google play developer program',
   'avaya users list', 'technologies users list', 'contact details of users',
   'benefit klub', 'jobstip', 'supermax', 'teamiu', 'everbot',

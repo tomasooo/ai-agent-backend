@@ -1016,8 +1016,10 @@ Pravidla pro 'action':
 - "ignore": Automatická notifikace bez nutnosti reakce (potvrzení systému, doručenky).
 - KLÍČOVÝ ROZDÍL: Když někdo chce NAKUPOVAT, PRODÁVAT či DISTRIBUOVAT NAŠE produkty
   (zájemce o zboží, reseller, velkoobchod, "rádi bychom prodávali vaše produkty"),
-  je to OBCHODNÍ PŘÍLEŽITOST - nikdy ne spam! Zvol "auto_reply" nebo "require_approval".
-  Rozhoduje SMĚR nabídky: oni nabízejí nám = spam; oni chtějí naše = poptávka.
+  je to OBCHODNÍ PŘÍLEŽITOST - nikdy ne spam! Rozhoduje SMĚR nabídky:
+  oni nabízejí nám = spam; oni chtějí naše = poptávka.
+  Zájem o PRODEJ/DISTRIBUCI našich produktů (partnerství) dej VŽDY "require_approval" -
+  takovou příležitost musí majitel vidět osobně, neodpovídej automaticky.
   POZOR - NENÍ spam ani: dotaz zákazníka na slevu, akci či dostupnost zboží, reklamace, vrácení zboží,
   ani jakýkoli osobně psaný e-mail od zákazníka. Když si nejsi jistý, zvol "require_approval".
 - "require_approval":
@@ -6826,6 +6828,7 @@ async function runImapWorker() {
             console.log(`[IMAP Worker] UID: ${msg.uid} - Downloading content (via Action Client)...`);
 
             let source;
+            let msgKnownSender = false;
             try {
               const { content } = await actionImap.download(msg.uid, null, { uid: true, maxBytes: 20 * 1024 * 1024 });
 
@@ -6838,12 +6841,12 @@ async function runImapWorker() {
               const bodyText = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
 
               // --- LATE SPAM CHECK (Body): skórovací systém místo podřetězců ---
-              const knownSender = await isKnownSender(dbClient, acc.dashboard_user_email, acc.email_address, fromAddr);
+              msgKnownSender = await isKnownSender(dbClient, acc.dashboard_user_email, acc.email_address, fromAddr);
               const spamEval = evaluateSpamSignals({
                 subject,
                 body: bodyText,
                 ...bulkSignalsFromHeadersMap(msg.headers),
-                knownSender,
+                knownSender: msgKnownSender,
               });
               if (spamEval.verdict === 'suspect') {
                 console.log(`[IMAP Worker] UID: ${msg.uid} - slabý spam signál (${spamEval.reasons.join('+')}), rozhodne AI.`);
@@ -7012,10 +7015,17 @@ async function runImapWorker() {
             // Whitelist povolených akcí; cokoli jiného (nebo pokus o injection) -> require_approval.
             let action = ALLOWED_AI_ACTIONS.has(analysis?.action) ? analysis.action : 'require_approval';
 
-            // FORCE APPROVAL FOR REPLIES (Re: / Odp:)
+            // FORCE APPROVAL FOR REPLIES (Re: / Odp:) - platí JEN pro auto_reply.
+            // NEpřebíjí spam/ignore: spammeři dávají falešné "Re:" do předmětu,
+            // aby vypadali jako probíhající konverzace a obešli filtr.
             const subjLower = (subject || '').toLowerCase().trim();
-            if (subjLower.startsWith('re:') || subjLower.startsWith('odp:')) {
-              console.log(`[IMAP Worker] UID: ${msg.uid} - Subject starts with Re:/Odp: -> FORCING require_approval`);
+            if ((subjLower.startsWith('re:') || subjLower.startsWith('odp:')) && action === 'auto_reply') {
+              console.log(`[IMAP Worker] UID: ${msg.uid} - Subject starts with Re:/Odp: -> auto_reply změněno na require_approval`);
+              action = 'require_approval';
+            }
+            // Pojistka: známému korespondentovi (už jsme mu odpovídali) poštu nikdy nezahazujeme
+            if (action === 'spam' && msgKnownSender) {
+              console.log(`[IMAP Worker] UID: ${msg.uid} - AI spam, ale známý korespondent -> require_approval`);
               action = 'require_approval';
             }
 
@@ -7543,10 +7553,16 @@ async function processGmailAccount(acc, dbClient) {
     // Whitelist povolených akcí; cokoli jiného (nebo pokus o injection) -> require_approval.
     let action = ALLOWED_AI_ACTIONS.has(analysis?.action) ? analysis.action : 'require_approval';
 
-    // FORCE APPROVAL FOR REPLIES (Re: / Odp:)
+    // FORCE APPROVAL FOR REPLIES (Re: / Odp:) - platí JEN pro auto_reply.
+    // NEpřebíjí spam/ignore: spammeři dávají falešné "Re:" do předmětu.
     const subjLower = (subject || '').toLowerCase().trim();
-    if (subjLower.startsWith('re:') || subjLower.startsWith('odp:')) {
-      console.log(`[Gmail Worker] Msg ID: ${msg.id} - Subject starts with Re:/Odp: -> FORCING require_approval`);
+    if ((subjLower.startsWith('re:') || subjLower.startsWith('odp:')) && action === 'auto_reply') {
+      console.log(`[Gmail Worker] Msg ID: ${msg.id} - Subject starts with Re:/Odp: -> auto_reply změněno na require_approval`);
+      action = 'require_approval';
+    }
+    // Pojistka: známému korespondentovi poštu nikdy nezahazujeme
+    if (action === 'spam' && gmailKnownSender) {
+      console.log(`[Gmail Worker] Msg ID: ${msg.id} - AI spam, ale známý korespondent -> require_approval`);
       action = 'require_approval';
     }
 
