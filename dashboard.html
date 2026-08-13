@@ -3879,6 +3879,37 @@ S pozdravem
       renderPagination(totalPages, startIndex, endIndex, totalCount);
     }
 
+    // Kompaktní okno stránek: 1 … (current-1) current (current+1) … total
+    function buildPageWindow(current, total) {
+      if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+      const pages = new Set([1, total, current - 1, current, current + 1]);
+      // na krajích ukaž o kousek víc, ať má okno vždy stejnou šířku
+      if (current <= 3) { pages.add(2); pages.add(3); pages.add(4); }
+      if (current >= total - 2) { pages.add(total - 1); pages.add(total - 2); pages.add(total - 3); }
+      const sorted = [...pages].filter(p => p >= 1 && p <= total).sort((a, b) => a - b);
+      const out = [];
+      let prev = 0;
+      for (const p of sorted) {
+        if (p - prev > 1) out.push('…');
+        out.push(p);
+        prev = p;
+      }
+      return out;
+    }
+
+    function buildPaginationButtons(current, total) {
+      const prevPage = current > 1 ? current - 1 : 1;
+      const nextPage = current < total ? current + 1 : total;
+      let buttons = `<button class="pagination-button${current === 1 ? ' disabled' : ''}" data-page="${prevPage}" ${current === 1 ? 'disabled' : ''}>‹</button>`;
+      for (const p of buildPageWindow(current, total)) {
+        buttons += p === '…'
+          ? `<span style="padding:0 6px;color:#94a3b8;align-self:center;">…</span>`
+          : `<button class="pagination-button${p === current ? ' active' : ''}" data-page="${p}">${p}</button>`;
+      }
+      buttons += `<button class="pagination-button${current === total ? ' disabled' : ''}" data-page="${nextPage}" ${current === total ? 'disabled' : ''}>›</button>`;
+      return buttons;
+    }
+
     function renderPagination(totalPages, startIndex, endIndex, totalRecords) {
       if (!paginationContainer) return;
 
@@ -3890,24 +3921,10 @@ S pozdravem
 
       const safeTotal = Math.max(totalRecords || 0, endIndex);
       const infoText = `Zobrazeno ${startIndex}-${endIndex} z ${safeTotal} emailů`;
-      const prevPage = currentEmailPage > 1 ? currentEmailPage - 1 : 1;
-      const nextPage = currentEmailPage < totalPages ? currentEmailPage + 1 : totalPages;
-
-      let buttons = `
-    <button class="pagination-button${currentEmailPage === 1 ? ' disabled' : ''}" data-page="${prevPage}" ${currentEmailPage === 1 ? 'disabled' : ''}>‹</button>
-  `;
-
-      for (let i = 1; i <= totalPages; i++) {
-        buttons += `<button class="pagination-button${i === currentEmailPage ? ' active' : ''}" data-page="${i}">${i}</button>`;
-      }
-
-      buttons += `
-    <button class="pagination-button${currentEmailPage === totalPages ? ' disabled' : ''}" data-page="${nextPage}" ${currentEmailPage === totalPages ? 'disabled' : ''}>›</button>
-  `;
 
       paginationContainer.innerHTML = `
     <div class="pagination-info">${infoText}</div>
-    <div class="pagination-buttons">${buttons}</div>
+    <div class="pagination-buttons" style="flex-wrap:nowrap;">${buildPaginationButtons(currentEmailPage, totalPages)}</div>
   `;
       paginationContainer.style.display = '';
     }
@@ -6805,24 +6822,10 @@ S pozdravem
 
       const safeEnd = Math.min(endIndex, totalRecords);
       const infoText = `Zobrazeno ${startIndex}-${safeEnd} z ${totalRecords} aktivit`;
-      const prevPage = currentActivityPage > 1 ? currentActivityPage - 1 : 1;
-      const nextPage = currentActivityPage < totalPages ? currentActivityPage + 1 : totalPages;
-
-      let buttons = `
-    <button class="pagination-button${currentActivityPage === 1 ? ' disabled' : ''}" data-page="${prevPage}" ${currentActivityPage === 1 ? 'disabled' : ''}>‹</button>
-  `;
-
-      for (let i = 1; i <= totalPages; i++) {
-        buttons += `<button class="pagination-button${i === currentActivityPage ? ' active' : ''}" data-page="${i}">${i}</button>`;
-      }
-
-      buttons += `
-    <button class="pagination-button${currentActivityPage === totalPages ? ' disabled' : ''}" data-page="${nextPage}" ${currentActivityPage === totalPages ? 'disabled' : ''}>›</button>
-  `;
 
       activityPaginationContainer.innerHTML = `
     <div class="pagination-info">${infoText}</div>
-    <div class="pagination-buttons">${buttons}</div>
+    <div class="pagination-buttons" style="flex-wrap:nowrap;">${buildPaginationButtons(currentActivityPage, totalPages)}</div>
   `;
       activityPaginationContainer.style.display = '';
     }
