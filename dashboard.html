@@ -657,6 +657,7 @@
           <div class="settings-tabs">
             <div class="settings-tab active" data-tab="ai">AI Nastavení</div>
             <div class="settings-tab" data-tab="email">Email účty</div>
+            <div class="settings-tab" data-tab="team">Tým</div>
             <div class="settings-tab" data-tab="plan">Plán</div>
             <div class="settings-tab" data-tab="notifications">Notifikace</div>
             <div class="settings-tab" data-tab="security">Zabezpečení</div>
@@ -807,6 +808,22 @@
 
               </div>
             </div>
+          </div>
+
+          <!-- === TEAM SETTINGS === -->
+          <div class="settings-content" id="team-settings" style="display: none;">
+            <div class="form-section">
+              <h3>Tým</h3>
+              <div style="color:#64748b;font-size:0.9rem;margin-bottom:1.25rem;">
+                Založte tým, pozvěte kolegy a nasdílejte jim své schránky. Členové pak mohou
+                e-maily číst, schvalovat návrhy AI a odpovídat — nastavení schránky zůstává vám.
+              </div>
+              <div class="form-group" style="flex-direction:row;gap:.75rem;align-items:center;">
+                <input type="text" id="team-name-input" class="form-control" placeholder="Název týmu (např. Podpora Senzoor)" style="flex:1;">
+                <button type="button" class="btn btn-primary" id="team-create-btn" style="white-space:nowrap;">Založit tým</button>
+              </div>
+            </div>
+            <div id="teams-container"></div>
           </div>
 
           <!-- === PLAN SETTINGS === -->
@@ -2624,6 +2641,147 @@
 
     document.getElementById('learn-style-btn')?.addEventListener('click', learnStyleFromHistory);
 
+    // ===================================================================================
+    // === TÝMY: správa týmů a sdílených schránek ========================================
+    // ===================================================================================
+    async function teamsFetch(path, opts = {}) {
+      const r = await fetch(`${window.BACKEND}${path}`, {
+        headers: { 'Content-Type': 'application/json' },
+        ...opts,
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.success) throw new Error(j.message || 'Operace selhala.');
+      return j;
+    }
+
+    function renderTeamCard(t) {
+      const membersHtml = t.members.length
+        ? t.members.map(m => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+              <span>${escapeHtml(m.email)}</span>
+              ${t.isOwner ? `<button type="button" class="btn btn-secondary btn-sm team-act" data-act="remove-member" data-team="${t.id}" data-val="${escapeHtml(m.email)}">Odebrat</button>` : ''}
+            </div>`).join('')
+        : '<div style="color:#64748b;padding:6px 0;">Zatím žádní členové.</div>';
+
+      const mailboxesHtml = t.mailboxes.length
+        ? t.mailboxes.map(b => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+              <span>📧 ${escapeHtml(b.email)} <span style="color:#64748b;font-size:0.82rem;">(od ${escapeHtml(b.ownerEmail)})</span></span>
+              ${t.isOwner ? `<button type="button" class="btn btn-secondary btn-sm team-act" data-act="remove-mailbox" data-team="${t.id}" data-val="${escapeHtml(b.email)}">Odebrat</button>` : ''}
+            </div>`).join('')
+        : '<div style="color:#64748b;padding:6px 0;">Zatím žádné sdílené schránky.</div>';
+
+      // Vlastní schránky (ne sdílené), které ještě nejsou v tomto týmu
+      const shareable = getConnectedAccounts()
+        .filter(a => !a.shared && !t.mailboxes.some(b => b.email.toLowerCase() === a.email.toLowerCase()));
+      const shareOptions = shareable.map(a => `<option value="${escapeHtml(a.email)}">${escapeHtml(a.email)}</option>`).join('');
+
+      const ownerControls = t.isOwner ? `
+        <div style="margin-top:14px;">
+          <div style="font-weight:600;font-size:0.9rem;margin-bottom:6px;">Přidat člena</div>
+          <div style="display:flex;gap:.6rem;">
+            <input type="email" class="form-control team-member-input" data-team="${t.id}" placeholder="kolega@firma.cz" style="flex:1;">
+            <button type="button" class="btn btn-secondary team-act" data-act="add-member" data-team="${t.id}" style="white-space:nowrap;">Přidat</button>
+          </div>
+        </div>
+        <div style="margin-top:14px;">
+          <div style="font-weight:600;font-size:0.9rem;margin-bottom:6px;">Nasdílet schránku</div>
+          ${shareable.length ? `
+          <div style="display:flex;gap:.6rem;">
+            <select class="form-control team-mailbox-select" data-team="${t.id}" style="flex:1;">${shareOptions}</select>
+            <button type="button" class="btn btn-secondary team-act" data-act="add-mailbox" data-team="${t.id}" style="white-space:nowrap;">Nasdílet</button>
+          </div>` : '<div style="color:#64748b;font-size:0.85rem;">Všechny vaše schránky už jsou nasdílené, nebo žádnou nemáte připojenou.</div>'}
+        </div>
+        <div style="margin-top:16px;text-align:right;">
+          <button type="button" class="btn btn-danger btn-sm team-act" data-act="delete-team" data-team="${t.id}" style="background-color:#ef4444;border-color:#ef4444;color:white;">Smazat tým</button>
+        </div>`
+        : `<div style="margin-top:14px;text-align:right;">
+          <button type="button" class="btn btn-secondary btn-sm team-act" data-act="leave-team" data-team="${t.id}">Odejít z týmu</button>
+        </div>`;
+
+      return `
+        <div class="form-section" data-team-card="${t.id}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <h3 style="margin:0;">${escapeHtml(t.name)}</h3>
+            <span style="color:#64748b;font-size:0.85rem;">${t.isOwner ? 'Jste zakladatel' : `Zakladatel: ${escapeHtml(t.ownerEmail)}`}</span>
+          </div>
+          <div style="font-weight:600;font-size:0.9rem;margin:10px 0 4px;">Členové</div>
+          ${membersHtml}
+          <div style="font-weight:600;font-size:0.9rem;margin:14px 0 4px;">Sdílené schránky</div>
+          ${mailboxesHtml}
+          ${ownerControls}
+        </div>`;
+    }
+
+    async function loadTeamsPanel() {
+      const box = document.getElementById('teams-container');
+      if (!box) return;
+      box.innerHTML = '<div style="color:#64748b;padding:1rem;">Načítám týmy…</div>';
+      try {
+        await syncConnectedEmails(); // ať máme čerstvý seznam vlastních schránek pro sdílení
+        const j = await teamsFetch('/api/teams');
+        box.innerHTML = j.teams.length
+          ? j.teams.map(renderTeamCard).join('')
+          : '<div class="form-section" style="color:#64748b;">Zatím nejste v žádném týmu. Založte ho výše a pozvěte kolegy.</div>';
+      } catch (e) {
+        box.innerHTML = `<div class="form-section" style="color:#f87171;">${escapeHtml(e.message || 'Chyba načítání týmů.')}</div>`;
+      }
+    }
+
+    document.querySelector('.settings-tab[data-tab="team"]')?.addEventListener('click', loadTeamsPanel);
+
+    document.getElementById('team-create-btn')?.addEventListener('click', async () => {
+      const input = document.getElementById('team-name-input');
+      const name = (input?.value || '').trim();
+      if (!name) { showToast('Zadejte název týmu.', 'warning'); return; }
+      try {
+        await teamsFetch('/api/teams', { method: 'POST', body: JSON.stringify({ name }) });
+        if (input) input.value = '';
+        showToast('Tým založen.', 'success');
+        loadTeamsPanel();
+      } catch (e) { showToast(e.message, 'error'); }
+    });
+
+    document.getElementById('teams-container')?.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.team-act');
+      if (!btn) return;
+      const act = btn.dataset.act;
+      const teamId = btn.dataset.team;
+      try {
+        if (act === 'add-member') {
+          const input = document.querySelector(`.team-member-input[data-team="${teamId}"]`);
+          const memberEmail = (input?.value || '').trim();
+          if (!memberEmail) { showToast('Zadejte e-mail člena.', 'warning'); return; }
+          await teamsFetch(`/api/teams/${teamId}/members`, { method: 'POST', body: JSON.stringify({ memberEmail }) });
+          showToast('Člen přidán.', 'success');
+        } else if (act === 'remove-member') {
+          await teamsFetch(`/api/teams/${teamId}/members/${encodeURIComponent(btn.dataset.val)}`, { method: 'DELETE' });
+          showToast('Člen odebrán.', 'success');
+        } else if (act === 'add-mailbox') {
+          const sel = document.querySelector(`.team-mailbox-select[data-team="${teamId}"]`);
+          const accountEmail = sel?.value;
+          if (!accountEmail) return;
+          await teamsFetch(`/api/teams/${teamId}/mailboxes`, { method: 'POST', body: JSON.stringify({ accountEmail }) });
+          showToast('Schránka nasdílena týmu.', 'success');
+        } else if (act === 'remove-mailbox') {
+          await teamsFetch(`/api/teams/${teamId}/mailboxes/${encodeURIComponent(btn.dataset.val)}`, { method: 'DELETE' });
+          showToast('Schránka odebrána z týmu.', 'success');
+        } else if (act === 'delete-team') {
+          if (!confirm('Opravdu smazat tým? Členové ztratí přístup ke sdíleným schránkám.')) return;
+          await teamsFetch(`/api/teams/${teamId}`, { method: 'DELETE' });
+          showToast('Tým smazán.', 'success');
+        } else if (act === 'leave-team') {
+          if (!confirm('Opravdu odejít z týmu?')) return;
+          const me = localStorage.getItem('userEmail') || '';
+          await teamsFetch(`/api/teams/${teamId}/members/${encodeURIComponent(me)}`, { method: 'DELETE' });
+          showToast('Odešli jste z týmu.', 'success');
+        }
+        loadTeamsPanel();
+      } catch (err) {
+        showToast(err.message || 'Operace selhala.', 'error');
+      }
+    });
+
 
 
     function renderTplHelp() {
@@ -4336,7 +4494,7 @@ S pozdravem
         return;
       }
 
-      accs.forEach(({ email, active, type }) => {
+      accs.forEach(({ email, active, type, shared, ownerEmail, teamName }) => {
         let providerName = 'Vlastní', providerIconClass = 'gmail-icon';
         const e = email.toLowerCase();
         if (e.includes('gmail')) providerName = 'Gmail';
@@ -4345,17 +4503,23 @@ S pozdravem
 
         const isSelectedForConfig = (email === primary);
 
+        // Sdílená schránka z týmu: jen ke čtení/obsluze, bez správy (odpojení, aktivace)
+        const providerLine = shared
+          ? `👥 Sdílená${teamName ? ` • tým ${teamName}` : ''}${ownerEmail ? ` • od ${ownerEmail}` : ''}`
+          : `${providerName} • Připojen`;
+
         const html = `
       <div class="email-item ${active ? 'active' : ''}" data-email="${email}" data-type="${type || ''}">
-        <div class="checkbox-wrapper" onclick="toggleAccount(this,'${email}',${!!active})">
+        ${shared ? '<div class="checkbox-wrapper" style="opacity:0.35;cursor:default;"><input type="checkbox" class="checkbox-input" checked disabled><div class="checkbox-custom"></div></div>'
+        : `<div class="checkbox-wrapper" onclick="toggleAccount(this,'${email}',${!!active})">
           <input type="checkbox" class="checkbox-input" ${active ? 'checked' : ''}>
           <div class="checkbox-custom"></div>
-        </div>
+        </div>`}
         <div class="email-info">
           <div class="email-address">${email}</div>
           <div class="email-provider">
             <div class="provider-icon ${providerIconClass}"></div>
-            ${providerName} • Připojen
+            ${providerLine}
           </div>
         </div>
         <div class="email-controls">
@@ -4363,11 +4527,11 @@ S pozdravem
           <div class="radio-wrapper ${isSelectedForConfig ? 'selected' : ''}" onclick="selectForConfig(this, '${email}')">
             <input type="radio" name="configEmail" value="${email}" class="radio-input" ${isSelectedForConfig ? 'checked' : ''}>
             <div class="radio-custom"></div>
-            <span class="radio-label">Nastavit</span>
+            <span class="radio-label">${shared ? 'Zobrazit' : 'Nastavit'}</span>
           </div>
-          <button class="disconnect-btn" onclick="disconnectAccount('${email}', '${type || ''}' )" title="Odpojit účet">
+          ${shared ? '' : `<button class="disconnect-btn" onclick="disconnectAccount('${email}', '${type || ''}' )" title="Odpojit účet">
             <span class="disconnect-icon">×</span>
-          </button>
+          </button>`}
         </div>
       </div>`;
         listEl.insertAdjacentHTML('beforeend', html);
