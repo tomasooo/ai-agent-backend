@@ -2728,11 +2728,96 @@ app.get('/api/style/get', async (req, res) => {
 
 
 // === LEARNING ENDPOINT (pro starý FE, co volá /api/style/learn) ===
+// Načtení odeslané pošty z IMAP schránky (custom účty) pro učení stylu.
+// Najde složku odeslané pošty přes special-use \Sent, s fallbackem na běžné názvy.
+async function harvestImapSentExamples(acc, maxCount = 50) {
+  const user = decSecret(acc.enc_username);
+  const pass = decSecret(acc.enc_password);
+  const imap = createImapClient({
+    host: acc.imap_host,
+    port: Number(acc.imap_port),
+    secure: !!acc.imap_secure,
+    auth: { user, pass }
+  });
+
+  const items = [];
+  await imap.connect();
+  try {
+    let sentPath = null;
+    try {
+      const boxes = await imap.list();
+      const bySpecialUse = boxes.find(b => b.specialUse === '\\Sent');
+      const byName = boxes.find(b => /sent|odeslan/i.test(b.path || ''));
+      sentPath = (bySpecialUse || byName)?.path || null;
+    } catch (listErr) { /* fallback níže */ }
+    if (!sentPath) sentPath = 'Sent';
+
+    await imap.mailboxOpen(sentPath);
+    const total = imap.mailbox?.exists || 0;
+    if (!total) return items;
+
+    const startSeq = Math.max(1, total - maxCount + 1);
+    const uids = [];
+    for await (const msg of imap.fetch({ seq: `${startSeq}:*` }, { uid: true })) {
+      uids.push(msg.uid);
+    }
+
+    for (const uid of uids.slice(-maxCount)) {
+      try {
+        const { content } = await imap.download(uid, null, { uid: true, maxBytes: 512 * 1024 });
+        const chunks = [];
+        for await (const c of content) chunks.push(c);
+        const parsed = await simpleParser(Buffer.concat(chunks));
+        const body = parsed.text || (parsed.html ? String(parsed.html).replace(/<[^>]+>/g, ' ').trim() : '');
+        if (body && body.trim().length > 40) {
+          items.push({ role: 'outgoing', subject: parsed.subject || '', body: body.slice(0, 6000) });
+        }
+      } catch (dlErr) { /* jedna vadná zpráva učení nezastaví */ }
+    }
+  } finally {
+    await imap.logout().catch(() => { });
+  }
+  return items;
+}
+
 app.post('/api/style/learn', async (req, res) => {
   try {
     const { dashboardUserEmail, email, limit = 200 } = req.body || req.query || {};
     if (!dashboardUserEmail || !email) {
       return res.status(400).json({ success: false, message: 'Chybí dashboardUserEmail nebo email.' });
+    }
+
+    // Custom (IMAP) účet: načti odeslanou poštu přes IMAP místo Gmail API
+    const rCustom = await pool.query(
+      `SELECT imap_host, imap_port, imap_secure, enc_username, enc_password
+         FROM custom_accounts
+        WHERE dashboard_user_email=$1 AND email_address=$2 AND active=true
+        LIMIT 1`,
+      [dashboardUserEmail, email]
+    );
+    if (rCustom.rowCount > 0) {
+      const items = await harvestImapSentExamples(rCustom.rows[0], 50);
+      if (!items.length) {
+        return res.json({ success: true, saved: 0, message: 'Ve složce odeslané pošty nebyly nalezeny žádné použitelné e-maily.' });
+      }
+      const db = await pool.connect();
+      try {
+        // Nahradit staré příklady novými (ať se stejné e-maily nehromadí při opakovaném kliknutí)
+        await db.query(
+          `DELETE FROM style_examples WHERE dashboard_user_email=$1 AND connected_email=$2 AND role='outgoing'`,
+          [dashboardUserEmail, email]
+        );
+        for (const it of items) {
+          await db.query(
+            `INSERT INTO style_examples (dashboard_user_email, connected_email, role, subject, body)
+             VALUES ($1,$2,$3,$4,$5)`,
+            [dashboardUserEmail, email, it.role, it.subject || '', it.body || '']
+          );
+        }
+      } finally {
+        db.release();
+      }
+      return res.json({ success: true, saved: items.length });
     }
 
     const gmail = await getGmailClientFor(dashboardUserEmail, email);
