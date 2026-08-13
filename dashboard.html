@@ -6458,7 +6458,7 @@ S pozdravem
       const sliceStart = (safePage - 1) * ACTIVITY_LOGS_PER_PAGE;
       const pageEntries = activityLogEntries.slice(sliceStart, sliceStart + ACTIVITY_LOGS_PER_PAGE);
 
-      const rows = pageEntries.map(entry => {
+      const rows = pageEntries.map((entry, i) => {
         const timestamp = entry?.timestamp ? new Date(entry.timestamp) : null;
         const time = timestamp && !isNaN(timestamp)
           ? `${timestamp.toLocaleDateString('cs-CZ')} ${timestamp.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}`
@@ -6466,9 +6466,8 @@ S pozdravem
         const isError = entry?.status === 'error';
         const statusClass = isError ? 'role-admin' : 'role-user';
         const statusText = isError ? 'Chyba' : 'Úspěch';
-        const actionButton = isError
-          ? '<button class="btn btn-secondary btn-sm">Zkontrolovat</button>'
-          : '<button class="btn btn-secondary btn-sm" style="opacity: 0.5; cursor: default;">Zobrazit</button>';
+        const globalIdx = sliceStart + i;
+        const actionButton = `<button class="btn btn-secondary btn-sm activity-detail-btn" data-idx="${globalIdx}">${isError ? 'Zkontrolovat' : 'Zobrazit'}</button>`;
         const detailText = formatActivityDetails(entry?.details);
 
         return `
@@ -6491,6 +6490,53 @@ S pozdravem
       const endIndex = sliceStart + pageEntries.length;
       renderActivityPagination(totalPages, startIndex, endIndex, totalEntries);
     }
+
+    // Detail záznamu z audit logu (tlačítka Zkontrolovat / Zobrazit)
+    function showActivityDetailModal(entry) {
+      const old = document.getElementById('activity-detail-overlay');
+      if (old) old.remove();
+
+      const timestamp = entry?.timestamp ? new Date(entry.timestamp) : null;
+      const time = timestamp && !isNaN(timestamp) ? timestamp.toLocaleString('cs-CZ') : '—';
+      const isError = entry?.status === 'error';
+      let detailsPretty = '';
+      try {
+        detailsPretty = typeof entry?.details === 'string'
+          ? entry.details
+          : JSON.stringify(entry?.details || {}, null, 2);
+      } catch (e) { detailsPretty = String(entry?.details || ''); }
+
+      const overlay = document.createElement('div');
+      overlay.id = 'activity-detail-overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
+      overlay.innerHTML = `
+        <div style="background:#1e293b;color:#f1f5f9;border-radius:14px;max-width:640px;width:100%;max-height:80vh;overflow:auto;padding:22px;border:1px solid rgba(148,163,184,0.25);box-shadow:0 20px 60px rgba(0,0,0,0.45);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <h3 style="margin:0;font-size:1.05rem;">${isError ? '⚠️ Detail chyby' : 'Detail aktivity'}</h3>
+            <button id="activity-detail-close" class="btn btn-secondary btn-sm">Zavřít</button>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
+            <tr><td style="padding:6px 10px;color:#94a3b8;white-space:nowrap;">Čas</td><td style="padding:6px 10px;">${escapeHtml(time)}</td></tr>
+            <tr><td style="padding:6px 10px;color:#94a3b8;">Uživatel</td><td style="padding:6px 10px;">${escapeHtml(entry?.user_email || '—')}</td></tr>
+            <tr><td style="padding:6px 10px;color:#94a3b8;">Akce</td><td style="padding:6px 10px;">${escapeHtml(entry?.action || '—')}</td></tr>
+            <tr><td style="padding:6px 10px;color:#94a3b8;">Stav</td><td style="padding:6px 10px;">${isError ? '<span style="color:#f87171;font-weight:600;">Chyba</span>' : '<span style="color:#4ade80;font-weight:600;">Úspěch</span>'}</td></tr>
+          </table>
+          <div style="margin-top:12px;color:#94a3b8;font-size:0.85rem;">Detaily:</div>
+          <pre style="background:#0f172a;border-radius:8px;padding:12px;margin-top:6px;white-space:pre-wrap;word-break:break-word;font-size:0.82rem;max-height:300px;overflow:auto;">${escapeHtml(detailsPretty || '(žádné detaily)')}</pre>
+        </div>`;
+
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      overlay.querySelector('#activity-detail-close').addEventListener('click', () => overlay.remove());
+      document.body.appendChild(overlay);
+    }
+
+    // Delegovaný handler - funguje i po překreslení stránkování
+    document.getElementById('activityLogTableBody')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.activity-detail-btn');
+      if (!btn) return;
+      const entry = activityLogEntries[Number(btn.dataset.idx)];
+      if (entry) showActivityDetailModal(entry);
+    });
 
     function renderActivityPagination(totalPages, startIndex, endIndex, totalRecords) {
       if (!activityPaginationContainer) return;
