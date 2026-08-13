@@ -633,9 +633,9 @@ async function resolveMailboxOwner(requesterEmail, accountEmail) {
     `SELECT tm.owner_email
        FROM team_mailboxes tm
        JOIN teams t ON t.id = tm.team_id
-       LEFT JOIN team_members m ON m.team_id = tm.team_id AND m.member_email = $1
+       LEFT JOIN team_members m ON m.team_id = tm.team_id AND LOWER(m.member_email) = LOWER($1)
       WHERE LOWER(tm.account_email) = $2
-        AND (m.member_email IS NOT NULL OR t.owner_email = $1)
+        AND (m.member_email IS NOT NULL OR LOWER(t.owner_email) = LOWER($1))
       LIMIT 1`,
     [requesterEmail, acct]
   );
@@ -4084,9 +4084,9 @@ async function listConnectedAccountsHandler(req, res) {
         SELECT DISTINCT tm.account_email, tm.owner_email, t.name AS team_name
           FROM team_mailboxes tm
           JOIN teams t ON t.id = tm.team_id
-          LEFT JOIN team_members m ON m.team_id = tm.team_id AND m.member_email = $1
-         WHERE (m.member_email IS NOT NULL OR t.owner_email = $1)
-           AND tm.owner_email <> $1
+          LEFT JOIN team_members m ON m.team_id = tm.team_id AND LOWER(m.member_email) = LOWER($1)
+         WHERE (m.member_email IS NOT NULL OR LOWER(t.owner_email) = LOWER($1))
+           AND LOWER(tm.owner_email) <> LOWER($1)
       `, [dashboardUserEmail]);
       for (const row of shared.rows) {
         if (!accounts.some(a => a.email.toLowerCase() === row.account_email.toLowerCase())) {
@@ -8306,7 +8306,7 @@ app.get('/api/teams', async (req, res) => {
       SELECT DISTINCT t.id, t.name, t.owner_email, t.created_at
         FROM teams t
         LEFT JOIN team_members m ON m.team_id = t.id
-       WHERE t.owner_email = $1 OR m.member_email = $1
+       WHERE LOWER(t.owner_email) = LOWER($1) OR LOWER(m.member_email) = LOWER($1)
        ORDER BY t.created_at ASC
     `, [me]);
 
@@ -8320,7 +8320,7 @@ app.get('/api/teams', async (req, res) => {
         id: t.id,
         name: t.name,
         ownerEmail: t.owner_email,
-        isOwner: t.owner_email === me,
+        isOwner: String(t.owner_email).toLowerCase() === String(me).toLowerCase(),
         members: members.rows.map(m => ({ email: m.member_email, role: m.role })),
         mailboxes: mailboxes.rows.map(b => ({ email: b.account_email, ownerEmail: b.owner_email })),
       });
@@ -8354,7 +8354,7 @@ app.post('/api/teams', async (req, res) => {
 async function requireTeamOwner(teamId, me) {
   const r = await pool.query(`SELECT id, name, owner_email FROM teams WHERE id=$1`, [Number(teamId)]);
   if (!r.rowCount) return { error: { code: 404, message: 'Tým nenalezen.' } };
-  if (r.rows[0].owner_email !== me) return { error: { code: 403, message: 'Tým může spravovat jen jeho zakladatel.' } };
+  if (String(r.rows[0].owner_email).toLowerCase() !== String(me).toLowerCase()) return { error: { code: 403, message: 'Tým může spravovat jen jeho zakladatel.' } };
   return { team: r.rows[0] };
 }
 
@@ -8411,7 +8411,7 @@ app.delete('/api/teams/:id/members/:email', async (req, res) => {
     const r = await pool.query(`SELECT id, name, owner_email FROM teams WHERE id=$1`, [Number(req.params.id)]);
     if (!r.rowCount) return res.status(404).json({ success: false, message: 'Tým nenalezen.' });
     const team = r.rows[0];
-    const isOwner = team.owner_email === me;
+    const isOwner = String(team.owner_email).toLowerCase() === String(me).toLowerCase();
     const isSelf = target === me.toLowerCase();
     if (!isOwner && !isSelf) {
       return res.status(403).json({ success: false, message: 'Členy může odebírat jen zakladatel.' });
