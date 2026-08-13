@@ -5779,7 +5779,11 @@ app.post('/api/custom-email/send-reply', async (req, res) => {
     console.error('[custom-email/send-reply] Kritická chyba při odesílání:', e);
     const plainMessage = e?.message || '';
     const statusCode = /adresáta/i.test(plainMessage) ? 400 : 500;
-    await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Custom)', 'error', { to: targetRecipient, account: emailAddress });
+    await logActivity(dashboardUserEmail, 'Odeslání odpovědi (Custom)', 'error', {
+      to: targetRecipient,
+      account: emailAddress,
+      reason: plainMessage || String(e) || 'Neznámá chyba'
+    });
     return res.status(statusCode).json({ success: false, message: plainMessage || 'Odeslání selhalo.' });
   }
 });
@@ -7040,6 +7044,11 @@ async function runImapWorker() {
                   continue;
                 } catch (sendErr) {
                   console.error('[IMAP worker] Odeslání auto-odpovědi selhalo:', sendErr?.message || sendErr);
+                  await logActivity(acc.dashboard_user_email, 'Odeslání automatické odpovědi (AI Auto)', 'error', {
+                    account: acc.email_address,
+                    to: targetRecipient,
+                    reason: sendErr?.message || String(sendErr) || 'Neznámá chyba'
+                  }).catch(() => { });
                   // Odeslání selhalo -> claim uvolníme, aby fallback níže uložil pending ke schválení
                   try {
                     await dbClient.query(`
@@ -7525,6 +7534,10 @@ async function processGmailAccount(acc, dbClient) {
         continue;
       } catch (sendErr) {
         console.error('         Auto-odpověď se nepodařila odeslat:', sendErr?.message || sendErr);
+        await logActivity(acc.dashboard_user_email, 'Odeslání automatické odpovědi (Gmail AI)', 'error', {
+          account: acc.connected_email,
+          reason: sendErr?.message || String(sendErr) || 'Neznámá chyba'
+        }).catch(() => { });
         // Odeslání selhalo -> claim uvolníme, fallback níže uloží pending ke schválení
         try {
           await dbClient.query(`
