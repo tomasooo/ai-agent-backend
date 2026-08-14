@@ -7155,12 +7155,28 @@ async function runImapWorker() {
               continue;
             }
 
+            // KRITICKÉ: přeskoč PŘED stahováním těla. Bez toho worker při každém
+            // běhu (co 5 min) znovu stahuje posledních ~200 zpráv včetně
+            // mnohaMB příloh jen proto, aby je pak zahodil - to přetíží
+            // a shodí IMAP spojení ("Connection not available").
+            const pendingKey = String(msg.uid);
+            const alreadyPendingEarly = await dbClient.query(`
+              SELECT 1 FROM pending_replies
+               WHERE dashboard_user_email=$1 AND connected_email=$2 AND provider='custom' AND message_id=$3
+            `, [acc.dashboard_user_email, acc.email_address, pendingKey]);
+            if (alreadyPendingEarly.rowCount > 0) {
+              // console.log(`[IMAP Worker] UID: ${msg.uid} už zpracováno, přeskočeno bez stahování.`);
+              continue;
+            }
+
             console.log(`[IMAP Worker] UID: ${msg.uid} - Downloading content (via Action Client)...`);
 
             let source;
             let msgKnownSender = false;
             try {
-              const { content } = await actionImap.download(msg.uid, null, { uid: true, maxBytes: 20 * 1024 * 1024 });
+              // Stahujeme jen prvních ~2 MB - AI potřebuje TEXT, ne mnohaMB přílohy.
+              // Zabraňuje pádu spojení u obřích e-mailů.
+              const { content } = await actionImap.download(msg.uid, null, { uid: true, maxBytes: 2 * 1024 * 1024 });
 
               const chunks = [];
               for await (const c of content) chunks.push(c);
@@ -7247,19 +7263,7 @@ async function runImapWorker() {
               continue;
             }
 
-            const pendingKey = String(msg.uid);
-            const alreadyPending = await dbClient.query(`
-            SELECT 1
-              FROM pending_replies
-             WHERE dashboard_user_email=$1
-               AND connected_email=$2
-               AND provider='custom'
-               AND message_id=$3
-          `, [acc.dashboard_user_email, acc.email_address, pendingKey]);
-            if (alreadyPending.rowCount > 0) {
-              console.log(`[IMAP Worker] UID: ${msg.uid} - Already in pending_replies, skipping.`);
-              continue;
-            }
+            // (kontrola alreadyPending proběhla už PŘED stažením těla, viz výše)
 
             const consume = await tryConsumeAiAction(dbClient, acc.dashboard_user_email);
             if (!consume.ok) {
