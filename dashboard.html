@@ -1350,6 +1350,31 @@
           </table>
           <div id="activity-pagination" class="pagination-container" style="display:none;"></div>
         </div>
+
+        <!-- === DIAGNOSTIKA A SERVEROVÝ LOG === -->
+        <div class="users-section" style="margin-top: 2rem;">
+          <div class="section-header">
+            <h2 class="section-title">Diagnostika</h2>
+            <button class="btn btn-primary btn-sm" id="refresh-diag-btn">🔄 Načíst</button>
+          </div>
+          <div id="diag-summary" style="color:#94a3b8;padding:0.5rem 0;">Klikněte na „Načíst“.</div>
+          <div class="section-header" style="margin-top:1.25rem;">
+            <h2 class="section-title" style="font-size:1rem;">Serverový log</h2>
+            <div style="display:flex;gap:.5rem;align-items:center;">
+              <input type="text" id="log-filter" class="form-control" placeholder="Filtr (např. IMAP, limit)"
+                style="height:34px;padding:4px 10px;font-size:0.85rem;width:220px;">
+              <select id="log-level" class="form-control" style="height:34px;padding:4px 10px;font-size:0.85rem;width:120px;">
+                <option value="all">Vše</option>
+                <option value="error">Jen chyby</option>
+                <option value="warn">Varování</option>
+              </select>
+              <button class="btn btn-secondary btn-sm" id="refresh-serverlog-btn">Načíst log</button>
+            </div>
+          </div>
+          <pre id="server-log-box" style="background:#0f172a;border-radius:10px;padding:12px;max-height:420px;
+               overflow:auto;font-size:0.78rem;line-height:1.45;white-space:pre-wrap;word-break:break-word;color:#cbd5e1;
+               margin-top:8px;">Klikněte na „Načíst log“.</pre>
+        </div>
       </div>
 
   </div>
@@ -6838,6 +6863,55 @@ S pozdravem
 
     //  listener pro tlačítko Obnovit
     document.getElementById('refresh-log-btn')?.addEventListener('click', loadActivityLog);
+
+    // === DIAGNOSTIKA + SERVEROVÝ LOG (admin) ===
+    document.getElementById('refresh-diag-btn')?.addEventListener('click', async () => {
+      const box = document.getElementById('diag-summary');
+      if (!box) return;
+      box.textContent = 'Načítám…';
+      try {
+        const r = await fetch(`${window.BACKEND}/api/diagnostics`, { cache: 'no-store' });
+        const j = await r.json();
+        if (!j.success) throw new Error(j.message || 'Diagnostika selhala.');
+        const a = j.aiActions || {};
+        const unprocessed = (j.unprocessedLast7Days || []).map(x => `${x.account_email}: ${x.cnt}`).join(', ') || 'žádné';
+        const statuses = (j.pendingByStatus || []).map(x => `${x.connected_email} – ${x.status}: ${x.cnt}`).join('<br>') || 'žádné záznamy';
+        const synced = (j.syncedEmails || []).map(x => `${x.account_email}: ${x.total} celkem, ${x.last_7d} za 7 dní, ${x.unread} nepřečtených`).join('<br>') || '—';
+        box.innerHTML = `
+          <div style="display:grid;gap:10px;">
+            <div><strong style="color:${a.exhausted ? '#f87171' : '#4ade80'};">AI akce:</strong>
+              ${a.used}/${a.limit} využito (tarif ${escapeHtml(j.plan || '?')}), zbývá ${a.remaining}
+              ${a.exhausted ? '<strong style="color:#f87171;"> — VYČERPÁNO, e-maily se nezpracovávají!</strong>' : ''}</div>
+            <div><strong>Nezpracované e-maily (7 dní):</strong> ${escapeHtml(unprocessed)}</div>
+            <div><strong>Stavy zpracování:</strong><br>${statuses}</div>
+            <div><strong>Synchronizované e-maily:</strong><br>${synced}</div>
+          </div>`;
+      } catch (e) {
+        box.textContent = e.message || 'Diagnostika selhala.';
+      }
+    });
+
+    document.getElementById('refresh-serverlog-btn')?.addEventListener('click', async () => {
+      const box = document.getElementById('server-log-box');
+      if (!box) return;
+      box.textContent = 'Načítám…';
+      try {
+        const dashboardUserEmail = localStorage.getItem('userEmail') || '';
+        const filter = document.getElementById('log-filter')?.value || '';
+        const level = document.getElementById('log-level')?.value || 'all';
+        const url = `${window.BACKEND}/api/admin/logs?dashboardUserEmail=${encodeURIComponent(dashboardUserEmail)}`
+          + `&filter=${encodeURIComponent(filter)}&level=${encodeURIComponent(level)}&limit=300`;
+        const r = await fetch(url, { cache: 'no-store' });
+        const j = await r.json();
+        if (!j.success) throw new Error(j.message || 'Načtení logu selhalo.');
+        box.textContent = j.lines.length
+          ? j.lines.map(l => `${l.ts.slice(11, 19)} [${l.level}] ${l.text}`).join('\n')
+          : 'Žádné řádky neodpovídají filtru.';
+        box.scrollTop = box.scrollHeight;
+      } catch (e) {
+        box.textContent = e.message || 'Načtení logu selhalo.';
+      }
+    });
 
     activityPaginationContainer?.addEventListener('click', (event) => {
       const button = event.target.closest('.pagination-button');

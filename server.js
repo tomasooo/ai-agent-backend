@@ -179,6 +179,40 @@ async function sendPasswordResetEmail(toEmail, token) {
 
 
 
+// ============================================================================
+// === LOG BUFFER: posledních N řádků logu pro admin diagnostiku v aplikaci ===
+// ============================================================================
+// Díky tomu není potřeba přístup k hostingu - admin vidí běh workerů přímo
+// v dashboardu. Hodnoty, které by mohly být citlivé, se maskují.
+const LOG_BUFFER_MAX = 500;
+const logBuffer = [];
+
+function redactForLog(text) {
+  return String(text)
+    // connection stringy a URL s heslem
+    .replace(/(\/\/[^:\s]+:)[^@\s]+@/g, '$1***@')
+    // klíče/tokeny v textu
+    .replace(/\b(sk-[A-Za-z0-9_-]{8,}|gho_[A-Za-z0-9]{8,}|eyJ[A-Za-z0-9._-]{20,})/g, '***')
+    .replace(/\b(password|heslo|secret|token|api[_-]?key)\b\s*[:=]\s*\S+/gi, '$1: ***');
+}
+
+function pushLogLine(level, args) {
+  try {
+    const text = args.map(a => {
+      if (typeof a === 'string') return a;
+      if (a instanceof Error) return a.message;
+      try { return JSON.stringify(a); } catch { return String(a); }
+    }).join(' ');
+    logBuffer.push({ ts: new Date().toISOString(), level, text: redactForLog(text).slice(0, 2000) });
+    if (logBuffer.length > LOG_BUFFER_MAX) logBuffer.splice(0, logBuffer.length - LOG_BUFFER_MAX);
+  } catch (e) { /* logování nesmí nikdy shodit aplikaci */ }
+}
+
+for (const level of ['log', 'warn', 'error']) {
+  const original = console[level].bind(console);
+  console[level] = (...args) => { pushLogLine(level, args); original(...args); };
+}
+
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 
@@ -8813,6 +8847,25 @@ app.delete('/api/admin/users/:email', isAdmin, async (req, res) => {
 
 
 // Endpoint pro načtení logu aktivit (pouze pro adminy)
+// Serverový log (posledních ~500 řádků) pro admina přímo v aplikaci.
+// Nahrazuje potřebu přístupu k hostingu; citlivé hodnoty jsou maskované.
+app.get('/api/admin/logs', isAdmin, (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 200, LOG_BUFFER_MAX);
+  const q = String(req.query.filter || '').trim().toLowerCase();
+  const level = String(req.query.level || '').trim().toLowerCase();
+
+  let lines = logBuffer;
+  if (level && level !== 'all') lines = lines.filter(l => l.level === level);
+  if (q) lines = lines.filter(l => l.text.toLowerCase().includes(q));
+
+  return res.json({
+    success: true,
+    total: logBuffer.length,
+    lines: lines.slice(-limit),
+    note: 'Log od posledního startu serveru (paměťová vyrovnávací paměť).',
+  });
+});
+
 app.get(['/api/admin/audit-log', '/api/admin/activity-log'], isAdmin, async (req, res) => {
   let client;
   try {
