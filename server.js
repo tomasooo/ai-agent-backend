@@ -73,6 +73,12 @@ const JWT_SECRET = process.env.JWT_SECRET
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 // Povolené akce, které smí AI vrátit; cokoli mimo whitelist se bere jako require_approval.
 const ALLOWED_AI_ACTIONS = new Set(['auto_reply', 'require_approval', 'ignore', 'spam']);
+// E-maily přečtené v jiném klientovi (Thunderbird, mobil) worker dřív navždy
+// přeskakoval - nedostaly odpověď ani nešly ke schválení. Nově je zpracujeme,
+// pokud jsou čerstvé a uživatel na ně sám neodpověděl; VŽDY jen jako návrh
+// ke schválení (nikdy automaticky - uživatel je už mohl vyřídit ručně).
+const SEEN_FALLBACK_HOURS = Number(process.env.SEEN_FALLBACK_HOURS || 48);
+const SEEN_FALLBACK_MAX_PER_RUN = Number(process.env.SEEN_FALLBACK_MAX || 15);
 if (!process.env.JWT_SECRET) {
   console.warn('[AUTH] JWT_SECRET není nastaven – používám odvozený klíč. Doporučeno nastavit JWT_SECRET v prostředí.');
 }
@@ -957,7 +963,7 @@ app.get('/api/dashboard/recent-emails', async (req, res) => {
 
     const emails = result.rows.map(row => {
       let emailStatus = null;
-      if (row.pending_status === 'pending') emailStatus = 'pending';
+      if (row.pending_status === 'pending' || row.pending_status === 'sending') emailStatus = 'pending';
       else if (row.pending_status === 'sent') emailStatus = 'auto_replied';
       else if (row.pending_status === 'rejected') emailStatus = 'rejected';
       else if (row.pending_status === 'spam') emailStatus = 'spam';
@@ -3980,6 +3986,79 @@ app.get('/api/limits', async (req, res) => {
 
 
 
+// === DIAGNOSTIKA: proč e-mail nedostal odpověď ============================
+// Přehled stavu zpracování pro přihlášeného uživatele (bez citlivých dat).
+app.get('/api/diagnostics', async (req, res) => {
+  const me = req.authEmail;
+  const client = await pool.connect();
+  try {
+    const limits = await getPlanLimits(client, me);
+    await ensureUsageRow(client, me);
+    const used = await getUsage(client, me);
+
+    const byStatus = await client.query(`
+      SELECT connected_email, status, COUNT(*)::int AS cnt
+        FROM pending_replies
+       WHERE dashboard_user_email = $1
+       GROUP BY connected_email, status
+       ORDER BY connected_email, status
+    `, [me]);
+
+    const synced = await client.query(`
+      SELECT account_email,
+             COUNT(*)::int AS total,
+             COUNT(*) FILTER (WHERE date > NOW() - INTERVAL '7 days')::int AS last_7d,
+             COUNT(*) FILTER (WHERE is_read = false)::int AS unread
+        FROM synced_emails
+       WHERE dashboard_user_email = $1
+       GROUP BY account_email
+    `, [me]);
+
+    // Kolik e-mailů z posledních 7 dnů nemá ŽÁDNÝ záznam o zpracování
+    const unprocessed = await client.query(`
+      SELECT se.account_email, COUNT(*)::int AS cnt
+        FROM synced_emails se
+        LEFT JOIN pending_replies pr
+          ON pr.dashboard_user_email = se.dashboard_user_email
+         AND pr.connected_email = se.account_email
+         AND pr.message_id = se.id
+       WHERE se.dashboard_user_email = $1
+         AND se.date > NOW() - INTERVAL '7 days'
+         AND pr.id IS NULL
+       GROUP BY se.account_email
+    `, [me]);
+
+    const lastActivity = await client.query(`
+      SELECT action, status, created_at, details
+        FROM activity_log
+       WHERE dashboard_user_email = $1
+       ORDER BY created_at DESC
+       LIMIT 10
+    `, [me]);
+
+    return res.json({
+      success: true,
+      plan: limits.code,
+      aiActions: {
+        limit: limits.monthly_ai_actions,
+        used,
+        remaining: Math.max(0, limits.monthly_ai_actions - used),
+        exhausted: used >= limits.monthly_ai_actions,
+        periodStart: currentPeriodStartDateUTC(),
+      },
+      pendingByStatus: byStatus.rows,
+      syncedEmails: synced.rows,
+      unprocessedLast7Days: unprocessed.rows,
+      lastActivity: lastActivity.rows,
+    });
+  } catch (e) {
+    console.error('[diagnostics] error:', e?.message || e);
+    return res.status(500).json({ success: false, message: 'Diagnostika selhala.' });
+  } finally {
+    client.release();
+  }
+});
+
 function currentPeriodStartDateUTC() {
   // první den aktuálního měsíce v UTC jako 'YYYY-MM-DD'
   const now = new Date();
@@ -4519,7 +4598,7 @@ app.get('/api/gmail/emails', async (req, res) => {
     const emails = dataRes.rows.map(row => {
       // Determine display status
       let emailStatus = null;
-      if (row.pending_status === 'pending') emailStatus = 'pending';
+      if (row.pending_status === 'pending' || row.pending_status === 'sending') emailStatus = 'pending';
       else if (row.pending_status === 'sent') emailStatus = 'auto_replied';
       else if (row.pending_status === 'rejected') emailStatus = 'rejected';
       else if (row.pending_status === 'spam') emailStatus = 'spam';
@@ -6805,6 +6884,39 @@ app.delete('/api/spamlist/:id', async (req, res) => {
 // === AUTOMATICKÝ EMAIL WORKER (SPAM + SCHVALOVÁNÍ) ================
 // ===================================================================
 
+// Zaseknuté claimy: pokud server spadl/restartoval mezi rezervací a odesláním,
+// zůstane záznam ve stavu 'sending' - e-mail by pak nikdy nebyl zodpovězen ani
+// nabídnut ke schválení. Po 10 minutách je proto vrátíme mezi čekající.
+async function recoverStuckSendingClaims(dbClient) {
+  try {
+    const r = await dbClient.query(`
+      UPDATE pending_replies
+         SET status = 'pending'
+       WHERE status = 'sending'
+         AND COALESCE(last_generated_at, created_at) < NOW() - INTERVAL '10 minutes'
+      RETURNING id
+    `);
+    if (r.rowCount > 0) {
+      console.warn(`[recovery] ${r.rowCount} zaseknutých odesílání vráceno ke schválení.`);
+    }
+    return r.rowCount;
+  } catch (e) {
+    console.warn('[recovery] obnova zaseknutých claimů selhala:', e?.message);
+    return 0;
+  }
+}
+
+// Vyčerpaný limit AI akcí hlásíme do audit logu (jednou za běh a účet),
+// aby to nebylo vidět jen v serverové konzoli.
+async function reportAiLimitExhausted(dashboardUserEmail, accountEmail, limit) {
+  console.warn(`[limit] ${accountEmail}: vyčerpán měsíční limit AI akcí (${limit}). Další e-maily se nezpracovávají.`);
+  await logActivity(dashboardUserEmail, 'Vyčerpán limit AI akcí', 'error', {
+    account: accountEmail,
+    limit,
+    reason: `Měsíční limit AI akcí (${limit}) je vyčerpán – další e-maily se nezpracovávají. Navyšte tarif.`
+  }).catch(() => { });
+}
+
 let imapWorkerRunning = false;
 let emailWorkerRunning = false;
 let syncRunning = false;
@@ -6820,6 +6932,7 @@ async function runImapWorker() {
     let accounts = [];
     try {
       db = await pool.connect();
+      await recoverStuckSendingClaims(db);
       try {
         const r = await db.query(`
           SELECT ca.dashboard_user_email, email_address, imap_host, imap_port, imap_secure,
@@ -6913,14 +7026,26 @@ async function runImapWorker() {
         });
 
         const startSeq = Math.max(1, (imap.mailbox?.exists || 1) - 200);
+        let seenFallbackCount = 0; // strop pro zprávy přečtené v jiném klientovi
         console.log(`[IMAP Worker] Fetching from seq ${startSeq}`);
 
         for await (const msg of imap.fetch({ seq: `${startSeq}:*` }, { uid: true, envelope: true, internalDate: true, headers: true, flags: true })) {
           try {
             console.log(`[IMAP Worker] Checking msg UID: ${msg.uid}, Flags: ${Array.from(msg.flags || [])}`);
+
+            // Přečtené zprávy (jiný klient) - viz SEEN_FALLBACK_*
+            let seenFallback = false;
             if (msg.flags?.has?.('\\Seen')) {
-              // console.log(`[IMAP Worker] UID ${msg.uid} is Seen, skipping.`);
-              continue;
+              const answered = msg.flags?.has?.('\\Answered');
+              const ageHours = msg.internalDate
+                ? (Date.now() - new Date(msg.internalDate).getTime()) / 3600000
+                : Infinity;
+              if (answered || ageHours > SEEN_FALLBACK_HOURS || seenFallbackCount >= SEEN_FALLBACK_MAX_PER_RUN) {
+                continue;
+              }
+              seenFallback = true;
+              seenFallbackCount++;
+              console.log(`[IMAP Worker] UID: ${msg.uid} - přečteno jinde, zpracuji jako návrh ke schválení.`);
             }
 
             const rawSubject = msg.envelope?.subject || '';
@@ -7104,8 +7229,8 @@ async function runImapWorker() {
 
             const consume = await tryConsumeAiAction(dbClient, acc.dashboard_user_email);
             if (!consume.ok) {
-              console.warn(`[IMAP worker] ${acc.email_address}: vyčerpán limit AI akcí.`);
-              continue;
+              await reportAiLimitExhausted(acc.dashboard_user_email, acc.email_address, consume.limit);
+              break; // další zprávy tohoto účtu už nemá smysl zkoušet
             }
 
             console.log(`[IMAP Worker] UID: ${msg.uid} - Proceeding to AI analysis...`);
@@ -7192,6 +7317,10 @@ async function runImapWorker() {
             const subjLower = (subject || '').toLowerCase().trim();
             if ((subjLower.startsWith('re:') || subjLower.startsWith('odp:')) && action === 'auto_reply') {
               console.log(`[IMAP Worker] UID: ${msg.uid} - Subject starts with Re:/Odp: -> auto_reply změněno na require_approval`);
+              action = 'require_approval';
+            }
+            // Zpráva už byla přečtená jinde -> jen návrh ke schválení, nikdy auto-odpověď
+            if (seenFallback && action === 'auto_reply') {
               action = 'require_approval';
             }
             // Pojistka: známému korespondentovi (už jsme mu odpovídali) poštu nikdy nezahazujeme
@@ -7649,7 +7778,7 @@ async function processGmailAccount(acc, dbClient) {
 
     const consume = await tryConsumeAiAction(dbClient, acc.dashboard_user_email);
     if (!consume.ok) {
-      console.warn(`         Limit AI akcí dosažen pro ${acc.dashboard_user_email}, zbytek schránky přeskočen.`);
+      await reportAiLimitExhausted(acc.dashboard_user_email, acc.connected_email, consume.limit);
       break;
     }
 
@@ -7954,6 +8083,7 @@ async function runEmailWorker() {
   let dbClient;
   try {
     dbClient = await pool.connect();
+    await recoverStuckSendingClaims(dbClient);
     // Vezmeme všechny aktivní propojené schránky s jejich nastavením
     const { rows: accounts } = await dbClient.query(`
       SELECT

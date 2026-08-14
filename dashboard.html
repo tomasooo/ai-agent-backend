@@ -261,6 +261,12 @@
         <!-- Emails Page -->
 
         <div class="page-content" id="emails">
+          <!-- Varování: vyčerpaný měsíční limit AI akcí (jinak by se e-maily tiše nezpracovávaly) -->
+          <div id="ai-limit-banner" style="display:none; margin-bottom:16px; padding:14px 18px; border-radius:12px;
+               background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#fecaca;">
+            <strong>⚠️ Vyčerpán měsíční limit AI akcí</strong>
+            <div id="ai-limit-banner-text" style="font-size:0.9rem; margin-top:4px;"></div>
+          </div>
           <!-- Hidden selects needed by JS logic (not shown to user) -->
           <select id="status-filter" style="display:none;">
             <option value="all">Doručená pošta</option>
@@ -6854,6 +6860,30 @@ S pozdravem
 
 
     // === DASHBOARD LOGIC (RESTORED) ===
+    // Kontrola limitu AI akcí — bez ní by se e-maily přestaly zpracovávat tiše.
+    async function checkAiLimitBanner() {
+      const banner = document.getElementById('ai-limit-banner');
+      if (!banner) return;
+      try {
+        const r = await fetch(`${window.BACKEND}/api/diagnostics`, { cache: 'no-store' });
+        const j = await r.json();
+        if (!j.success || !j.aiActions) return;
+        const a = j.aiActions;
+        if (a.exhausted) {
+          const unprocessed = (j.unprocessedLast7Days || []).reduce((s, r) => s + (r.cnt || 0), 0);
+          document.getElementById('ai-limit-banner-text').textContent =
+            `Tarif ${j.plan} má ${a.limit} AI akcí měsíčně a všechny jsou vyčerpané (${a.used}/${a.limit}). `
+            + `Nové e-maily se proto nezpracovávají – AI na ně neodpovídá ani je nedává ke schválení`
+            + (unprocessed ? `. Za posledních 7 dní čeká nezpracovaných: ${unprocessed}.` : '.')
+            + ` Limit se obnoví 1. dne měsíce, nebo navyšte tarif.`;
+          banner.style.display = 'block';
+        } else {
+          banner.style.display = 'none';
+        }
+      } catch (e) { /* diagnostika je pomocná, chybu neukazujeme */ }
+    }
+    document.addEventListener('DOMContentLoaded', checkAiLimitBanner);
+
     async function loadDashboardStats() {
       console.log('Called loadDashboardStats');
       const dashboardUserEmail = localStorage.getItem('userEmail');
