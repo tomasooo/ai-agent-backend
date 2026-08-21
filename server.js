@@ -5450,6 +5450,7 @@ async function sendGmailReplyMessage({
   gmail,
   email,
   replyBody,
+  aiGenerated = false,
   threadId,
   headers,
   fallbackSubject,
@@ -5483,6 +5484,7 @@ async function sendGmailReplyMessage({
   const dateHeader = now.toUTCString();
   const messageIdHeader = `<${Date.now()}.${crypto.randomBytes(4).toString('hex')}@${email.split('@')[1]}>`;
 
+  const outboundBody = aiGenerated ? appendAiDisclosure(replyBody) : replyBody;
   const lines = [
     `From: ${encodedFrom}`,
     `To: ${targetRecipient}`,
@@ -5490,10 +5492,11 @@ async function sendGmailReplyMessage({
     `Date: ${dateHeader}`,
     `Message-ID: ${messageIdHeader}`,
     'MIME-Version: 1.0',
+    ...(aiGenerated ? ['X-AI-Generated: true'] : []),
     'Content-Type: text/plain; charset=utf-8',
     'Content-Transfer-Encoding: 8bit',
     '',
-    replyBody
+    outboundBody
   ];
 
   if (originalMessageId) {
@@ -6046,6 +6049,7 @@ async function sendCustomReply({
   targetRecipient,
   subject,
   text,
+  aiGenerated = false,
   fromName,
   origMessageId,
   origReferences,
@@ -6074,11 +6078,13 @@ async function sendCustomReply({
     ? (origRefsSafe ? `${origRefsSafe} ${origMsgIdSafe}` : origMsgIdSafe)
     : origRefsSafe;
 
+  const outboundText = aiGenerated ? appendAiDisclosure(text) : text;
   const rawLines = [
     `From: ${fromHeader}`, `To: ${toHeader}`, `Subject: ${libmime.encodeWord(replySubject, 'B', 'utf-8')}`,
     `Date: ${dateHeader}`, `Message-ID: ${messageIdHeader}`,
     `In-Reply-To: ${origMsgIdSafe}`, `References: ${referencesCombinedSafe}`,
-    'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '', text
+    'MIME-Version: 1.0', ...(aiGenerated ? ['X-AI-Generated: true'] : []),
+    'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', '', outboundText
   ];
   const rawMessage = rawLines.join('\r\n');
   const transporter = nodemailer.createTransport({
@@ -7483,6 +7489,7 @@ async function runImapWorker() {
                     targetRecipient,
                     subject,
                     text: autoReplyText,
+                    aiGenerated: true,
                     fromName: '',
                     origMessageId: messageIdHeader || '',
                     origReferences: referencesHeader || '',
@@ -7970,6 +7977,7 @@ async function processGmailAccount(acc, dbClient) {
           gmail,
           email: acc.connected_email,
           replyBody: gmailAutoReplyText,
+          aiGenerated: true,
           threadId: msgResponse.data.threadId || undefined,
           headers,
           fallbackSubject: subject,
