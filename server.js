@@ -1419,7 +1419,9 @@ async function setupDatabase() {
                 ('Starter','Starter', 1, 50),
                 ('Professional','Professional', 5, 1000),
                 ('Enterprise','Enterprise', 999, 100000)
-            ON CONFLICT (code) DO NOTHING;`,
+            ON CONFLICT (code) DO UPDATE
+                SET monthly_ai_actions = EXCLUDED.monthly_ai_actions
+                WHERE plans.code = 'Enterprise';`,
       `CREATE TABLE IF NOT EXISTS usage_counters (
                 dashboard_user_email VARCHAR(255) NOT NULL,
                 period_start DATE NOT NULL,
